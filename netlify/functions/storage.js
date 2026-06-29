@@ -5,7 +5,7 @@
 // ה-API: בקשת POST יחידה עם גוף JSON: { action: 'get'|'set'|'delete'|'list', key, value, prefix }
 // אין כאן הגנת סיסמה — כל מי שמגיע לכתובת האתר יכול לקרוא ולכתוב נתונים (לפי בקשת המשתמש).
 
-const { getStore } = require('@netlify/blobs');
+const { getStore, connectLambda } = require('@netlify/blobs');
 
 const STORE_NAME = 'production-dashboard';
 
@@ -39,6 +39,7 @@ exports.handler = async (event) => {
 
   let store;
   try {
+    connectLambda(event);
     store = getStore(STORE_NAME);
   } catch (e) {
     return { statusCode: 500, headers, body: JSON.stringify({ error: 'Blob store unavailable: ' + (e && e.message) }) };
