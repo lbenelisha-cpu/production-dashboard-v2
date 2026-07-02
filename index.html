@@ -56,6 +56,34 @@ html, body { margin:0; padding:0; background:#14171A; }
 #prod-dash-root .storage-status { font-size: 11px; font-weight: 700; }
 #prod-dash-root .storage-status.ok { color: var(--green); }
 #prod-dash-root .storage-status.warn { color: var(--yellow); }
+/* Facility drill-down overlay */
+#prod-dash-root .facility-drilldown-overlay {
+  position: fixed; inset: 0; background: var(--bg); z-index: 990;
+  overflow-y: auto; direction: rtl;
+  display: none;
+}
+#prod-dash-root .facility-drilldown-overlay.open { display: block; }
+#prod-dash-root .facility-drilldown-header {
+  position: sticky; top: 0; z-index: 10;
+  background: var(--panel); border-bottom: 2px solid var(--border);
+  padding: 14px 18px; display: flex; align-items: center; gap: 14px;
+  flex-wrap: wrap;
+}
+#prod-dash-root .facility-drilldown-header h2 { margin: 0; font-size: 18px; font-weight: 900; }
+#prod-dash-root .facility-drilldown-header .kpi-sub { margin: 2px 0 0; font-size: 12px; color: var(--text-muted); }
+#prod-dash-root .back-btn {
+  background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+  border-radius: 8px; padding: 8px 14px; font-size: 13px; font-weight: 700;
+  cursor: pointer; font-family: inherit; margin-right: auto;
+}
+#prod-dash-root .back-btn:hover { border-color: var(--amber); color: var(--amber); }
+#prod-dash-root .drilldown-body { padding: 18px; max-width: 1180px; margin: 0 auto; }
+#prod-dash-root .gauge-card.clickable-gauge { cursor: pointer; transition: transform .12s, border-color .12s; }
+#prod-dash-root .gauge-card.clickable-gauge:hover { transform: translateY(-2px); border-color: var(--amber); box-shadow: 0 0 0 1px rgba(244,166,35,0.3); }
+#prod-dash-root .shift-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; margin-bottom: 16px; }
+@media(max-width:640px){ #prod-dash-root .shift-grid { grid-template-columns: 1fr; } }
+#prod-dash-root .drilldown-stat-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin-bottom: 16px; }
+@media(max-width:760px){ #prod-dash-root .drilldown-stat-grid { grid-template-columns: repeat(2,1fr); } }
 #prod-dash-root .topbar-actions { display:flex; align-items:center; gap:8px; }
 #prod-dash-root .ghost-btn {
   background: transparent; border: 1px solid var(--border); color: var(--text-muted);
@@ -1878,6 +1906,292 @@ html, body { margin:0; padding:0; background:#14171A; }
     });
   }
 
+  // זיהוי משמרת לפי שעת יצירה (timestamp): בוקר 08-15, ערב 15-23, לילה 23-07
+  // משמש רק כגיבוי כשאין עמודת "Actual Finish Time" בקובץ המקורי
+  function shiftFromTimestamp(ts){
+    if(!ts) return null;
+    return shiftFromHour(new Date(Number(ts)).getHours());
+  }
+
+  function buildFacilityDrilldownChart(rows, metric, maxH){
+    if(!rows || rows.length === 0) return '<div class="chart-empty">אין נתונים בטווח שנבחר</div>';
+    const W = Math.max(400, rows.length * 46), H = maxH || 200;
+    const padL = 46, padR = 10, padT = 10, padB = 28;
+    const plotW = W - padL - padR, plotH = H - padT - padB;
+    const maxVal = Math.max(1, ...rows.map(r => Number(r[metric]) || 0)) * 1.15;
+    const color = metric === 'packaging' ? 'var(--teal)' : 'var(--amber)';
+    let bars = '', labels = '', grid = '';
+    [0, 0.5, 1].forEach(f => {
+      const y = padT + plotH - plotH * f;
+      grid += '<line x1="'+padL+'" y1="'+y+'" x2="'+(W-padR)+'" y2="'+y+'" stroke="var(--border)" stroke-width="1" stroke-dasharray="3 4"/>';
+      grid += '<text x="'+(padL-6)+'" y="'+(y+3)+'" text-anchor="end" font-size="9.5" fill="var(--text-muted)" font-family="JetBrains Mono,monospace">'+fmt(maxVal*f)+'</text>';
+    });
+    const barW = Math.min(32, plotW / rows.length * 0.65);
+    const groupW = plotW / rows.length;
+    rows.forEach((r, i) => {
+      const v = Number(r[metric]) || 0;
+      const h = (v / maxVal) * plotH;
+      const x = padL + i * groupW + groupW / 2 - barW / 2;
+      bars += '<rect x="'+x+'" y="'+(padT+plotH-h)+'" width="'+barW+'" height="'+Math.max(h,0)+'" rx="2" fill="'+color+'"/>'+
+        (v > 0 ? '<text x="'+(x+barW/2)+'" y="'+(padT+plotH-h-4)+'" text-anchor="middle" font-size="8.5" fill="var(--text-muted)" font-family="JetBrains Mono,monospace">'+fmt(v)+'</text>' : '');
+      const lbl = r.label || r.date || '';
+      labels += '<text x="'+(x+barW/2)+'" y="'+(H-padB+13)+'" text-anchor="middle" font-size="9.5" fill="var(--text-muted)">'+escapeHtml(lbl)+'</text>';
+    });
+    return '<svg viewBox="0 0 '+W+' '+H+'" width="'+W+'" height="'+H+'">'+grid+bars+labels+'</svg>';
+  }
+
+  function buildFacilityDrilldownChart(rows, metric, maxH){
+    if(!rows || rows.length === 0) return '<div class="chart-empty">אין נתונים בטווח שנבחר</div>';
+    const W = Math.max(400, rows.length * 46), H = maxH || 200;
+    const padL = 46, padR = 10, padT = 10, padB = 28;
+    const plotW = W - padL - padR, plotH = H - padT - padB;
+    const maxVal = Math.max(1, ...rows.map(r => Number(r[metric]) || 0)) * 1.15;
+    const color = metric === 'packaging' ? 'var(--teal)' : 'var(--amber)';
+    let bars = '', labels = '', grid = '';
+    [0, 0.5, 1].forEach(f => {
+      const y = padT + plotH - plotH * f;
+      grid += '<line x1="'+padL+'" y1="'+y+'" x2="'+(W-padR)+'" y2="'+y+'" stroke="var(--border)" stroke-width="1" stroke-dasharray="3 4"/>';
+      grid += '<text x="'+(padL-6)+'" y="'+(y+3)+'" text-anchor="end" font-size="9.5" fill="var(--text-muted)" font-family="JetBrains Mono,monospace">'+fmt(maxVal*f)+'</text>';
+    });
+    const barW = Math.min(32, plotW / rows.length * 0.65);
+    const groupW = plotW / rows.length;
+    rows.forEach((r, i) => {
+      const v = Number(r[metric]) || 0;
+      const h = (v / maxVal) * plotH;
+      const x = padL + i * groupW + groupW / 2 - barW / 2;
+      bars += '<rect class="drilldown-bar" data-date="'+escapeHtml(r.date||'')+'" x="'+x+'" y="'+(padT+plotH-Math.max(h,2))+'" width="'+barW+'" height="'+Math.max(h,2)+'" rx="2" fill="'+color+'" style="cursor:pointer;" opacity="0.85" title="לחץ לפירוט '+escapeHtml(r.date||'')+'"/>'+
+        (v > 0 ? '<text x="'+(x+barW/2)+'" y="'+(padT+plotH-h-4)+'" text-anchor="middle" font-size="8.5" fill="var(--text-muted)" font-family="JetBrains Mono,monospace" style="pointer-events:none;">'+fmt(v)+'</text>' : '');
+      const lbl = r.label || r.date || '';
+      labels += '<text x="'+(x+barW/2)+'" y="'+(H-padB+13)+'" text-anchor="middle" font-size="9.5" fill="var(--text-muted)" style="pointer-events:none;">'+escapeHtml(lbl)+'</text>';
+    });
+    return '<svg viewBox="0 0 '+W+' '+H+'" width="'+W+'" height="'+H+'" id="drilldownChartSVG" style="display:block;">'+grid+bars+labels+'</svg>';
+  }
+
+  function renderDayDetail(date, facRows, overlay){
+    const dayRows = facRows.filter(e => e.date === date);
+    const qRows = Object.values(qualitySummary || {}).filter(q => dayRows.some(e => qualityMatchesPackaging(q, e)));
+    const qGood = qRows.filter(q=>q.worst==='ok').length;
+    const qBad = qRows.filter(q=>q.worst==='bad').length;
+    const qCond = qRows.filter(q=>q.worst==='conditional').length;
+    const qTotal = qRows.length;
+
+    let html = '<div class="panel" style="margin-bottom:16px; border-color:var(--amber); border-width:2px;">'+
+      '<div class="panel-head">'+
+        '<div><div class="panel-title">📅 פירוט יום '+escapeHtml(date)+'</div>'+
+        '<div class="kpi-sub">'+dayRows.length+' רשומות · '+qTotal+' מנות איכות</div></div>'+
+        '<button class="panel-toggle-btn" id="closeDayDetail">✕ סגור פירוט</button>'+
+      '</div>';
+
+    // Quality for this day
+    if(qTotal > 0){
+      html += '<div class="insight-stats" style="margin-bottom:12px;">'+
+        '<div class="kpi-card"><div class="kpi-label" style="color:var(--green)">🟢 מנות תקינות</div><span class="kpi-num">'+qGood+'</span><div class="kpi-sub">'+Math.round(qGood/qTotal*100)+'%</div></div>'+
+        '<div class="kpi-card"><div class="kpi-label" style="color:var(--yellow)">🟠 ממתינות להחלטה</div><span class="kpi-num">'+qCond+'</span></div>'+
+        '<div class="kpi-card"><div class="kpi-label" style="color:var(--red)">🔴 נפסלו</div><span class="kpi-num">'+qBad+'</span></div>'+
+      '</div>';
+      if(qBad > 0 || qCond > 0){
+        html += '<div class="kpi-sub" style="font-weight:800; margin-bottom:8px;">מנות עם חריגות:</div>'+
+          '<div class="table-scroll" style="margin-bottom:12px;"><table><thead><tr>'+
+          '<th>סטטוס</th><th>Batch</th><th>פקודת עבודה</th><th>שם חומר</th><th>בדיקות</th><th>Rejected</th><th>הערות</th>'+
+          '</tr></thead><tbody>';
+        qRows.filter(q=>q.worst!=='ok').forEach(q=>{
+          html += '<tr class="'+(q.worst==='bad'?'quality-row-bad':'quality-row-conditional')+'">'+
+            '<td><span class="quality-badge '+q.worst+'">'+qualityLabel(q.worst)+'</span></td>'+
+            '<td class="mono">'+escapeHtml(q.batch||'—')+'</td>'+
+            '<td class="mono">'+escapeHtml(q.workOrder||'—')+'</td>'+
+            '<td>'+escapeHtml(q.materialName||'—')+'</td>'+
+            '<td class="mono">'+fmt(q.totalTests||0)+'</td>'+
+            '<td class="mono">'+fmt(q.rejections||0)+'</td>'+
+            '<td>'+escapeHtml((q.examples||[]).slice(0,1).join('')||'—')+'</td>'+
+          '</tr>';
+        });
+        html += '</tbody></table></div>';
+      } else {
+        html += '<div class="table-empty" style="padding:8px; color:var(--green);">✅ כל מנות האיכות ביום זה תקינות</div>';
+      }
+    } else {
+      html += '<div class="table-empty" style="padding:10px;">אין נתוני איכות מקושרים ליום זה</div>';
+    }
+
+    // Records for this day
+    if(dayRows.length > 0){
+      html += '<div class="kpi-sub" style="font-weight:800; margin:12px 0 8px;">רשומות ייצור/אריזה ביום זה ('+dayRows.length+'):</div>'+
+        '<div class="table-scroll"><table><thead><tr>'+
+        '<th>משמרת</th><th>קו / מוצר</th><th>שם חומר</th><th>פקודת עבודה</th><th>סוג אריזה</th>'+
+        '<th>ייצור</th><th>אריזה</th><th>סטטוס איכות</th><th>הערות</th>'+
+        '</tr></thead><tbody>';
+      dayRows.forEach(e=>{
+        const sh = e.shift && SHIFTS.includes(e.shift) ? e.shift : '—';
+        const qEntry = getQualityForPackaging(e);
+        html += '<tr>'+
+          '<td>'+escapeHtml(sh)+'</td>'+
+          '<td>'+escapeHtml(e.line||'כללי')+'</td>'+
+          '<td>'+escapeHtml(e.materialName||'—')+'</td>'+
+          '<td class="mono">'+escapeHtml(e.workOrder||'—')+'</td>'+
+          '<td>'+escapeHtml(e.packagingType||'—')+'</td>'+
+          '<td class="mono">'+fmt(e.production||0)+'</td>'+
+          '<td class="mono">'+fmt(e.packaging||0)+'</td>'+
+          '<td>'+(qEntry ? '<span class="quality-badge '+qEntry.worst+'">'+qualityLabel(qEntry.worst)+'</span>' : '<span style="color:var(--text-muted)">—</span>')+'</td>'+
+          '<td>'+escapeHtml(getEntryNotes(e)||'—')+'</td>'+
+        '</tr>';
+      });
+      html += '</tbody></table></div>';
+    }
+
+    html += '</div>';
+
+    const dayDetailDiv = overlay.querySelector('#dayDetailSection');
+    if(dayDetailDiv){
+      dayDetailDiv.innerHTML = html;
+      dayDetailDiv.scrollIntoView({behavior:'smooth', block:'nearest'});
+      dayDetailDiv.querySelector('#closeDayDetail').onclick = ()=>{
+        dayDetailDiv.innerHTML = '';
+        overlay.querySelectorAll('.drilldown-bar').forEach(b=>b.setAttribute('opacity','0.85'));
+      };
+      overlay.querySelectorAll('.drilldown-bar').forEach(b=>{
+        b.setAttribute('opacity', b.dataset.date === date ? '1' : '0.35');
+        b.setAttribute('stroke', b.dataset.date === date ? 'var(--text)' : 'none');
+        b.setAttribute('stroke-width', '2');
+      });
+    }
+  }
+
+  function openFacilityDrilldown(facility, kind, view){
+    const overlay = root.querySelector('#facilityDrilldownOverlay');
+    if(!overlay) return;
+    const allRows = (view && view.filtered) || [];
+    const facRows = allRows.filter(e => String(e.facility||'') === String(facility));
+    const metric = kind === 'packaging' ? 'packaging' : 'production';
+    const metricLabel = kind === 'packaging' ? 'אריזה (ליטר)' : 'ייצור (יח׳)';
+    const color = kind === 'packaging' ? 'var(--teal)' : 'var(--amber)';
+    const total = facRows.reduce((s,e)=>s+(Number(e[metric])||0),0);
+    const daysWithData = new Set(facRows.filter(e=>Number(e[metric]||0)>0).map(e=>e.date)).size;
+    const avg = daysWithData > 0 ? Math.round(total / daysWithData) : 0;
+    const dailyTarget = kind === 'packaging' ? dailyPackagingTargetForFacility(facility) : dailyProductionTargetForFacility(facility);
+
+    const byDate = {};
+    facRows.forEach(e=>{
+      const d = e.date || '';
+      if(!d) return;
+      if(!byDate[d]) byDate[d] = {date:d, label:ddmm(parseISO(d)), production:0, packaging:0, count:0};
+      byDate[d].production += Number(e.production)||0;
+      byDate[d].packaging += Number(e.packaging)||0;
+      byDate[d].count++;
+    });
+    const dailyRows = Object.values(byDate).sort((a,b)=>a.date.localeCompare(b.date));
+    const bestDay = dailyRows.length ? dailyRows.reduce((best,r)=> (Number(r[metric])||0) > (Number(best[metric])||0) ? r : best, dailyRows[0]) : null;
+    const worstDay = dailyRows.filter(r=>Number(r[metric]||0)>0).length ?
+      dailyRows.filter(r=>Number(r[metric]||0)>0).reduce((w,r)=> (Number(r[metric])||0) < (Number(w[metric])||0) ? r : w, dailyRows.filter(r=>Number(r[metric]||0)>0)[0]) : null;
+
+    const shiftTotals = {'בוקר':0, 'ערב':0, 'לילה':0};
+    const shiftCounts = {'בוקר':0, 'ערב':0, 'לילה':0};
+    let unknownShiftTotal = 0, unknownShiftCount = 0;
+    facRows.forEach(e=>{
+      const v = Number(e[metric])||0;
+      if(!v) return;
+      const sh = e.shift && SHIFTS.includes(e.shift) ? e.shift : null;
+      if(sh){
+        shiftTotals[sh] = (shiftTotals[sh]||0) + v;
+        shiftCounts[sh] = (shiftCounts[sh]||0) + 1;
+      } else {
+        unknownShiftTotal += v;
+        unknownShiftCount++;
+      }
+    });
+    const shiftMax = Math.max(1, ...Object.values(shiftTotals), unknownShiftTotal);
+
+    const qRowsAll = Object.values(qualitySummary || {}).filter(q => facRows.some(e => qualityMatchesPackaging(q, e)));
+    const qGoodAll = qRowsAll.filter(q=>q.worst==='ok').length;
+    const qTotal = qRowsAll.length;
+
+    const titleLabel = 'מתקן ' + facility + (kind==='packaging' ? ' — אריזה' : ' — ייצור');
+    const pct = dailyTarget > 0 ? Math.round(total / (dailyTarget * Math.max(daysWithData,1)) * 100) : 0;
+
+    let html = '<div class="facility-drilldown-header">'+
+      '<button class="back-btn" id="drilldownBack">← חזרה ללוח הבקרה</button>'+
+      '<div><h2>'+escapeHtml(titleLabel)+'</h2>'+
+      '<div class="kpi-sub">טווח: '+escapeHtml(view.rangeLabel||'')+' · '+facRows.length+' רשומות</div></div>'+
+    '</div>'+
+    '<div class="drilldown-body">';
+
+    // Summary stats
+    html += '<div class="drilldown-stat-grid">'+
+      '<div class="kpi-card num" style="border-top:3px solid '+color+'"><div class="kpi-label">סה״כ '+metricLabel+'</div><span class="kpi-num">'+fmt(total)+'</span></div>'+
+      '<div class="kpi-card num"><div class="kpi-label">ממוצע יומי</div><span class="kpi-num">'+fmt(avg)+'</span><div class="kpi-sub">'+daysWithData+' ימי דיווח</div></div>'+
+      '<div class="kpi-card num" style="border-top:3px solid '+(pct>=100?'var(--green)':pct>=75?'var(--yellow)':'var(--red)')+'"><div class="kpi-label">עמידה ביעד</div><span class="kpi-num">'+pct+'%</span><div class="kpi-sub">יעד יומי: '+fmt(dailyTarget)+'</div></div>'+
+      '<div class="kpi-card num"><div class="kpi-label">מנות איכות</div><span class="kpi-num">'+qTotal+'</span><div class="kpi-sub" style="color:var(--green)">'+qGoodAll+' תקינות</div></div>'+
+    '</div>';
+
+    // Daily chart — clickable bars
+    html += '<div class="panel" style="margin-bottom:16px;">'+
+      '<div class="panel-head"><div class="panel-title">כמות לפי יום</div>'+
+      '<div class="legend"><span><span class="dot" style="background:'+color+'"></span>'+metricLabel+'</span>'+
+      '<span style="color:var(--text-muted); font-size:11px; margin-right:8px;">לחץ על עמודה לפירוט היום</span></div></div>'+
+      '<div class="chart-wrap">'+buildFacilityDrilldownChart(dailyRows, metric, 220)+'</div>'+
+    '</div>';
+
+    // Day detail placeholder (filled on bar click)
+    html += '<div id="dayDetailSection"></div>';
+
+    // Shift breakdown
+    html += '<div class="panel" style="margin-bottom:16px;"><div class="panel-head"><div class="panel-title">פירוט לפי משמרת</div>'+
+      '<div class="kpi-sub">בוקר 07:00-15:00 · ערב 15:00-23:00 · לילה 23:00-07:00</div></div>'+
+      '<div class="shift-grid">';
+    ['בוקר','ערב','לילה'].forEach(sh=>{
+      const v = shiftTotals[sh] || 0;
+      const cnt = shiftCounts[sh] || 0;
+      const w = Math.round(v / shiftMax * 100);
+      const shPct = total > 0 ? Math.round(v/total*100) : 0;
+      html += '<div class="kpi-card"><div class="kpi-label">משמרת '+escapeHtml(sh)+'</div>'+
+        '<div class="kpi-num mono" style="font-size:22px; direction:ltr; text-align:right;">'+fmt(v)+'</div>'+
+        '<div style="height:8px; background:var(--panel-2); border-radius:999px; margin:8px 0; overflow:hidden;"><div style="height:100%; width:'+w+'%; background:'+color+'; border-radius:999px;"></div></div>'+
+        '<div class="kpi-sub">'+shPct+'% מסך הכמות · '+cnt+' רשומות</div>'+
+      '</div>';
+    });
+    // אם יש רשומות ללא מידע משמרת — מציגים הודעה ומנחים לייבוא מחדש
+    if(unknownShiftCount > 0){
+      const unknownPct = total > 0 ? Math.round(unknownShiftTotal/total*100) : 0;
+      html += '<div class="kpi-card" style="margin-top:8px; border-color:var(--yellow); background:rgba(232,197,71,0.07);">'+
+        '<div class="kpi-label" style="color:var(--yellow);">⚠️ '+unknownShiftCount+' רשומות ללא נתוני משמרת ('+unknownPct+'% מהכמות)</div>'+
+        '<div class="kpi-sub" style="margin-top:6px;">רשומות אלו יובאו לפני שנוסף זיהוי משמרת אוטומטי. '+
+        '<strong>ייבא מחדש את קובץ ה-SAP</strong> כדי לקבל חלוקה מלאה לפי משמרות — עמודת "Time Stamp" תשמש לזיהוי אוטומטי.</div>'+
+      '</div>';
+    }
+    html += '</div></div>';
+
+    // Best/worst days
+    if(bestDay || worstDay){
+      html += '<div class="insight-stats" style="margin-bottom:16px;">'+
+        (bestDay ? '<div class="kpi-card" style="cursor:pointer;" data-goto-date="'+escapeHtml(bestDay.date)+'"><div class="kpi-label">🏆 יום הכי טוב</div><div class="kpi-num mono" style="font-size:22px; direction:ltr; text-align:right;">'+fmt(Number(bestDay[metric])||0)+'</div><div class="kpi-sub">'+escapeHtml(bestDay.date)+' · לחץ לפירוט</div></div>' : '')+
+        (worstDay ? '<div class="kpi-card" style="cursor:pointer;" data-goto-date="'+escapeHtml(worstDay.date)+'"><div class="kpi-label">⚠️ יום הכי חלש</div><div class="kpi-num mono" style="font-size:22px; direction:ltr; text-align:right;">'+fmt(Number(worstDay[metric])||0)+'</div><div class="kpi-sub">'+escapeHtml(worstDay.date)+' · לחץ לפירוט</div></div>' : '')+
+      '</div>';
+    }
+
+    html += '</div>'; // end drilldown-body
+
+    overlay.innerHTML = html;
+    overlay.classList.add('open');
+    overlay.scrollTop = 0;
+
+    overlay.querySelector('#drilldownBack').onclick = ()=>{ overlay.classList.remove('open'); };
+
+    // Wire bar clicks
+    overlay.querySelectorAll('.drilldown-bar').forEach(bar=>{
+      bar.onclick = ()=>{
+        const date = bar.dataset.date;
+        if(date) renderDayDetail(date, facRows, overlay);
+      };
+    });
+
+    // Wire best/worst day card clicks
+    overlay.querySelectorAll('[data-goto-date]').forEach(card=>{
+      card.onclick = ()=>{
+        const date = card.dataset.gotoDate;
+        if(date) renderDayDetail(date, facRows, overlay);
+      };
+    });
+  }
+
   function renderFacilityTargetGauges(view){
     const container = root.querySelector('#facilityTargetGauges');
     if(!container) return;
@@ -1890,16 +2204,23 @@ html, body { margin:0; padding:0; background:#14171A; }
     rows.forEach(r=>{
       const color = r.kind === 'packaging' ? 'var(--teal)' : 'var(--amber)';
       const unit = r.kind === 'packaging' ? 'ליטר' : '';
-      html += '<div class="kpi-card gauge-card">'+
+      html += '<div class="kpi-card gauge-card clickable-gauge" data-facility="'+escapeHtml(r.facility)+'" data-kind="'+escapeHtml(r.kind)+'" title="לחץ לפירוט מתקן '+escapeHtml(r.facility)+'">'+
         buildGaugeSVG(r.pct, color)+
         '<div class="gauge-name">מתקן '+escapeHtml(r.facility)+(r.kind==='packaging' ? ' (אריזה)' : '')+'</div>'+
         '<div class="gauge-sub mono">'+fmt(r.actual)+' / '+fmt(r.target)+(unit ? ' '+unit : '')+'</div>'+
         '<div class="kpi-sub">'+escapeHtml(r.ruleLabel)+' · '+fmt(r.days)+' ימי דוח</div>'+
         (r.target>0 ? '<div class="gauge-delta" style="color:'+gaugeColor(r.pct)+';">'+deltaLabel(r.actual,r.target)+'</div>' : '')+
+        '<div class="kpi-sub" style="color:var(--amber); font-weight:700; margin-top:4px;">🔍 לחץ לפירוט →</div>'+
       '</div>';
     });
     html += '</div></div>';
     container.innerHTML = html;
+    container.querySelectorAll('.clickable-gauge').forEach(card=>{
+      card.onclick = ()=>{
+        const currentView = getView();
+        openFacilityDrilldown(card.dataset.facility, card.dataset.kind, currentView);
+      };
+    });
   }
 
   function facilityViewMode(){
@@ -3137,6 +3458,82 @@ function exportToWhatsApp(){
     }
   }
 
+  function renderShiftComparison(view){
+    const container = root.querySelector('#shiftComparisonPanel');
+    if(!container) return;
+    const rows = (view && view.filtered) || [];
+    const hasShiftData = rows.some(e=>e.shift && SHIFTS.includes(e.shift));
+    if(!hasShiftData){ container.innerHTML=''; return; }
+
+    const shiftColors = {'בוקר':'var(--amber)','ערב':'var(--teal)','לילה':'#9B7FE8'};
+    const packByShift={'בוקר':0,'ערב':0,'לילה':0};
+    const prodByShift={'בוקר':0,'ערב':0,'לילה':0};
+    const cntByShift={'בוקר':0,'ערב':0,'לילה':0};
+    rows.forEach(e=>{
+      const sh=e.shift&&SHIFTS.includes(e.shift)?e.shift:null;
+      if(!sh)return;
+      packByShift[sh]+=(Number(e.packaging)||0);
+      prodByShift[sh]+=(Number(e.production)||0);
+      cntByShift[sh]++;
+    });
+    const totalPack=SHIFTS.reduce((s,sh)=>s+packByShift[sh],0);
+    const totalProd=SHIFTS.reduce((s,sh)=>s+prodByShift[sh],0);
+    const hasPackData=totalPack>0;
+    const hasProdData=totalProd>0;
+    if(!hasPackData&&!hasProdData){container.innerHTML='';return;}
+
+    function shiftTable(byShift, total, unit){
+      let html='<div style="display:flex;flex-direction:column;gap:10px;margin-bottom:6px;">';
+      SHIFTS.forEach(sh=>{
+        const v=byShift[sh]||0;
+        const pct=total>0?Math.round(v/total*100):0;
+        const w=pct;
+        html+=
+          '<div>'+
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">'+
+              '<span style="font-size:13px;font-weight:800;color:'+shiftColors[sh]+'">■ משמרת '+escapeHtml(sh)+'</span>'+
+              '<span style="font-family:\'JetBrains Mono\',monospace;font-size:14px;font-weight:700;">'+fmt(v)+' '+unit+'</span>'+
+              '<span style="font-size:18px;font-weight:900;color:'+shiftColors[sh]+';min-width:52px;text-align:left;">'+pct+'%</span>'+
+            '</div>'+
+            '<div style="height:14px;background:var(--panel-2);border-radius:999px;overflow:hidden;border:1px solid var(--border);">'+
+              '<div style="height:100%;width:'+w+'%;background:'+shiftColors[sh]+';border-radius:999px;transition:width .4s;"></div>'+
+            '</div>'+
+            '<div class="kpi-sub" style="margin-top:3px;">'+cntByShift[sh]+' רשומות</div>'+
+          '</div>';
+      });
+      // total row
+      html+=
+        '<div style="border-top:1px solid var(--border);padding-top:8px;display:flex;justify-content:space-between;align-items:center;">'+
+          '<span style="font-size:12px;font-weight:700;color:var(--text-muted);">סה״כ</span>'+
+          '<span style="font-family:\'JetBrains Mono\',monospace;font-size:15px;font-weight:800;">'+fmt(total)+' '+unit+'</span>'+
+          '<span style="font-size:18px;font-weight:900;color:var(--text-muted);">100%</span>'+
+        '</div>';
+      html+='</div>';
+      return html;
+    }
+
+    let html='<div class="panel" style="margin-bottom:16px;">'+
+      '<div class="panel-head"><div>'+
+        '<div class="panel-title">השוואת משמרות</div>'+
+        '<div class="kpi-sub">חלוקת הכמות לפי משמרות · '+escapeHtml(view.rangeLabel||'')+'</div>'+
+      '</div></div>';
+
+    if(hasPackData&&hasProdData){
+      // Two columns side by side
+      html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">'+
+        '<div><div class="panel-title" style="font-size:12px;margin-bottom:10px;">📦 אריזה (ליטר)</div>'+shiftTable(packByShift,totalPack,'ל׳')+'</div>'+
+        '<div><div class="panel-title" style="font-size:12px;margin-bottom:10px;">🏗️ ייצור (יח׳)</div>'+shiftTable(prodByShift,totalProd,'יח׳')+'</div>'+
+      '</div>';
+    } else if(hasPackData){
+      html+=shiftTable(packByShift,totalPack,'ל׳');
+    } else {
+      html+=shiftTable(prodByShift,totalProd,'יח׳');
+    }
+
+    html+='</div>';
+    container.innerHTML=html;
+  }
+
 function renderAll(){
     if(!loaded) return;
     root.querySelectorAll('.tab-btn').forEach(b=> b.classList.toggle('active', b.dataset.tab===tab));
@@ -3147,6 +3544,7 @@ function renderAll(){
     renderFacilityTargetGauges(view);
     renderAdvancedDashboard(view);
     renderPackagingTypeBreakdown(view);
+    renderShiftComparison(view);
     renderOperationalInsights(view);
     renderNotesDashboard(view);
     renderEventsPanel(view);
@@ -3370,8 +3768,47 @@ function renderAll(){
     'batch':'batch','אצווה':'batch',
     'יעד_ייצור':'target_production','יעד ייצור':'target_production','target_production':'target_production',
     'יעד_אריזה':'target_packaging','יעד אריזה':'target_packaging','target_packaging':'target_packaging',
-    'הערות':'notes','notes':'notes'
+    'הערות':'notes','notes':'notes',
+    // זמן סיום בפועל — משמש לחישוב משמרת אם אין עמודת משמרת מפורשת
+    'actual finish time':'finish_time','finish time':'finish_time','actual finish':'finish_time',
+    'זמן סיום':'finish_time','שעת סיום':'finish_time',
+    // Time Stamp — datetime מלא מ-SAP, גיבוי לזיהוי משמרת
+    'time stamp':'time_stamp','timestamp':'time_stamp','בול זמן':'time_stamp'
   };
+
+  // חישוב משמרת לפי שעה: בוקר 08-15, ערב 15-23, לילה 23-07
+  function shiftFromHour(hour){
+    if(hour >= 7 && hour < 15) return 'בוקר';
+    if(hour >= 15 && hour < 23) return 'ערב';
+    return 'לילה'; // 23:00-00:00 ו-00:00-07:00
+  }
+
+  // פענוח Actual Finish Time — מגיע כ-timestamp Excel (מספר עם חלק שבר לשעה)
+  // או כמחרוזת "DD.MM.YYYY HH:MM:SS" / "YYYY-MM-DD HH:MM:SS"
+  function parseFinishTimeToHour(raw){
+    if(raw === undefined || raw === null || raw === '') return null;
+    // Excel datetime serial: חלק שבר = חלק היום (0 = חצות, 0.5 = צהריים)
+    if(typeof raw === 'number'){
+      const frac = raw - Math.floor(raw);
+      const totalMinutes = Math.round(frac * 24 * 60);
+      return Math.floor(totalMinutes / 60) % 24;
+    }
+    const s = (''+raw).trim();
+    // "DD.MM.YYYY HH:MM:SS" or "YYYY-MM-DD HH:MM:SS" or "HH:MM:SS"
+    const m = s.match(/(\d{1,2})[:.]\d{2}[:.]\d{2}\s*(?:AM|PM)?$/i) ||
+              s.match(/\s(\d{1,2}):\d{2}/);
+    if(m){
+      let h = parseInt(m[1], 10);
+      if(/PM/i.test(s) && h < 12) h += 12;
+      if(/AM/i.test(s) && h === 12) h = 0;
+      return h % 24;
+    }
+    const t = Date.parse(s);
+    if(!isNaN(t)){
+      return new Date(t).getHours();
+    }
+    return null;
+  }
   function detectPackagingTypeFromText(text){
     if(!text) return '';
     const t = (''+text).toLowerCase();
@@ -3462,7 +3899,24 @@ function renderAll(){
         facility: facilityVal,
         plant: getStr(cols, map.plant, '') || getPlant(facilityVal),
         line: getStr(cols, map.line, 'כללי'),
-        shift: getStr(cols, map.shift, ''),
+        shift: (()=>{
+          // עדיפות: עמודת משמרת מפורשת → Time Stamp (datetime מלא) → Actual Finish Time → ריק
+          const explicitShift = getStr(cols, map.shift, '');
+          if(explicitShift && SHIFTS.includes(explicitShift)) return explicitShift;
+          // Time Stamp (datetime מלא מ-SAP, למשל "05.01.2026 16:08:42") — מקור עיקרי
+          if(map.time_stamp !== undefined){
+            const rawTs = cols[map.time_stamp];
+            const h = parseFinishTimeToHour(rawTs);
+            if(h !== null) return shiftFromHour(h);
+          }
+          // Actual Finish Time (שעה בלבד, למשל "8:39:11") — גיבוי
+          if(map.finish_time !== undefined){
+            const rawFt = cols[map.finish_time];
+            const h = parseFinishTimeToHour(rawFt);
+            if(h !== null) return shiftFromHour(h);
+          }
+          return explicitShift;
+        })(),
         packagingType: packagingTypeVal,
         materialName: getStr(cols, map.material_name, ''),
         workOrder: getStr(cols, map.work_order, ''),
@@ -3545,6 +3999,7 @@ function renderAll(){
       '<div class="print-only" id="printHeader" style="margin-bottom:12px;"></div>'+
       '<div class="advanced-summary" id="advancedDashboard"></div><div class="kpi-grid" id="kpiGrid"></div><div id="facilityTargetGauges"></div>'+
       '<div id="packagingTypeBreakdown"></div>'+
+      '<div id="shiftComparisonPanel"></div>'+
       '<div id="operationalInsights"></div><div id="notesPanel"></div><div id="eventsPanel"></div><div id="qualityPanel"></div>'+
       '<div class="panel">'+
         '<div class="panel-head">'+
@@ -3667,7 +4122,8 @@ function renderAll(){
     '</div>'+
     '<div class="modal-overlay" id="whatsappOverlay"><div class="modal" style="max-width:620px;">'+
   '<h3>ייצוא ל‑WhatsApp</h3>'+  '<div id="whatsappPreview" class="wa-preview"></div>'+'<div id="whatsappNote" class="shared-note">בטלפון הכפתור יפתח את אפליקציית WhatsApp. במחשב הוא יפתח WhatsApp Web. אם לא נפתח — לחץ העתק הודעה והדבק ידנית.</div>'+  '<div class="modal-foot">'+    '<button class="btn secondary" id="whatsappCopyBtn">העתק הודעה</button>'+    '<button class="btn primary" id="whatsappOpenBtn">פתח WhatsApp</button>'+    '<button class="btn secondary" id="whatsappCloseBtn">סגור</button>'+  '</div>'+'</div></div>'+
-      '<div class="toast" id="toast"></div>';
+      '<div class="toast" id="toast"></div>'+
+    '<div class="facility-drilldown-overlay" id="facilityDrilldownOverlay"></div>';
 
   /* ---------------- wire static events ---------------- */
   root.querySelectorAll('.tab-btn').forEach(b=>{
