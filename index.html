@@ -299,6 +299,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 #prod-dash-root .event-card:hover { border-color: var(--amber); transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.2); }
 #prod-dash-root .event-type-quality { color: var(--red); font-weight:800; }
 #prod-dash-root .event-type-env { color: var(--teal); font-weight:800; }
+#prod-dash-root .event-type-safety { color: var(--yellow); font-weight:800; }
 #prod-dash-root .advanced-summary { display: none; margin-bottom: 20px; }
 #prod-dash-root .advanced-summary.open { display: block; }
 @media (max-width: 900px) { #prod-dash-root .summary-grid, #prod-dash-root .summary-grid.three { grid-template-columns: repeat(2, 1fr); } }
@@ -358,6 +359,139 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 #prod-dash-root .storage-status { font-size: 11px; font-weight: 700; }
 #prod-dash-root .storage-status.ok { color: var(--green); }
 #prod-dash-root .storage-status.warn { color: var(--yellow); }
+
+
+/* ═══════════════════════════════════════════════════
+   MOBILE RESPONSIVE — iPhone / Small screens (≤640px)
+   ═══════════════════════════════════════════════════ */
+@media (max-width: 640px) {
+
+  /* Global spacing */
+  #prod-dash-root .wrap { padding: 12px 14px; }
+
+  /* ── Topbar ── */
+  #prod-dash-root .topbar {
+    flex-direction: column; align-items: flex-start; gap: 10px; padding-bottom: 14px;
+  }
+  #prod-dash-root .brand h1 { font-size: 17px; }
+  #prod-dash-root .topbar-actions {
+    width: 100%; overflow-x: auto; flex-wrap: nowrap;
+    padding-bottom: 4px; gap: 6px;
+    /* hide scrollbar visually but keep scroll */
+    scrollbar-width: none;
+  }
+  #prod-dash-root .topbar-actions::-webkit-scrollbar { display: none; }
+  #prod-dash-root .topbar-actions .tab-btn {
+    white-space: nowrap; flex-shrink: 0;
+    min-height: 38px; font-size: 12px; padding: 8px 13px;
+    touch-action: manipulation;
+  }
+
+  /* ── Tabs ── */
+  #prod-dash-root .tabs {
+    width: 100%; overflow-x: auto; flex-wrap: nowrap;
+    scrollbar-width: none; border-radius: 10px;
+  }
+  #prod-dash-root .tabs::-webkit-scrollbar { display: none; }
+  #prod-dash-root .tab-btn {
+    white-space: nowrap; flex-shrink: 0;
+    min-height: 40px; padding: 8px 16px;
+    touch-action: manipulation;
+  }
+
+  /* ── Facility chips ── */
+  #prod-dash-root .facility-bar {
+    flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px;
+    scrollbar-width: none;
+  }
+  #prod-dash-root .facility-bar::-webkit-scrollbar { display: none; }
+  #prod-dash-root .facility-chip {
+    flex-shrink: 0; min-height: 36px; padding: 7px 14px;
+    touch-action: manipulation;
+  }
+
+  /* ── KPI grid — 2 columns ── */
+  #prod-dash-root .kpi-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 10px; }
+  #prod-dash-root .kpi-grid.mode-2col { max-width: 100%; }
+  #prod-dash-root .kpi-num { font-size: 30px; }
+  #prod-dash-root .kpi-card { padding: 14px 13px 12px; }
+
+  /* ── Insight stats (events/quality cards) — 1 column ── */
+  #prod-dash-root .insight-stats { grid-template-columns: 1fr !important; gap: 10px; }
+
+  /* ── Summary/advanced grid — 2 columns ── */
+  #prod-dash-root .summary-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 10px; }
+  #prod-dash-root .summary-grid.three { grid-template-columns: repeat(2, 1fr) !important; }
+  #prod-dash-root .summary-card .value { font-size: 22px; }
+
+  /* ── Gauge grid — 2 columns ── */
+  #prod-dash-root .summary-grid:has(.gauge-card) { grid-template-columns: repeat(2, 1fr) !important; }
+
+  /* ── Shift grid — 1 column ── */
+  #prod-dash-root .shift-grid { grid-template-columns: 1fr !important; gap: 10px; }
+
+  /* ── Drilldown stat grid — 2 columns ── */
+  #prod-dash-root .drilldown-stat-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 10px; }
+
+  /* ── Filter bar — stack vertically ── */
+  #prod-dash-root .filter-bar { flex-direction: column; align-items: stretch; gap: 10px; }
+  #prod-dash-root .field input, #prod-dash-root .field select {
+    min-width: unset; width: 100%; min-height: 42px; font-size: 14px;
+  }
+
+  /* ── Actions row ── */
+  #prod-dash-root .actions-row { flex-direction: column; }
+  #prod-dash-root .actions-row .btn { width: 100%; text-align: center; min-height: 46px; font-size: 15px; }
+  #prod-dash-root .actions-row label.btn { text-align: center; }
+
+  /* ── Panels ── */
+  #prod-dash-root .panel { padding: 14px; }
+  #prod-dash-root .panel-head { flex-direction: column; align-items: flex-start; gap: 8px; }
+  #prod-dash-root .panel-toggle-btn { min-height: 38px; }
+
+  /* ── Modal — full screen on mobile ── */
+  #prod-dash-root .modal {
+    border-radius: 16px 16px 0 0; max-width: 100%; width: 100%;
+    position: fixed; bottom: 0; left: 0; right: 0; margin: 0;
+    max-height: 90vh; border-bottom: none;
+  }
+  #prod-dash-root .modal-overlay { align-items: flex-end; padding: 0; }
+
+  /* ── Table — hint about horizontal scroll ── */
+  #prod-dash-root .table-scroll {
+    -webkit-overflow-scrolling: touch;
+    overflow-x: auto;
+  }
+
+  /* ── Mini bars ── */
+  #prod-dash-root .mini-bar-row { grid-template-columns: 90px 1fr 60px; font-size: 11.5px; }
+
+  /* ── Gauge SVG ── */
+  #prod-dash-root .gauge-svg { max-width: 140px; }
+  #prod-dash-root .gauge-name { font-size: 12px; }
+
+  /* ── Facility drilldown header ── */
+  #prod-dash-root .facility-drilldown-header {
+    flex-direction: column; align-items: flex-start; padding: 12px 14px;
+  }
+  #prod-dash-root .back-btn { margin-right: 0; width: 100%; text-align: center; }
+  #prod-dash-root .drilldown-body { padding: 14px; }
+
+  /* ── Topbar brand ── */
+  #prod-dash-root .brand-mark { width: 36px; height: 36px; font-size: 17px; }
+
+  /* ── Checkbox/filter controls ── */
+  #prod-dash-root .filter-bar input[type="checkbox"] {
+    width: 18px; height: 18px; flex-shrink: 0;
+  }
+}
+
+/* ── Tablet (641–768px) ── */
+@media (min-width: 641px) and (max-width: 768px) {
+  #prod-dash-root .wrap { padding: 16px 18px; }
+  #prod-dash-root .topbar-actions { flex-wrap: wrap; }
+  #prod-dash-root .shift-grid { grid-template-columns: repeat(2, 1fr); }
+}
 
 @media print {
   html, body { background: #fff !important; }
@@ -716,8 +850,8 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     }
   }
 
-  function eventTypeLabel(type){ return type === 'environment' ? 'אירוע סביבה' : 'אירוע איכות'; }
-  function eventTypeClass(type){ return type === 'environment' ? 'event-type-env' : 'event-type-quality'; }
+  function eventTypeLabel(type){ return type === 'environment' ? 'אירוע סביבה' : type === 'safety' ? 'אירוע בטיחות' : 'אירוע איכות'; }
+  function eventTypeClass(type){ return type === 'environment' ? 'event-type-env' : type === 'safety' ? 'event-type-safety' : 'event-type-quality'; }
   function filteredEventsForView(view){
     const rows = eventsEntries || [];
     const dates = new Set((view.filtered||[]).map(e=>e.date));
@@ -734,19 +868,21 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     const rows = filteredEventsForView(view);
     const qRows = rows.filter(e=>e.type==='quality');
     const envRows = rows.filter(e=>e.type==='environment');
-    const detailRows = eventsDetailMode === 'quality' ? qRows : (eventsDetailMode === 'environment' ? envRows : (eventsDetailMode === 'all' ? rows : []));
+    const safetyRows = rows.filter(e=>e.type==='safety');
+    const detailRows = eventsDetailMode === 'quality' ? qRows : (eventsDetailMode === 'environment' ? envRows : (eventsDetailMode === 'safety' ? safetyRows : (eventsDetailMode === 'all' ? rows : [])));
     let html = '<div class="panel"><div class="panel-head"><div><div class="panel-title">אירועי איכות וסביבה</div><div class="kpi-sub">נשמרים ידנית ומוצגים לפי טווח התאריכים והמתקן שנבחרו</div></div><button class="panel-toggle-btn" id="openEventModalBtn">+ הוסף אירוע</button></div>'+ 
       '<div class="insight-stats">'+
       '<div class="kpi-card num clickable-kpi event-card '+(eventsDetailMode==='all'?'active':'')+'" data-event-mode="all"><div class="kpi-label">סה״כ אירועים בטווח</div><span class="kpi-num">'+fmt(rows.length)+'</span><div class="kpi-sub">לחץ להצגת הרשומות</div></div>'+
       '<div class="kpi-card num clickable-kpi event-card '+(eventsDetailMode==='quality'?'active':'')+'" data-event-mode="quality"><div class="kpi-label">אירועי איכות</div><span class="kpi-num">'+fmt(qRows.length)+'</span><div class="kpi-sub">לחץ להצגת אירועי איכות</div></div>'+
       '<div class="kpi-card num clickable-kpi event-card '+(eventsDetailMode==='environment'?'active':'')+'" data-event-mode="environment"><div class="kpi-label">אירועי סביבה</div><span class="kpi-num">'+fmt(envRows.length)+'</span><div class="kpi-sub">לחץ להצגת אירועי סביבה</div></div>'+
+      '<div class="kpi-card num clickable-kpi event-card '+(eventsDetailMode==='safety'?'active':'')+'" data-event-mode="safety"><div class="kpi-label" style="color:var(--yellow);">אירועי בטיחות</div><span class="kpi-num">'+fmt(safetyRows.length)+'</span><div class="kpi-sub">לחץ להצגת אירועי בטיחות</div></div>'+
       '</div>';
     if(!eventsDetailMode){
       html += '<div class="table-empty" style="padding:16px 10px;">לחץ על אחד הכרטיסים להצגת פירוט אירועים</div>';
     } else if(detailRows.length === 0){
       html += '<div class="table-empty">לא נמצאו אירועים מתאימים בטווח הנבחר</div>';
     } else {
-      const title = eventsDetailMode === 'quality' ? 'אירועי איכות' : (eventsDetailMode === 'environment' ? 'אירועי סביבה' : 'כל האירועים');
+      const title = eventsDetailMode === 'quality' ? 'אירועי איכות' : (eventsDetailMode === 'environment' ? 'אירועי סביבה' : (eventsDetailMode === 'safety' ? 'אירועי בטיחות' : 'כל האירועים'));
       html += '<div class="panel-head" style="margin-top:8px;"><div class="panel-title">'+title+' — פירוט</div><button class="panel-toggle-btn" id="closeEventsDetails">סגור פירוט</button></div>'+
         '<div class="table-scroll"><table><thead><tr><th>תאריך</th><th>סוג</th><th>מתקן</th><th>קו/אזור</th><th>פקודה</th><th>Batch</th><th>חומרה</th><th>תיאור</th><th>פעולה מתקנת</th></tr></thead><tbody>';
       detailRows.forEach(ev=>{
@@ -1011,7 +1147,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   let orderShortfallExpanded = false;
   let trendDetail = null; // {index, metric}
   let eventsEntries = [];
-  let eventsDetailMode = null; // null / all / quality / environment
+  let eventsDetailMode = null; // null / all / quality / environment / safety
   let manualPackagingTargetTypes = null; // null = אוטומטי לפי קווים שעבדו בפועל
   let manualPackagingDays = null; // null = מספר ימי הטווח שנבחר
 
@@ -1451,6 +1587,11 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   function appendPeriodTargetInput(){
     const fb = root.querySelector('#filterBar');
     if(!fb) return;
+    // הסר קיימים לפני הוספה מחדש — מונע כפילויות בכל קריאה ל-renderFilterBar
+    ['#f_period_pack_target','#f_save_period_target','#f_clear_period_target'].forEach(id=>{
+      const el = fb.querySelector(id);
+      if(el && el.parentElement) el.parentElement.remove();
+    });
     const key = currentPeriodTargetKey();
     const val = periodPackagingTargets[key] || '';
     fb.insertAdjacentHTML('beforeend',
@@ -1474,10 +1615,12 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     };
   }
 
-
   function appendPackagingLineTargetControls(){
     const fb = root.querySelector('#filterBar');
     if(!fb) return;
+    // הסר קיימים לפני הוספה מחדש — מונע כפילויות
+    const existing = fb.querySelector('#f_pack_auto');
+    if(existing && existing.closest('.field')) existing.closest('.field').remove();
     const autoChecked = !(manualPackagingTargetTypes instanceof Set);
     fb.insertAdjacentHTML('beforeend',
       '<div class="field"><label>קווי אריזה לחישוב יעד</label><div style="display:flex; gap:10px; flex-wrap:wrap; background:var(--panel-2); border:1px solid var(--border); border-radius:7px; padding:7px 9px; min-height:34px; align-items:center;">'+
@@ -2980,6 +3123,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       const eventRowsForExport = typeof filteredEventsForView === 'function' ? filteredEventsForView(view) : [];
       const qualityEventCount = eventRowsForExport.filter(ev=>ev.type==='quality').length;
       const environmentEventCount = eventRowsForExport.filter(ev=>ev.type==='environment').length;
+      const safetyEventCount = eventRowsForExport.filter(ev=>ev.type==='safety').length;
 
       const dashboardBuild = buildDesignedDashboardSheet(wb, view, summary, {totalProd, totalPack, targetProd, targetPack, pctProd, pctPack});
       const facilityRowsForExport = dashboardBuild && dashboardBuild.facilityRows ? dashboardBuild.facilityRows : buildFacilityScoreRows(view, summary);
@@ -2997,7 +3141,8 @@ html, body { margin:0; padding:0; background:#0A0D12; }
         {'מדד':'מנות בליקוי','ערך':summary.badLots || 0,'סטטוס':(summary.badLots||0)>0?'🔴':'🟢'},
         {'מדד':'מספר מנות איכות','ערך':summary.totalQualityLots || summary.qRows.length,'סטטוס':''},
         {'מדד':'אירועי איכות','ערך':qualityEventCount,'סטטוס':qualityEventCount>0?'🟡':'🟢'},
-        {'מדד':'אירועי סביבה','ערך':environmentEventCount,'סטטוס':environmentEventCount>0?'🟡':'🟢'}
+        {'מדד':'אירועי סביבה','ערך':environmentEventCount,'סטטוס':environmentEventCount>0?'🟡':'🟢'},
+        {'מדד':'אירועי בטיחות','ערך':safetyEventCount,'סטטוס':safetyEventCount>0?'🔴':'🟢'}
       ], ['מדד','ערך','סטטוס'], {headerFill:'17365D'});
 
       addSheetFromRows(wb, 'סיכום', [
@@ -3019,7 +3164,8 @@ html, body { margin:0; padding:0; background:#0A0D12; }
         {'מדד':'מנות איכות מותנה / מוגבל','ערך':summary.conditionalLots,'הערה':''},
         {'מדד':'מספר הערות','ערך':notesCount,'הערה':''},
         {'מדד':'אירועי איכות','ערך':qualityEventCount,'הערה':'הוזנו ידנית'},
-        {'מדד':'אירועי סביבה','ערך':environmentEventCount,'הערה':'הוזנו ידנית'}
+        {'מדד':'אירועי סביבה','ערך':environmentEventCount,'הערה':'הוזנו ידנית'},
+        {'מדד':'אירועי בטיחות','ערך':safetyEventCount,'הערה':'הוזנו ידנית'}
       ], ['מדד','ערך','הערה']);
 
       addSheetFromRows(wb, 'פירוט נתונים', rows.map(e=>({
@@ -3141,92 +3287,245 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   }
 
   async function exportDashboardImageToWhatsApp(){
-    let shot = null;
     try{
-      if(typeof html2canvas === 'undefined'){
-        showToast('ספריית צילום המסך לא נטענה. נסה לרענן את העמוד.', true);
-        return;
-      }
+      if(!loaded){ showToast('הנתונים עדיין נטענים, נסה שוב עוד רגע', true); return; }
+      showToast('מכין תמונת דשבורד...');
 
       const view = getView();
+      if(!view || !view.filtered){ showToast('לא ניתן ליצור תמונה כרגע', true); return; }
       const summary = calcAdvancedSummary(view);
-      shot = buildWhatsAppSnapshotElement(view, summary);
-      showToast('מכין תמונת הנהלה באיכות גבוהה...');
+      const rows = view.filtered || [];
 
-      // המתנה קצרה לרינדור הפונטים/התרשימים לפני צילום
-      await new Promise(resolve => setTimeout(resolve, 120));
+      /* ── Build canvas summary ── */
+      const W = 1080, PAD = 48;
+      const canvas = document.createElement('canvas');
 
-      const canvas = await html2canvas(shot, {
-        backgroundColor: '#14171A',
-        scale: 4,
-        useCORS: true,
-        allowTaint: true,
-        logging: false,
-        width: shot.offsetWidth,
-        height: shot.offsetHeight,
-        windowWidth: shot.scrollWidth,
-        windowHeight: shot.scrollHeight
+      // ─ helper: measure text without ctx yet ─
+      const totalPack  = summary.totalPack  || 0;
+      const targetPack = summary.targetPack || 0;
+      const pctPack    = targetPack > 0 ? Math.round(totalPack / targetPack * 100) : 0;
+      const totalProd  = rows.reduce((s,e)=>s+(Number(e.production)||0),0);
+
+      // Build row data
+      const qTotal = summary.qRows ? summary.qRows.length : 0;
+      const qBad   = summary.badLots || 0;
+      const qCond  = summary.conditionalLots || 0;
+      const qGood  = summary.goodLots || 0;
+
+      const shiftColors = {'בוקר':'#F59E0B','ערב':'#14B8A6','לילה':'#A78BFA'};
+      const packByShift={'בוקר':0,'ערב':0,'לילה':0};
+      const prodByShift={'בוקר':0,'ערב':0,'לילה':0};
+      rows.forEach(e=>{
+        const sh=e.shift&&SHIFTS.includes(e.shift)?e.shift:null;
+        if(!sh)return;
+        packByShift[sh]+=(Number(e.packaging)||0);
+        prodByShift[sh]+=(Number(e.production)||0);
       });
+      const hasShift = SHIFTS.some(s=>packByShift[s]>0||prodByShift[s]>0);
 
-      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png', 1.0));
-      if(!blob){
-        showToast('לא ניתן ליצור תמונה', true);
-        return;
-      }
+      // Calculate height
+      let H = 200; // header
+      H += 140;    // 3 KPI cards
+      H += 20;     // gap
+      if(hasShift){ H += 200; H += 20; } // shifts
+      if(qTotal > 0){ H += 120; H += 20; } // quality
+      H += 60;     // footer
+      H += PAD * 2;
 
-      const fileName = 'executive_dashboard_whatsapp_' + todayISO() + '.png';
-      const file = new File([blob], fileName, {type:'image/png'});
+      canvas.width  = W;
+      canvas.height = H;
+      const ctx = canvas.getContext('2d');
 
-      if(navigator.canShare && navigator.canShare({files:[file]})){
-        await navigator.share({
-          files: [file],
-          title: 'דוח ייצור ואריזה',
-          text: 'דוח ייצור ואריזה מצורף כתמונה באיכות גבוהה'
+      /* ── Background ── */
+      ctx.fillStyle = '#0A0D12';
+      ctx.fillRect(0, 0, W, H);
+
+      /* ── Fonts & helpers ── */
+      const rtlText = (text, x, y, maxW)=>{
+        ctx.save();
+        ctx.scale(-1,1);
+        ctx.fillText(text, -x, y, maxW);
+        ctx.restore();
+      };
+      const roundRect = (x,y,w,h,r,fill,stroke)=>{
+        ctx.beginPath();
+        ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y); ctx.arcTo(x+w,y,x+w,y+r,r);
+        ctx.lineTo(x+w,y+h-r); ctx.arcTo(x+w,y+h,x+w-r,y+h,r);
+        ctx.lineTo(x+r,y+h); ctx.arcTo(x,y+h,x,y+h-r,r);
+        ctx.lineTo(x,y+r); ctx.arcTo(x,y,x+r,y,r); ctx.closePath();
+        if(fill){ctx.fillStyle=fill; ctx.fill();}
+        if(stroke){ctx.strokeStyle=stroke; ctx.lineWidth=1; ctx.stroke();}
+      };
+
+      let cy = PAD;
+
+      /* ── Header ── */
+      // Logo circle
+      const grad = ctx.createLinearGradient(PAD,cy+4,PAD+50,cy+54);
+      grad.addColorStop(0,'#F59E0B'); grad.addColorStop(1,'#B45309');
+      roundRect(PAD,cy+4,50,50,10,grad);
+      ctx.fillStyle='#1a1300'; ctx.font='bold 24px Arial';
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText('⚙', PAD+25, cy+29);
+
+      // Title
+      ctx.textAlign='right'; ctx.fillStyle='#F1F5F9';
+      ctx.font='bold 32px Arial';
+      ctx.fillText('לוח בקרה — ייצור ואריזה', W-PAD, cy+20);
+      ctx.font='16px Arial'; ctx.fillStyle='#64748B';
+      ctx.fillText(facilitySummaryText()+' · '+escapeHtml(view.rangeLabel||''), W-PAD, cy+50);
+      ctx.fillText('הופק: '+new Date().toLocaleString('he-IL'), W-PAD, cy+74);
+
+      // Separator
+      cy += 100;
+      ctx.strokeStyle='rgba(255,255,255,0.1)'; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(PAD,cy); ctx.lineTo(W-PAD,cy); ctx.stroke();
+      cy += 20;
+
+      /* ── KPI cards row ── */
+      const kpiData = [
+        {label:'סה״כ אריזה (ליטר)', value:fmt(totalPack), sub: targetPack>0?fmt(targetPack)+' יעד':'', color:'#14B8A6'},
+        {label:'עמידה ביעד', value:pctPack+'%', sub: fmt(totalPack)+' / '+fmt(targetPack),
+          color: pctPack>=100?'#10B981':pctPack>=75?'#FBBF24':'#EF4444'},
+        {label:'סה״כ ייצור', value:fmt(totalProd), sub:'', color:'#F59E0B'},
+      ];
+      const cardW = (W - PAD*2 - 20) / 3;
+      kpiData.forEach((k,i)=>{
+        const cx2 = PAD + i*(cardW+10);
+        roundRect(cx2,cy,cardW,110,12,'#111827','rgba(255,255,255,0.08)');
+        // top accent
+        ctx.fillStyle=k.color;
+        ctx.fillRect(cx2+cardW-3,cy+10,3,30);
+        ctx.textAlign='right'; ctx.fillStyle='#64748B';
+        ctx.font='700 11px Arial';
+        ctx.fillText(k.label, cx2+cardW-14, cy+22);
+        ctx.fillStyle=k.color; ctx.font='bold 34px "JetBrains Mono",Arial';
+        ctx.fillText(k.value, cx2+cardW-14, cy+68);
+        if(k.sub){ctx.fillStyle='#64748B'; ctx.font='12px Arial'; ctx.fillText(k.sub, cx2+cardW-14, cy+90);}
+      });
+      cy += 130;
+
+      /* ── Shift breakdown ── */
+      if(hasShift){
+        ctx.fillStyle='#F1F5F9'; ctx.font='bold 18px Arial'; ctx.textAlign='right';
+        ctx.fillText('פירוט לפי משמרת', W-PAD, cy);
+        cy += 30;
+        const shW = (W - PAD*2 - 20) / 3;
+        SHIFTS.forEach((sh,i)=>{
+          const cx2 = PAD + i*(shW+10);
+          const v = packByShift[sh]||0;
+          const pct = totalPack>0 ? Math.round(v/totalPack*100) : 0;
+          roundRect(cx2,cy,shW,110,12,'#111827','rgba(255,255,255,0.08)');
+          ctx.fillStyle=shiftColors[sh]; ctx.font='bold 12px Arial'; ctx.textAlign='right';
+          ctx.fillText('■ משמרת '+sh, cx2+shW-14, cy+22);
+          ctx.fillStyle='#F1F5F9'; ctx.font='bold 28px "JetBrains Mono",Arial';
+          ctx.fillText(fmt(v), cx2+shW-14, cy+62);
+          // bar
+          roundRect(cx2+14,cy+78,shW-28,8,4,'rgba(255,255,255,0.05)');
+          if(pct>0)roundRect(cx2+shW-14-Math.round((shW-28)*pct/100),cy+78,Math.round((shW-28)*pct/100),8,4,shiftColors[sh]);
+          ctx.fillStyle='#64748B'; ctx.font='11px Arial';
+          ctx.fillText(pct+'%', cx2+shW-14, cy+100);
         });
-        return;
+        cy += 130;
       }
 
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = fileName;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      /* ── Quality ── */
+      if(qTotal > 0){
+        ctx.fillStyle='#F1F5F9'; ctx.font='bold 18px Arial'; ctx.textAlign='right';
+        ctx.fillText('סיכום איכות', W-PAD, cy);
+        cy += 30;
+        const qItems = [
+          {label:'מנות תקינות',    value:qGood, color:'#10B981'},
+          {label:'ממתינות להחלטה', value:qCond, color:'#FBBF24'},
+          {label:'נפסלו',          value:qBad,  color:'#EF4444'},
+        ];
+        const qW = (W - PAD*2 - 20) / 3;
+        qItems.forEach((q,i)=>{
+          const cx2 = PAD + i*(qW+10);
+          roundRect(cx2,cy,qW,70,12,'#111827','rgba(255,255,255,0.08)');
+          ctx.fillStyle=q.color; ctx.font='bold 11px Arial'; ctx.textAlign='right';
+          ctx.fillText(q.label, cx2+qW-14, cy+22);
+          ctx.fillStyle=q.color; ctx.font='bold 30px Arial';
+          ctx.fillText(q.value, cx2+qW-14, cy+56);
+        });
+        cy += 90;
+      }
 
-      const overlay = root.querySelector('#whatsappOverlay');
-      const preview = root.querySelector('#whatsappPreview');
-      if(overlay && preview){
-        preview.textContent =
-          'נוצרה תמונת דשבורד הנהלה באיכות גבוהה והורדה למחשב.\n\n' +
-          'כדי לשלוח ב-WhatsApp Web:\n' +
-          '1. פתח WhatsApp Web.\n' +
-          '2. בחר איש קשר או קבוצה.\n' +
-          '3. גרור את קובץ התמונה שהורד לצ׳אט ושלח.\n\n' +
-          'הקובץ נוצר בפורמט PNG וב-scale 4 לשיפור חדות לאחר דחיסת WhatsApp.';
-        overlay.classList.add('open');
+      /* ── Footer ── */
+      cy += 10;
+      ctx.strokeStyle='rgba(255,255,255,0.08)'; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(PAD,cy); ctx.lineTo(W-PAD,cy); ctx.stroke();
+      cy += 20;
+      ctx.fillStyle='#64748B'; ctx.font='13px Arial'; ctx.textAlign='center';
+      ctx.fillText('לוח בקרה ייצור ואריזה · '+new Date().toLocaleString('he-IL'), W/2, cy+12);
 
-        const openBtn = root.querySelector('#whatsappOpenBtn');
-        const copyBtn = root.querySelector('#whatsappCopyBtn');
-        const closeBtn = root.querySelector('#whatsappCloseBtn');
-        if(openBtn) openBtn.onclick = function(){ window.open('https://web.whatsapp.com/', '_blank'); };
-        if(copyBtn) copyBtn.onclick = async function(){
+      /* ── Share overlay ── */
+      canvas.toBlob(async (blob)=>{
+        if(!blob){ showToast('לא ניתן ליצור תמונה', true); return; }
+
+        const fileName = 'dashboard_'+todayISO()+'.png';
+        const objectUrl = URL.createObjectURL(blob);
+        const file = new File([blob], fileName, {type:'image/png'});
+
+        // Build share overlay
+        const old = root.querySelector('#dashboardShareOverlay');
+        if(old) old.remove();
+
+        const overlay = document.createElement('div');
+        overlay.id = 'dashboardShareOverlay';
+        overlay.className = 'modal-overlay open';
+        overlay.innerHTML =
+          '<div class="modal" style="max-width:520px;">'+
+            '<h3>📸 תמונת דשבורד מוכנה</h3>'+
+            '<div style="margin-bottom:16px;">'+
+              '<img src="'+objectUrl+'" style="width:100%;border-radius:10px;border:1px solid var(--border);"/>' +
+            '</div>'+
+            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">'+
+              '<button class="btn primary" id="dsh-share-native" style="font-size:13px;">📤 שתף / שלח</button>'+
+              '<button class="btn secondary" id="dsh-share-wa" style="font-size:13px;border-color:#25D366;color:#25D366;">💬 WhatsApp</button>'+
+              '<button class="btn secondary" id="dsh-share-email" style="font-size:13px;">📧 אימייל</button>'+
+              '<a id="dsh-download" class="btn secondary" href="'+objectUrl+'" download="'+fileName+'" style="text-align:center;font-size:13px;text-decoration:none;">📥 הורד</a>'+
+            '</div>'+
+            '<button class="btn secondary" id="dsh-close" style="width:100%;font-size:13px;">סגור</button>'+
+          '</div>';
+
+        root.appendChild(overlay);
+
+        // Native share (works great on iPhone)
+        overlay.querySelector('#dsh-share-native').onclick = async ()=>{
           try{
-            await navigator.clipboard.writeText('דוח ייצור ואריזה מצורף כתמונה באיכות גבוהה');
-            showToast('טקסט קצר הועתק');
-          }catch(e){ showToast('לא ניתן להעתיק אוטומטית', true); }
+            if(navigator.canShare && navigator.canShare({files:[file]})){
+              await navigator.share({files:[file], title:'דוח ייצור ואריזה', text:'דוח ייצור ואריזה'});
+            } else {
+              // fallback: try sharing just text+url, or just download
+              overlay.querySelector('#dsh-download').click();
+              showToast('שיתוף קובץ לא נתמך — הקובץ הורד');
+            }
+          }catch(e){ if(e.name!=='AbortError') showToast('לא ניתן לשתף', true); }
         };
-        if(closeBtn) closeBtn.onclick = function(){ overlay.classList.remove('open'); };
-      } else {
-        window.open('https://web.whatsapp.com/', '_blank');
-      }
 
-      setTimeout(()=>URL.revokeObjectURL(url), 60000);
-    } catch(err){
-      console.error('Dashboard image export error:', err);
-      showToast('שגיאה ביצירת תמונת דשבורד', true);
-    } finally {
-      if(shot && shot.parentNode) shot.parentNode.removeChild(shot);
+        overlay.querySelector('#dsh-share-wa').onclick = ()=>{
+          overlay.querySelector('#dsh-download').click();
+          setTimeout(()=>{ window.open('https://wa.me/', '_blank'); }, 600);
+          showToast('הקובץ הורד — גרור אותו לצ׳אט ב-WhatsApp');
+        };
+
+        overlay.querySelector('#dsh-share-email').onclick = ()=>{
+          overlay.querySelector('#dsh-download').click();
+          const subject = encodeURIComponent('דוח ייצור ואריזה '+view.rangeLabel);
+          const body    = encodeURIComponent('מצורף דוח ייצור ואריזה. הקובץ הורד אוטומטית.');
+          window.open('mailto:?subject='+subject+'&body='+body, '_self');
+        };
+
+        const close = ()=>{ overlay.remove(); setTimeout(()=>URL.revokeObjectURL(objectUrl), 5000); };
+        overlay.querySelector('#dsh-close').onclick = close;
+        overlay.onclick = e=>{ if(e.target===overlay) close(); };
+
+      }, 'image/png', 1.0);
+
+    }catch(err){
+      console.error('Dashboard screenshot error:', err);
+      showToast('שגיאה ביצירת תמונת דשבורד: '+err.message, true);
     }
   }
 
@@ -3540,7 +3839,7 @@ function exportToWhatsApp(){
 
 function renderAll(){
     if(!loaded) return;
-    root.querySelectorAll('.tab-btn').forEach(b=> b.classList.toggle('active', b.dataset.tab===tab));
+    root.querySelectorAll('.tabs .tab-btn').forEach(b=> b.classList.toggle('active', b.dataset.tab===tab));
     renderFacilityBar();
     renderFilterBar();
     const view = getView();
@@ -3989,7 +4288,7 @@ function renderAll(){
           '<div class="brand-mark">⚙</div>'+
           '<div><h1>לוח בקרה — ייצור ואריזה</h1><p><span id="entryCount">טוען נתונים…</span> <span id="storageStatusBadge" class="storage-status"></span></p></div>'+
         '</div>'+
-        '<div class="topbar-actions"><button class="tab-btn" id="addEventTopBtn" style="background:rgba(139,183,255,0.12);color:#8BB7FF;font-size:12px;padding:6px 14px;">+ אירוע איכות/סביבה</button><button class="tab-btn" id="advancedDashboardBtn" style="background:var(--teal-soft);color:var(--green);font-size:12px;padding:6px 14px;">📊 דשבורד חדש</button><button class="tab-btn" id="excelAnalyzedExportBtn" style="background:rgba(124,217,146,0.12);color:#7CD992;font-size:12px;padding:6px 14px;">📥 ייצוא ניתוח לאקסל</button><button class="tab-btn" id="qualityImportBtn" style="background:rgba(239,68,68,0.12);color:var(--red);font-size:12px;padding:6px 14px;">🧪 טעינת איכות</button><button class="tab-btn" id="whatsappExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📲 WhatsApp טקסט</button><button class="tab-btn" id="whatsappImageExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📸 צילום הנהלה</button><button class="tab-btn" id="targetsProdBtn" style="background:var(--amber-soft);color:var(--amber);font-size:12px;padding:6px 14px;">⚙ יעדי ייצור</button><button class="tab-btn" id="targetsBtn" style="background:var(--teal-soft);color:var(--teal);font-size:12px;padding:6px 14px;">⚙ יעדי אריזה</button><button class="tab-btn" id="resetBtn" style="background:rgba(255,255,255,0.05);color:var(--text-muted);font-size:12px;padding:6px 14px;">איפוס</button></div>'+
+        '<div class="topbar-actions"><button class="tab-btn" id="addEventTopBtn" style="background:rgba(139,183,255,0.12);color:#8BB7FF;font-size:12px;padding:6px 14px;">+ הוסף אירוע</button><button class="tab-btn" id="advancedDashboardBtn" style="background:var(--teal-soft);color:var(--green);font-size:12px;padding:6px 14px;">📊 דשבורד חדש</button><button class="tab-btn" id="excelAnalyzedExportBtn" style="background:rgba(124,217,146,0.12);color:#7CD992;font-size:12px;padding:6px 14px;">📥 ייצוא ניתוח לאקסל</button><button class="tab-btn" id="qualityImportBtn" style="background:rgba(239,68,68,0.12);color:var(--red);font-size:12px;padding:6px 14px;">🧪 טעינת איכות</button><button class="tab-btn" id="whatsappExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📲 WhatsApp טקסט</button><button class="tab-btn" id="whatsappImageExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📸 צילום דשבורד</button><button class="tab-btn" id="targetsProdBtn" style="background:var(--amber-soft);color:var(--amber);font-size:12px;padding:6px 14px;">⚙ יעדי ייצור</button><button class="tab-btn" id="targetsBtn" style="background:var(--teal-soft);color:var(--teal);font-size:12px;padding:6px 14px;">⚙ יעדי אריזה</button><button class="tab-btn" id="resetBtn" style="background:rgba(255,255,255,0.05);color:var(--text-muted);font-size:12px;padding:6px 14px;">איפוס</button></div>'+
       '</div>'+
       '<div class="tabs">'+
         '<button class="tab-btn" data-tab="day">יום אחרון</button>'+
@@ -4054,7 +4353,7 @@ function renderAll(){
         '<h3>הוספת אירוע איכות / סביבה</h3>'+
         '<div class="modal-grid">'+
           '<div class="field"><label>תאריך *</label><input type="date" id="ev_date"></div>'+
-          '<div class="field"><label>סוג אירוע *</label><select id="ev_type"><option value="quality">אירוע איכות</option><option value="environment">אירוע סביבה</option></select></div>'+
+          '<div class="field"><label>סוג אירוע *</label><select id="ev_type"><option value="quality">אירוע איכות</option><option value="environment">אירוע סביבה</option><option value="safety">אירוע בטיחות</option></select></div>'+
           '<div class="field"><label>מתקן</label><select id="ev_facility"><option value="">ללא / כללי</option>'+FACILITY_OPTIONS.map(f=>'<option value="'+f+'">'+f+'</option>').join('')+'</select></div>'+
           '<div class="field"><label>קו / אזור</label><input type="text" id="ev_area" placeholder="לדוגמה: קו 5 ליטר"></div>'+
           '<div class="field"><label>פקודת עבודה</label><input type="text" id="ev_workorder"></div>'+
@@ -4130,7 +4429,7 @@ function renderAll(){
     '<div class="facility-drilldown-overlay" id="facilityDrilldownOverlay"></div>';
 
   /* ---------------- wire static events ---------------- */
-  root.querySelectorAll('.tab-btn').forEach(b=>{
+  root.querySelectorAll('.tabs .tab-btn').forEach(b=>{
     b.onclick = ()=>{ tab = b.dataset.tab; renderAll(); };
   });
   root.querySelector('#addBtn').onclick = openModal;
