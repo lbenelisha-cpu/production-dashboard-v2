@@ -36,8 +36,8 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   --panel-2: #1A2236;
   --border: rgba(255,255,255,0.07);
   --border-strong: rgba(255,255,255,0.13);
-  --text: #F1F5F9;
-  --text-muted: #64748B;
+  --text: #FFFFFF;
+  --text-muted: #94A3B8;
   --amber: #F59E0B;
   --amber-soft: rgba(245,158,11,0.12);
   --teal: #14B8A6;
@@ -48,12 +48,13 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   --purple: #A78BFA;
   --radius: 16px;
   font-family: 'Heebo', sans-serif;
+  font-size: 15px;
   background: var(--bg);
   color: var(--text);
   border-radius: 0;
   padding: 0;
   min-height: 100%;
-  line-height: 1.4;
+  line-height: 1.5;
 }
 #prod-dash-root .wrap { padding: 20px 24px; max-width: 1200px; margin: 0 auto; }
 
@@ -211,15 +212,15 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 
 /* ── Table ───────────────────────────────────────── */
 #prod-dash-root .table-scroll { overflow-x: auto; }
-#prod-dash-root table { width: 100%; border-collapse: collapse; font-size: 12.5px; min-width: 1220px; }
+#prod-dash-root table { width: 100%; border-collapse: collapse; font-size: 13.5px; min-width: 1600px; }
 #prod-dash-root thead th {
   text-align: right; color: var(--text-muted); font-weight: 700;
   font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.5px;
   border-bottom: 1px solid var(--border-strong); padding: 10px 8px; white-space: nowrap;
 }
-#prod-dash-root tbody td { padding: 9px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+#prod-dash-root tbody td { padding: 9px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 0; }
 #prod-dash-root tbody tr:hover { background: rgba(255,255,255,0.03); }
-#prod-dash-root .mono { font-family: 'JetBrains Mono', monospace; direction: ltr; display: inline-block; }
+#prod-dash-root .mono { font-family: 'JetBrains Mono', monospace; direction: ltr; unicode-bidi: embed; }
 
 /* ── Pills & badges ──────────────────────────────── */
 #prod-dash-root .pill { display:inline-block; padding: 2px 9px; border-radius: 999px; font-size: 10.5px; font-weight: 700; }
@@ -744,43 +745,46 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 
   function getUDCodeForEntry(e){
     if(!e.batch) return null;
-    const batchNorm = normKeyPart(e.batch);
-    const matches = qualityEntries.filter(q => normKeyPart(q.batch) === batchNorm && q.udCode);
-    if(matches.length === 0) return null;
-    if(matches.length === 1) return matches[0].udCode;
-    const best = matches.reduce((a,b) => (b.udDate||0) > (a.udDate||0) ? b : a);
-    return best.udCode;
+    const batchNorm = String(e.batch).replace(/^0+/,'').trim();
+    const best = qualityBestByKey[batchNorm];
+    return best ? best.udCode : null;
   }
 
   function buildQualitySummary(){
     const byKey = {};
+    const bestByBatch = {};
     qualityEntries.forEach(q=>{
+      // Build bestByKey cache (batch -> latest udDate row)
+      const bk = String(q.batch||'').trim();
+      if(bk && q.udCode){
+        const ex = bestByBatch[bk];
+        if(!ex || (q.udDate||0) > (ex.udDate||0)) bestByBatch[bk] = q;
+      }
+      // Build qualitySummary (for existing panels)
       const key = qualityKey(q);
       if(!byKey[key]){
         byKey[key] = {
-          key:key, date:q.date, workOrder:q.workOrder, batch:q.batch, materialName:q.materialName,
-          facility:q.facility, line:q.line, inspectionLot:q.inspectionLot, orderType:q.orderType, deliveredQuantity:0,
+          key:key, date:q.date||'', workOrder:q.workOrder||'', batch:q.batch||'', materialName:q.materialName||'',
+          facility:q.facility||'', line:'', inspectionLot:'', orderType:'', deliveredQuantity:0,
           totalTests:0, rejections:0, conditional:0, restricted:0, contaminated:0, worst:'ok', examples:[]
         };
       }
       const g = byKey[key];
       g.totalTests++;
-      g.deliveredQuantity += Number(q.deliveredQuantity)||0;
-      const status = String(q.resultStatus || '').toUpperCase();
       const approval = String(q.qaApproval || '').toUpperCase();
       const ud = String(q.udCode || '').toUpperCase();
       const cls = classifyQuality(q);
-      if(status.includes('REJECT') || Number(q.rejectedCharacteristics||0)>0) g.rejections += Number(q.rejectedCharacteristics||1);
       if(approval.includes('CONDITION') || ud.includes('COND')) g.conditional++;
       if(approval.includes('RESTRICT') || ud.includes('RESTRICT')) g.restricted++;
       if(approval.includes('CONTAMIN') || ud.includes('CONTAMIN')) g.contaminated++;
       if(cls === 'bad') g.worst = 'bad';
       else if(cls === 'conditional' && g.worst !== 'bad') g.worst = 'conditional';
       if(cls !== 'ok' && g.examples.length < 3){
-        g.examples.push([q.testName, q.resultStatus, q.qaApproval, q.udCode, q.remarks].filter(Boolean).join(' | '));
+        g.examples.push([q.qaApproval, q.udCode].filter(Boolean).join(' | '));
       }
     });
     qualitySummary = byKey;
+    qualityBestByKey = bestByBatch;
   }
 
   function getQualityForPackaging(e){
@@ -904,17 +908,20 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       else if(typeof rawDate === 'number') date = excelSerialToISO(rawDate);
       else if(rawDate !== undefined && rawDate !== null && rawDate !== '') date = normalizeDateStr(String(rawDate)) || String(rawDate).trim();
       const udDate = getDateVal(cols, map.ud_date);
+      // Store only essential fields — reduces memory from ~67MB to ~5MB
+      const batch = getStr(cols,map.batch,'').replace(/^0+/,'');
+      const udCode = getStr(cols,map.ud_code,'');
+      if(!udCode && !batch) return;
       const q = {
-        id: genId(), date:date, udDate:udDate, workOrder:getStr(cols,map.work_order,''), batch:getStr(cols,map.batch,''),
-        materialCode:getStr(cols,map.material_code,''), materialName:getStr(cols,map.material_name,''), resultStatus:getStr(cols,map.result_status,''),
-        qaApproval:getStr(cols,map.qa_approval,''), udCode:getStr(cols,map.ud_code,''),
-        orderType:getStr(cols,map.order_type,''), rejectedCharacteristics:Number(getStr(cols,map.rejected_characteristics,'0'))||0,
-        approvedCharacteristics:Number(getStr(cols,map.approved_characteristics,'0'))||0,
-        deliveredQuantity:Number(getStr(cols,map.delivered_quantity,'0'))||0,
-        inspectionLot:getStr(cols,map.inspection_lot,''), facility:normalizeFacilityForQuality(getStr(cols,map.facility,'')),
-        line:getStr(cols,map.line,''), testName:getStr(cols,map.test_name,''), remarks:getStr(cols,map.remarks,''), createdAt:Date.now()
+        batch,
+        materialCode: getStr(cols,map.material_code,'').replace(/\.0$/,''),
+        materialName: getStr(cols,map.material_name,''),
+        udCode,
+        udDate,
+        qaApproval: getStr(cols,map.qa_approval,''),
+        facility: normalizeFacilityForQuality(getStr(cols,map.facility,''))
       };
-      if(q.udCode || q.batch || q.inspectionLot) rows.push(q);
+      rows.push(q);
     });
     return rows;
   }
@@ -1041,94 +1048,74 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   function renderQualityDashboard(view){
     const container = root.querySelector('#qualityPanel');
     if(!container) return;
-    const summaryRows = Object.values(qualitySummary || {});
-    if(summaryRows.length === 0){
+    if(Object.keys(qualityBestByKey).length === 0){
       container.innerHTML = '<div class="panel"><div class="panel-head"><div class="panel-title">איכות — סיכום מנות</div></div><div class="table-empty">לא נטען קובץ איכות</div></div>';
       return;
     }
-    const matched = summaryRows.filter(q => view.filtered.some(e => qualityMatchesPackaging(q, e)));
 
-    // UD Code breakdown by work order (per user request: count unique work orders)
-    const udByOrder = {}; // workOrder -> { udCode, ... }
-    view.filtered.forEach(e=>{
-      if(!e.workOrder) return;
-      const rawUD = getUDCodeForEntry(e);
-      if(rawUD && !udByOrder[e.workOrder]){
-        udByOrder[e.workOrder] = rawUD;
-      }
-    });
-    const udCounts = {};
-    Object.values(udByOrder).forEach(ud=>{
-      const info = udCodeInfo(ud);
-      if(!info) return;
-      const key = info.costLabel || ud;
-      if(!udCounts[key]) udCounts[key] = { count:0, color:info.color, label:key };
-      udCounts[key].count++;
+    // Build category counts — filter by selected facility if one is chosen
+    const facFilter = selectedFacilities && selectedFacilities.size > 0 ? selectedFacilities : null;
+    const catGroups = {}; // costLabel -> { count, color, rows[] }
+    Object.values(qualityBestByKey).forEach(q=>{
+      // Apply facility filter
+      if(facFilter && q.facility && !facFilter.has(q.facility)) return;
+      const info = udCodeInfo(q.udCode);
+      const cat = (info && info.costLabel) || q.udCode || 'N/A';
+      const color = (info && info.color) || 'var(--text-muted)';
+      if(!catGroups[cat]) catGroups[cat] = { count:0, color, rows:[] };
+      catGroups[cat].count++;
+      catGroups[cat].rows.push(q);
     });
 
-    const badRows = matched.filter(q=>q.worst==='bad');
-    const conditionalRows = matched.filter(q=>q.worst==='conditional' || q.restricted>0);
-    const badLots = badRows.length;
-    const conditionalLots = matched.filter(q=>q.worst==='conditional').length;
-    const restrictedLots = matched.filter(q=>q.restricted>0).length;
-    const detailRows = qualityDetailMode === 'all' ? matched : (qualityDetailMode === 'bad' ? badRows : (qualityDetailMode === 'conditional' ? conditionalRows : []));
-    const titleMap = { all:'מנות איכות בטווח', bad:'מנות חורגות', conditional:'מותנה / מוגבל' };
-    let html = '<div class="panel"><div class="panel-head"><div class="panel-title">איכות — סיכום מנות</div><div class="legend"><span>נטענו '+qualityEntries.length+' שורות איכות</span></div></div>'+ 
-      '<div class="insight-stats">'+
-      '<div class="kpi-card num clickable-kpi '+(qualityDetailMode==='all'?'active':'')+'" data-quality-mode="all"><div class="kpi-label">מנות איכות בטווח</div><span class="kpi-num">'+fmt(matched.length)+'</span><div class="kpi-sub">לחץ להצגת הרשומות</div></div>'+ 
-      '<div class="kpi-card num clickable-kpi '+(qualityDetailMode==='bad'?'active':'')+'" data-quality-mode="bad"><div class="kpi-label">מנות חורגות</div><span class="kpi-num">'+fmt(badLots)+'</span><div class="kpi-sub">לחץ להצגת החריגות בלבד</div></div>'+ 
-      '<div class="kpi-card num clickable-kpi '+(qualityDetailMode==='conditional'?'active':'')+'" data-quality-mode="conditional"><div class="kpi-label">מותנה / מוגבל</div><span class="kpi-num">'+fmt(conditionalLots+restrictedLots)+'</span><div class="kpi-sub">לחץ להצגת מותנה/מוגבל</div></div>'+ 
-      '</div>';
+    const totalBatches = Object.values(catGroups).reduce((s,c)=>s+c.count,0);
+    const facilityLabel = facFilter ? Array.from(facFilter).join(', ') : 'כל המתקנים';
+    const sortedCats = Object.entries(catGroups).sort((a,b)=>b[1].count-a[1].count);
 
-    // UD Code summary by cost category (only when multi-period view and UD data exists)
-    if(tab !== 'day' && Object.keys(udCounts).length > 0){
-      html += '<div style="padding: 8px 0 4px;"><div class="panel-title" style="font-size:13px; margin-bottom:8px;">סיכום לפי קטגוריית עלות (לפי פקודת עבודה)</div>'+
-        '<div style="display:flex; flex-wrap:wrap; gap:10px;">';
-      Object.values(udCounts).sort((a,b)=>b.count-a.count).forEach(({count, color, label})=>{
-        const isActive = qualityCostMode === label;
-        html += '<div data-cost-cat="'+escapeHtml(label)+'" style="background:var(--panel-2); border:2px solid '+(isActive?color:'transparent')+'; border-radius:8px; padding:10px 16px; display:flex; align-items:center; gap:10px; cursor:pointer;" '+
-          'onclick="this.dispatchEvent(new CustomEvent(\'cost-cat-click\',{bubbles:true,detail:{cat:\''+escapeHtml(label)+'\'}}))">'+
-          '<span style="color:'+color+'; font-size:22px; font-weight:800;">'+count+'</span>'+
-          '<span style="color:'+color+'; font-size:12px;">'+(label||'אחר')+'</span>'+
-          '</div>';
+    let html = '<div class="panel"><div class="panel-head"><div class="panel-title">איכות — סיכום מנות</div>'+
+      '<div class="legend"><span>'+totalBatches+' מנות · '+escapeHtml(facilityLabel)+'</span></div></div>'+
+      '<div class="insight-stats">';
+
+    sortedCats.forEach(([cat, {count, color}])=>{
+      const isActive = qualityCostMode === cat;
+      html += '<div class="kpi-card num clickable-kpi'+(isActive?' active':'')+'" data-quality-cat="'+escapeHtml(cat)+'" style="border-color:'+(isActive?color:'transparent')+'">'+
+        '<div class="kpi-label" style="color:'+color+';">'+escapeHtml(cat)+'</div>'+
+        '<span class="kpi-num" style="color:'+color+';">'+fmt(count)+'</span>'+
+        '<div class="kpi-sub">לחץ להצגת המנות</div>'+
+        '</div>';
+    });
+    html += '</div>';
+
+    // Drill-down table when a category is selected
+    if(qualityCostMode && catGroups[qualityCostMode]){
+      const drillRows = catGroups[qualityCostMode].rows;
+      html += '<div class="panel-head" style="margin-top:8px;">'+
+        '<div class="panel-title">'+escapeHtml(qualityCostMode)+' — '+drillRows.length+' מנות</div>'+
+        '<button class="panel-toggle-btn" id="closeQualityDetails">סגור</button></div>'+
+        '<div class="table-scroll"><table dir="rtl"><thead><tr>'+
+        '<th style="text-align:right;">מתקן</th>'+
+        '<th style="text-align:right;">Batch</th>'+
+        '<th style="text-align:right;">מק"ט</th>'+
+        '<th style="text-align:right;">שם חומר</th>'+
+        '<th style="text-align:right;">UD Code</th>'+
+        '<th style="text-align:right;">QA Status</th>'+
+        '</tr></thead><tbody>';
+      drillRows.slice(0,300).forEach(q=>{
+        const info = udCodeInfo(q.udCode);
+        const color = info ? info.color : 'var(--text-muted)';
+        html += '<tr>'+
+          '<td style="text-align:right;">'+escapeHtml(String(q.facility||'—'))+'</td>'+
+          '<td style="text-align:right;font-family:monospace;">'+escapeHtml(q.batch||'—')+'</td>'+
+          '<td style="text-align:right;font-family:monospace;">'+escapeHtml(String(q.materialCode||'—').replace(/\.0$/,''))+'</td>'+
+          '<td style="text-align:right;">'+escapeHtml(q.materialName||'—')+'</td>'+
+          '<td style="text-align:right;color:'+color+';font-weight:600;">'+escapeHtml(q.udCode||'—')+'</td>'+
+          '<td style="text-align:right;">'+escapeHtml(q.qaApproval||'—')+'</td>'+
+          '</tr>';
       });
-      html += '</div>';
-
-      // Drill-down table for selected cost category
-      if(qualityCostMode){
-        const drillOrders = [];
-        const seen = new Set();
-        view.filtered.forEach(e=>{
-          if(!e.workOrder || seen.has(e.workOrder)) return;
-          const ud = getUDCodeForEntry(e);
-          if(!ud) return;
-          const info = udCodeInfo(ud);
-          if(!info) return;
-          const key = info.costLabel || ud;
-          if(key !== qualityCostMode) return;
-          seen.add(e.workOrder);
-          drillOrders.push({workOrder:e.workOrder, date:e.date, facility:e.facility, materialName:e.materialName, batch:e.batch, udCode:ud, udInfo:info});
-        });
-        if(drillOrders.length > 0){
-          html += '<div style="margin-top:10px;"><div class="panel-title" style="font-size:12px; margin-bottom:6px;">פירוט — '+escapeHtml(qualityCostMode)+' ('+drillOrders.length+' פקודות)</div>'+
-            '<div class="table-scroll"><table><thead><tr><th>פקודת עבודה</th><th>תאריך</th><th>מתקן</th><th>שם חומר</th><th>Batch</th><th>UD Code</th></tr></thead><tbody>';
-          drillOrders.sort((a,b)=>a.date<b.date?1:-1).forEach(r=>{
-            html += '<tr>'+
-              '<td class="mono">'+escapeHtml(r.workOrder)+'</td>'+
-              '<td class="mono">'+escapeHtml(r.date)+'</td>'+
-              '<td class="mono">'+escapeHtml(r.facility||'—')+'</td>'+
-              '<td>'+escapeHtml(r.materialName||'—')+'</td>'+
-              '<td class="mono">'+escapeHtml(r.batch||'—')+'</td>'+
-              '<td style="color:'+r.udInfo.color+'; font-weight:600;">'+escapeHtml(r.udCode)+'</td>'+
-              '</tr>';
-          });
-          html += '</tbody></table></div></div>';
-        }
-      }
-      html += '</div>';
+      if(drillRows.length>300) html += '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);">מוצגות 300 מתוך '+drillRows.length+'</td></tr>';
+      html += '</tbody></table></div>';
     }
 
-    // Quality trend chart (multi-line: ok/conditional/bad per bucket)
+    // UD Code trend chart (multi-period)
     if(tab !== 'day' && view.buckets && view.buckets.length > 1){
       const trendData = view.buckets.map(b=>{
         // Match entries to this bucket using _iso (daily) or _isoStart/_isoEnd (weekly/monthly)
@@ -1187,20 +1174,15 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     }
     html += '</div>';
     container.innerHTML = html;
-    container.querySelectorAll('[data-quality-mode]').forEach(card=>{
+    container.querySelectorAll('[data-quality-cat]').forEach(card=>{
       card.onclick = ()=>{
-        const mode = card.dataset.qualityMode;
-        qualityDetailMode = qualityDetailMode === mode ? null : mode;
+        const cat = card.dataset.qualityCat;
+        qualityCostMode = qualityCostMode === cat ? null : cat;
         renderAll();
       };
     });
-    container.addEventListener('cost-cat-click', e=>{
-      const cat = e.detail && e.detail.cat;
-      qualityCostMode = qualityCostMode === cat ? null : cat;
-      renderAll();
-    }, { once: true });
     const closeBtn = container.querySelector('#closeQualityDetails');
-    if(closeBtn) closeBtn.onclick = ()=>{ qualityDetailMode = null; renderAll(); };
+    if(closeBtn) closeBtn.onclick = ()=>{ qualityCostMode = null; renderAll(); };
   }
 
   function showConfirm(message){
@@ -1233,6 +1215,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   let entries = [];
   let qualityEntries = [];
   let qualitySummary = {};
+  let qualityBestByKey = {}; // cache: batch -> best quality row (latest udDate)
   let loaded = false;
   let tab = 'day';
   const filters = {
@@ -2994,7 +2977,26 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       wrap.innerHTML = '<div class="table-empty">אין רשומות בטווח שנבחר</div>';
       return;
     }
-    let html = '<div class="table-scroll"><table><thead><tr>'+ 
+    let html = '<div class="table-scroll"><table><colgroup>'+
+      '<col style="width:90px">'+   // תאריך
+      '<col style="width:55px">'+   // מפעל
+      '<col style="width:55px">'+   // מתקן
+      '<col style="width:70px">'+   // קו/מוצר
+      '<col style="width:220px">'+  // שם חומר
+      '<col style="width:80px">'+   // אצווה
+      '<col style="width:90px">'+   // פקודת עבודה
+      '<col style="width:60px">'+   // Order Type
+      '<col style="width:120px">'+  // UD Code
+      '<col style="width:130px">'+  // סוג אריזה
+      '<col style="width:55px">'+   // משמרת
+      '<col style="width:75px">'+   // ייצור
+      '<col style="width:75px">'+   // אריזה
+      '<col style="width:75px">'+   // יעד ייצור
+      '<col style="width:75px">'+   // יעד אריזה
+      '<col style="width:65px">'+   // עמידה
+      '<col style="width:80px">'+   // הערות
+      '<col style="width:36px">'+   // מחיקה
+      '</colgroup><thead><tr>'+ 
       '<th>תאריך</th><th>מפעל</th><th>מתקן</th><th>קו / מוצר</th><th>שם חומר</th><th>אצווה</th><th>פקודת עבודה</th><th>Order Type</th><th>UD Code</th><th>סוג אריזה</th><th>משמרת</th><th>ייצור</th><th>אריזה</th><th>יעד ייצור</th><th>יעד אריזה</th><th>עמידה</th><th>הערות</th><th></th>'+ 
       '</tr></thead><tbody>';
     rows.forEach(e=>{
@@ -4205,18 +4207,11 @@ function renderAll(){
       }
     });
 
-    // Deduplicate quality: latest udDate per material+batch
-    const bestByKey = {};
-    qualityEntries.forEach(q=>{
-      const matNorm = String(q.materialCode||'').replace(/\.0$/,'').trim();
-      const batchNorm = String(q.batch||'').replace(/^0+/,'').trim();
-      if(!batchNorm) return;
-      const key = matNorm+'|'+batchNorm;
-      const existing = bestByKey[key];
-      if(!existing || (q.udDate||0) > (existing.udDate||0)){
-        bestByKey[key] = q;
-      }
-    });
+    // Apply facility filter if selected
+    const facFilter = selectedFacilities && selectedFacilities.size > 0 ? selectedFacilities : null;
+    const bestByKey = facFilter
+      ? Object.fromEntries(Object.entries(qualityBestByKey).filter(([,q])=> !q.facility || facFilter.has(q.facility)))
+      : qualityBestByKey;
 
     // Count by UD Code category
     const udCounts = {};
@@ -4247,8 +4242,15 @@ function renderAll(){
 
     // Full table sorted by udDate desc
     const sortedRows = Object.values(bestByKey).sort((a,b)=>(b.udDate||0)-(a.udDate||0));
-    html += '<div class="table-scroll"><table><thead><tr>'+
-      '<th>Batch</th><th>מק"ט חומר</th><th>שם חומר</th><th>UD Code</th><th>עלות</th><th>QA Status</th><th>תאריך החלטה</th><th>מתקן</th>'+
+    html += '<div class="table-scroll"><table dir="rtl"><thead><tr>'+
+      '<th style="text-align:right;">מתקן</th>'+
+      '<th style="text-align:right;">תאריך החלטה</th>'+
+      '<th style="text-align:right;">QA Status</th>'+
+      '<th style="text-align:right;">עלות</th>'+
+      '<th style="text-align:right;">UD Code</th>'+
+      '<th style="text-align:right;">שם חומר</th>'+
+      '<th style="text-align:right;">מק"ט</th>'+
+      '<th style="text-align:right;">Batch</th>'+
       '</tr></thead><tbody>';
 
     sortedRows.slice(0, 500).forEach(q=>{
@@ -4256,7 +4258,6 @@ function renderAll(){
       const color = info ? info.color : 'var(--text-muted)';
       const costLabel = info ? info.costLabel : '';
       const udDateStr = q.udDate ? (() => {
-        // Convert Excel serial or timestamp to date string
         if(q.udDate > 1000000000000) return new Date(q.udDate).toLocaleDateString('he-IL');
         if(q.udDate > 1000) {
           const d = new Date((q.udDate - 25569) * 86400 * 1000);
@@ -4265,14 +4266,14 @@ function renderAll(){
         return '';
       })() : '';
       html += '<tr>'+
-        '<td class="mono">'+escapeHtml(String(q.batch||'—').replace(/^0+/,'')||'—')+'</td>'+
-        '<td class="mono">'+escapeHtml(String(q.materialCode||'—').replace(/\.0$/,''))+'</td>'+
-        '<td>'+escapeHtml(q.materialName||'—')+'</td>'+
-        '<td style="color:'+color+';font-weight:600;">'+escapeHtml(q.udCode||'—')+'</td>'+
-        '<td style="color:'+color+';font-size:11px;">'+escapeHtml(costLabel)+'</td>'+
-        '<td>'+escapeHtml(q.qaApproval||'—')+'</td>'+
-        '<td class="mono">'+udDateStr+'</td>'+
-        '<td class="mono">'+escapeHtml(String(q.facility||'—'))+'</td>'+
+        '<td style="text-align:right;">'+escapeHtml(String(q.facility||'—'))+'</td>'+
+        '<td style="text-align:right;font-family:monospace;">'+udDateStr+'</td>'+
+        '<td style="text-align:right;">'+escapeHtml(q.qaApproval||'—')+'</td>'+
+        '<td style="text-align:right;color:'+color+';font-size:11px;">'+escapeHtml(costLabel)+'</td>'+
+        '<td style="text-align:right;color:'+color+';font-weight:600;">'+escapeHtml(q.udCode||'—')+'</td>'+
+        '<td style="text-align:right;">'+escapeHtml(q.materialName||'—')+'</td>'+
+        '<td style="text-align:right;font-family:monospace;">'+escapeHtml(String(q.materialCode||'—').replace(/\.0$/,''))+'</td>'+
+        '<td style="text-align:right;font-family:monospace;">'+escapeHtml(String(q.batch||'—').replace(/^0+/,'')||'—')+'</td>'+
         '</tr>';
     });
     if(sortedRows.length > 500){
