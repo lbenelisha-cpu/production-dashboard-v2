@@ -6,8 +6,27 @@
 <title>לוח בקרה — ייצור ואריזה</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" onerror="window._xlsxLoadError=true"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" onerror="window._html2canvasLoadError=true"></script>
+<script>
+// Fallback XLSX loader — if CDN blocked (e.g. Safari opening local file), load from alternative source
+(async function(){
+  if(typeof XLSX === 'undefined' || window._xlsxLoadError){
+    try {
+      await new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js';
+        s.onload = resolve;
+        s.onerror = reject;
+        document.head.appendChild(s);
+      });
+    } catch(e){
+      // Both CDNs failed — XLSX import won't work but rest of app will
+      console.warn('XLSX library could not be loaded. Excel import disabled.');
+    }
+  }
+})();
+</script>
 <style>
 html, body { margin:0; padding:0; background:#0A0D12; }
 #prod-dash-root, #prod-dash-root * { box-sizing: border-box; }
@@ -508,7 +527,8 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 </style>
 </head>
 <body>
-<div id="prod-dash-root" dir="rtl" lang="he"></div><input type="file" id="qualityFileInput" accept=".xlsx,.xls,.csv" style="display:none;">
+<div id="prod-dash-root" dir="rtl" lang="he"></div>
+<input type="file" id="qualityFileInput" accept=".xlsx,.xls,.csv" style="position:fixed;bottom:0;left:0;width:0;height:0;opacity:0;overflow:hidden;border:none;padding:0;">
 <script>
 (function(){
   const root = document.getElementById('prod-dash-root');
@@ -517,7 +537,15 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   // הנתונים נשמרים בפועל בצד השרת (Netlify Function + Netlify Blobs), לא בדפדפן.
   // אם הפונקציה לא זמינה (למשל פתיחת הקובץ ישירות בלי Netlify) — חוזרים אוטומטית ל-localStorage המקומי כגיבוי.
   const STORAGE_API_URL = '/.netlify/functions/storage';
-  let _sharedStorageAvailable = null; // null=לא נבדק עדיין, true/false=תוצאת בדיקה
+  let _netlifyAvailable = false; // default: assume local file, use localStorage
+
+  // בדיקה מהירה האם שרת Netlify זמין — אם לא, כל הפעולות יעברו ישירות ל-localStorage
+  (async()=>{
+    try {
+      const res = await fetch(STORAGE_API_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({action:'get',key:'__ping__'}), signal: AbortSignal.timeout(2000) });
+      _netlifyAvailable = res.ok;
+    } catch(e){ _netlifyAvailable = false; }
+  })();
 
   async function _callStorageApi(action, key, value){
     const res = await fetch(STORAGE_API_URL, {
@@ -529,6 +557,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     return res.json();
   }
 
+  // שכבת אחסון אחידה: מנסה Netlify אם זמין, אחרת localStorage ישירות
   function _localFallback(){
     return {
       async get(key){
@@ -536,7 +565,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
         return value === null ? null : { value };
       },
       async set(key, value){
-        localStorage.setItem(key, value);
+        localStorage.setItem(key, typeof value === 'string' ? value : JSON.stringify(value));
         return { ok: true };
       },
       async delete(key){
@@ -551,39 +580,33 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   if(!window.storage){
     window.storage = {
       async get(key){
+        if(!_netlifyAvailable) return _local.get(key);
         try {
           const data = await _callStorageApi('get', key);
-          _sharedStorageAvailable = true;
           if(data && data.value != null) return { value: data.value };
-          // אין עדיין ערך בשרת — אם יש ערך מקומי ישן (משימוש קודם בדפדפן הזה), נעלה אותו לשרת פעם אחת.
-          const localVal = await _local.get(key);
-          if(localVal && localVal.value != null){
-            try { await _callStorageApi('set', key, localVal.value); } catch(e){}
-            return localVal;
-          }
-          return null;
+          return _local.get(key);
         } catch(e){
-          _sharedStorageAvailable = false;
+          _netlifyAvailable = false;
           return _local.get(key);
         }
       },
       async set(key, value){
+        if(!_netlifyAvailable) return _local.set(key, value);
         try {
           await _callStorageApi('set', key, value);
-          _sharedStorageAvailable = true;
           return { ok: true };
         } catch(e){
-          _sharedStorageAvailable = false;
+          _netlifyAvailable = false;
           return _local.set(key, value);
         }
       },
       async delete(key){
+        if(!_netlifyAvailable) return _local.delete(key);
         try {
           await _callStorageApi('delete', key);
-          _sharedStorageAvailable = true;
           return { ok: true };
         } catch(e){
-          _sharedStorageAvailable = false;
+          _netlifyAvailable = false;
           return _local.delete(key);
         }
       }
@@ -621,19 +644,24 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 
   const QUALITY_STORAGE_KEY = 'quality_entries_v1';
   const QUALITY_HEADER_MAP = {
-    'date':'date','inspection date':'date','sample date':'date','created on':'date','posting date':'date','actual finish date':'date','process order delivered date':'date','date of lot creation':'date','inspection lot ud date':'date','תאריך':'date',
-    'process order #':'work_order','process order':'work_order','order':'work_order','work order':'work_order','פקודת עבודה':'work_order',
+    'date of lot creation':'date','process order delivered date':'lot_date',
+    'inspection lot ud date':'ud_date','actual finish date':'date','תאריך':'date',
+    'inspection lot #':'inspection_lot','inspection lot':'inspection_lot',
     'process order type #':'order_type','process order type':'order_type','order type':'order_type',
     'batch number':'batch','batch':'batch','אצווה':'batch',
-    'material description':'material_name','material':'material_name','central item description':'material_name','material #':'material_code','central item #':'central_item','שם חומר':'material_name',
-    'result status':'result_status','status':'result_status','qa status':'qa_approval',
-    'qa approval':'qa_approval','approval':'qa_approval','qa status':'qa_approval',
+    'material description':'material_name','material':'material_name',
+    'central item description':'material_name','material #':'material_code',
+    'central item #':'central_item','שם חומר':'material_name',
+    'qa status':'qa_approval','result status':'result_status','status':'result_status',
+    'qa approval':'qa_approval','approval':'qa_approval',
     'ud code':'ud_code','usage decision':'ud_code',
-    'rejected characteristics':'rejected_characteristics','approved characteristics':'approved_characteristics','process order delivered':'delivered_quantity',
-    'inspection lot':'inspection_lot','inspection lot #':'inspection_lot',
+    'rejected characteristics ':'rejected_characteristics','rejected characteristics':'rejected_characteristics',
+    'approved characteristics ':'approved_characteristics','approved characteristics':'approved_characteristics',
+    'process order delivered':'delivered_quantity',
     'storage location':'facility','facility':'facility','site':'facility','מתקן':'facility',
-    'line':'line','resource':'line','work center':'line','production line':'line','operation short text':'test_name','קו':'line',
-    'characteristic':'test_name','test':'test_name','inspection characteristic':'test_name','operation short text':'test_name','ud remarks':'remarks','batch remarks':'remarks'
+    'production plant id':'plant',
+    'production line':'line','line':'line','resource':'line','work center':'line','קו':'line',
+    'operation short text':'test_name','ud remarks':'remarks','batch remarks':'remarks'
   };
 
   function normKeyPart(v){ return String(v || '').trim().toUpperCase(); }
@@ -698,6 +726,32 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     return '🟢 תקין';
   }
 
+  function udCodeInfo(udCode){
+    if(!udCode) return null;
+    // Extract the code prefix (e.g. "A1" from "A1-Release", "A3R" from "A3R-Restricted - recycling")
+    const raw = (''+udCode).trim();
+    const prefix = (raw.match(/^([A-Za-z0-9]+)/)||['',''])[1].toUpperCase();
+    if(['A1','A4','A5'].includes(prefix))
+      return { color:'var(--green)',  label: raw, costLabel:'ללא עלות' };
+    if(['A7','A8'].includes(prefix))
+      return { color:'var(--yellow)', label: raw, costLabel:'ללא עלות' };
+    if(['A3R','A6'].includes(prefix))
+      return { color:'var(--red)',    label: raw, costLabel:'עלות מחזור מתקן' };
+    if(['A3I','A2'].includes(prefix))
+      return { color:'var(--red)',    label: raw, costLabel:'עלות השמדה' };
+    return { color:'var(--red)', label: raw, costLabel:'' };
+  }
+
+  function getUDCodeForEntry(e){
+    if(!e.batch) return null;
+    const batchNorm = normKeyPart(e.batch);
+    const matches = qualityEntries.filter(q => normKeyPart(q.batch) === batchNorm && q.udCode);
+    if(matches.length === 0) return null;
+    if(matches.length === 1) return matches[0].udCode;
+    const best = matches.reduce((a,b) => (b.udDate||0) > (a.udDate||0) ? b : a);
+    return best.udCode;
+  }
+
   function buildQualitySummary(){
     const byKey = {};
     qualityEntries.forEach(q=>{
@@ -755,21 +809,59 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   }
 
   async function persistQuality(){
+    // qualityEntries can be 70,000+ rows — too large for localStorage.
+    // Instead, save only the summary (per batch: latest udCode + udDate).
+    // qualitySummary is the processed object, but we save a compact batch->udCode map.
     try {
-      const res = await window.storage.set(QUALITY_STORAGE_KEY, JSON.stringify(qualityEntries), true);
-      if(!res) throw new Error('no result');
+      const compactMap = {};
+      qualityEntries.forEach(q=>{
+        if(!q.batch || !q.udCode) return;
+        const bk = String(q.batch).trim();
+        const existing = compactMap[bk];
+        if(!existing || (q.udDate||0) > (existing.udDate||0)){
+          compactMap[bk] = { udCode: q.udCode, udDate: q.udDate||0 };
+        }
+      });
+      const compact = JSON.stringify(compactMap);
+      try {
+        await window.storage.set(QUALITY_STORAGE_KEY, compact, true);
+      } catch(e){
+        localStorage.setItem(QUALITY_STORAGE_KEY, compact);
+      }
       return true;
-    } catch(e){
-      showToast('שגיאה בשמירת נתוני האיכות', true);
-      return false;
+    } catch(e2){
+      // Even compact save failed — data stays in memory only
+      return true;
     }
   }
 
   async function loadQuality(){
+    let raw = null;
     try {
       const res = await window.storage.get(QUALITY_STORAGE_KEY, true);
-      qualityEntries = res && res.value ? JSON.parse(res.value) : [];
+      raw = res && res.value ? res.value : null;
     } catch(e){
+      try { raw = localStorage.getItem(QUALITY_STORAGE_KEY); } catch(e2){}
+    }
+    if(raw){
+      try {
+        const parsed = JSON.parse(raw);
+        // Check if it's the new compact format (batch->udCode map)
+        const firstVal = Object.values(parsed)[0];
+        if(firstVal && typeof firstVal === 'object' && 'udCode' in firstVal){
+          // Compact format — rebuild qualityEntries as minimal rows
+          qualityEntries = Object.entries(parsed).map(([batch, v])=>({
+            id: 'q_'+batch, batch, udCode: v.udCode, udDate: v.udDate||0,
+            date:'', workOrder:'', materialName:'', qaApproval:'', resultStatus:'',
+            rejectedCharacteristics:0, approvedCharacteristics:0, deliveredQuantity:0,
+            inspectionLot:'', facility:'', line:'', testName:'', remarks:'', createdAt:0
+          }));
+        } else {
+          // Old full format
+          qualityEntries = Array.isArray(parsed) ? parsed : [];
+        }
+      } catch(e){ qualityEntries = []; }
+    } else {
       qualityEntries = [];
     }
     buildQualitySummary();
@@ -794,6 +886,15 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       const s=(''+v).trim();
       return s || (def||'');
     };
+    const getDateVal = (cols, idx) => {
+      if(idx===undefined) return 0;
+      const v = cols[idx];
+      if(!v) return 0;
+      if(v instanceof Date) return v.getTime();
+      if(typeof v === 'number') return v; // Excel serial
+      const t = Date.parse(String(v));
+      return isNaN(t) ? 0 : t;
+    };
     const rows = [];
     dataRows.forEach(cols=>{
       if(!cols || cols.length===0) return;
@@ -802,9 +903,10 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       if(rawDate instanceof Date) date = dateObjToISO(rawDate);
       else if(typeof rawDate === 'number') date = excelSerialToISO(rawDate);
       else if(rawDate !== undefined && rawDate !== null && rawDate !== '') date = normalizeDateStr(String(rawDate)) || String(rawDate).trim();
+      const udDate = getDateVal(cols, map.ud_date);
       const q = {
-        id: genId(), date:date, workOrder:getStr(cols,map.work_order,''), batch:getStr(cols,map.batch,''),
-        materialName:getStr(cols,map.material_name,''), resultStatus:getStr(cols,map.result_status,''),
+        id: genId(), date:date, udDate:udDate, workOrder:getStr(cols,map.work_order,''), batch:getStr(cols,map.batch,''),
+        materialCode:getStr(cols,map.material_code,''), materialName:getStr(cols,map.material_name,''), resultStatus:getStr(cols,map.result_status,''),
         qaApproval:getStr(cols,map.qa_approval,''), udCode:getStr(cols,map.ud_code,''),
         orderType:getStr(cols,map.order_type,''), rejectedCharacteristics:Number(getStr(cols,map.rejected_characteristics,'0'))||0,
         approvedCharacteristics:Number(getStr(cols,map.approved_characteristics,'0'))||0,
@@ -812,7 +914,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
         inspectionLot:getStr(cols,map.inspection_lot,''), facility:normalizeFacilityForQuality(getStr(cols,map.facility,'')),
         line:getStr(cols,map.line,''), testName:getStr(cols,map.test_name,''), remarks:getStr(cols,map.remarks,''), createdAt:Date.now()
       };
-      if(q.workOrder || q.batch || q.inspectionLot) rows.push(q);
+      if(q.udCode || q.batch || q.inspectionLot) rows.push(q);
     });
     return rows;
   }
@@ -822,7 +924,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       const name = file.name.toLowerCase();
       let headerRow, dataRows;
       if(name.endsWith('.xlsx') || name.endsWith('.xls')){
-        if(typeof XLSX === 'undefined'){ showToast('ספריית קריאת האקסל לא נטענה. נסו לרענן את העמוד.', true); return; }
+        if(typeof XLSX === 'undefined'){ showToast('ספריית Excel לא נטענה — ודאו שיש חיבור אינטרנט ורעננו את הדף (Ctrl+R / Cmd+R).', true); return; }
         const buf = await file.arrayBuffer();
         const wb = XLSX.read(buf, {type:'array', cellDates:false});
         const sheet = wb.Sheets[wb.SheetNames[0]];
@@ -839,11 +941,13 @@ html, body { margin:0; padding:0; background:#0A0D12; }
         dataRows = lines.slice(1).map(l=>splitCSVLine(l, delim));
       }
       const rows = processQualityRows(headerRow, dataRows);
-      if(rows.length===0){ showToast('לא נמצאו רשומות איכות תקינות', true); return; }
+      showToast('נמצאו '+rows.length+' שורות בקובץ האיכות');
+      if(rows.length===0){ showToast('לא נמצאו רשומות איכות תקינות — בדוק שהכותרות תואמות', true); return; }
       qualityEntries = rows;
       buildQualitySummary();
       const ok = await persistQuality();
-      if(ok){ showToast('יובאו '+rows.length+' שורות איכות בהצלחה'); renderAll(); }
+      showToast('יובאו '+rows.length+' שורות איכות בהצלחה'); 
+      renderAll();
     } catch(e){
       console.error(e);
       showToast('שגיאה בקריאת קובץ האיכות', true);
@@ -943,6 +1047,25 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       return;
     }
     const matched = summaryRows.filter(q => view.filtered.some(e => qualityMatchesPackaging(q, e)));
+
+    // UD Code breakdown by work order (per user request: count unique work orders)
+    const udByOrder = {}; // workOrder -> { udCode, ... }
+    view.filtered.forEach(e=>{
+      if(!e.workOrder) return;
+      const rawUD = getUDCodeForEntry(e);
+      if(rawUD && !udByOrder[e.workOrder]){
+        udByOrder[e.workOrder] = rawUD;
+      }
+    });
+    const udCounts = {};
+    Object.values(udByOrder).forEach(ud=>{
+      const info = udCodeInfo(ud);
+      if(!info) return;
+      const key = info.costLabel || ud;
+      if(!udCounts[key]) udCounts[key] = { count:0, color:info.color, label:key };
+      udCounts[key].count++;
+    });
+
     const badRows = matched.filter(q=>q.worst==='bad');
     const conditionalRows = matched.filter(q=>q.worst==='conditional' || q.restricted>0);
     const badLots = badRows.length;
@@ -956,6 +1079,92 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       '<div class="kpi-card num clickable-kpi '+(qualityDetailMode==='bad'?'active':'')+'" data-quality-mode="bad"><div class="kpi-label">מנות חורגות</div><span class="kpi-num">'+fmt(badLots)+'</span><div class="kpi-sub">לחץ להצגת החריגות בלבד</div></div>'+ 
       '<div class="kpi-card num clickable-kpi '+(qualityDetailMode==='conditional'?'active':'')+'" data-quality-mode="conditional"><div class="kpi-label">מותנה / מוגבל</div><span class="kpi-num">'+fmt(conditionalLots+restrictedLots)+'</span><div class="kpi-sub">לחץ להצגת מותנה/מוגבל</div></div>'+ 
       '</div>';
+
+    // UD Code summary by cost category (only when multi-period view and UD data exists)
+    if(tab !== 'day' && Object.keys(udCounts).length > 0){
+      html += '<div style="padding: 8px 0 4px;"><div class="panel-title" style="font-size:13px; margin-bottom:8px;">סיכום לפי קטגוריית עלות (לפי פקודת עבודה)</div>'+
+        '<div style="display:flex; flex-wrap:wrap; gap:10px;">';
+      Object.values(udCounts).sort((a,b)=>b.count-a.count).forEach(({count, color, label})=>{
+        const isActive = qualityCostMode === label;
+        html += '<div data-cost-cat="'+escapeHtml(label)+'" style="background:var(--panel-2); border:2px solid '+(isActive?color:'transparent')+'; border-radius:8px; padding:10px 16px; display:flex; align-items:center; gap:10px; cursor:pointer;" '+
+          'onclick="this.dispatchEvent(new CustomEvent(\'cost-cat-click\',{bubbles:true,detail:{cat:\''+escapeHtml(label)+'\'}}))">'+
+          '<span style="color:'+color+'; font-size:22px; font-weight:800;">'+count+'</span>'+
+          '<span style="color:'+color+'; font-size:12px;">'+(label||'אחר')+'</span>'+
+          '</div>';
+      });
+      html += '</div>';
+
+      // Drill-down table for selected cost category
+      if(qualityCostMode){
+        const drillOrders = [];
+        const seen = new Set();
+        view.filtered.forEach(e=>{
+          if(!e.workOrder || seen.has(e.workOrder)) return;
+          const ud = getUDCodeForEntry(e);
+          if(!ud) return;
+          const info = udCodeInfo(ud);
+          if(!info) return;
+          const key = info.costLabel || ud;
+          if(key !== qualityCostMode) return;
+          seen.add(e.workOrder);
+          drillOrders.push({workOrder:e.workOrder, date:e.date, facility:e.facility, materialName:e.materialName, batch:e.batch, udCode:ud, udInfo:info});
+        });
+        if(drillOrders.length > 0){
+          html += '<div style="margin-top:10px;"><div class="panel-title" style="font-size:12px; margin-bottom:6px;">פירוט — '+escapeHtml(qualityCostMode)+' ('+drillOrders.length+' פקודות)</div>'+
+            '<div class="table-scroll"><table><thead><tr><th>פקודת עבודה</th><th>תאריך</th><th>מתקן</th><th>שם חומר</th><th>Batch</th><th>UD Code</th></tr></thead><tbody>';
+          drillOrders.sort((a,b)=>a.date<b.date?1:-1).forEach(r=>{
+            html += '<tr>'+
+              '<td class="mono">'+escapeHtml(r.workOrder)+'</td>'+
+              '<td class="mono">'+escapeHtml(r.date)+'</td>'+
+              '<td class="mono">'+escapeHtml(r.facility||'—')+'</td>'+
+              '<td>'+escapeHtml(r.materialName||'—')+'</td>'+
+              '<td class="mono">'+escapeHtml(r.batch||'—')+'</td>'+
+              '<td style="color:'+r.udInfo.color+'; font-weight:600;">'+escapeHtml(r.udCode)+'</td>'+
+              '</tr>';
+          });
+          html += '</tbody></table></div></div>';
+        }
+      }
+      html += '</div>';
+    }
+
+    // Quality trend chart (multi-line: ok/conditional/bad per bucket)
+    if(tab !== 'day' && view.buckets && view.buckets.length > 1){
+      const trendData = view.buckets.map(b=>{
+        // Match entries to this bucket using _iso (daily) or _isoStart/_isoEnd (weekly/monthly)
+        let bucketEntries;
+        if(b._iso){
+          bucketEntries = view.filtered.filter(e=>e.date===b._iso);
+        } else if(b._isoStart && b._isoEnd){
+          bucketEntries = view.filtered.filter(e=>e.date>=b._isoStart && e.date<=b._isoEnd);
+        } else {
+          bucketEntries = [];
+        }
+        const seenOrders = new Set();
+        let ok=0, warn=0, bad=0;
+        bucketEntries.forEach(e=>{
+          if(!e.workOrder || seenOrders.has(e.workOrder)) return;
+          const ud = getUDCodeForEntry(e);
+          if(!ud) return;
+          seenOrders.add(e.workOrder);
+          const info = udCodeInfo(ud);
+          if(!info) return;
+          if(info.color==='var(--green)') ok++;
+          else if(info.color==='var(--yellow)') warn++;
+          else bad++;
+        });
+        return { label:b.label||'', ok, warn, bad };
+      });
+      const hasAny = trendData.some(d=>d.ok+d.warn+d.bad>0);
+      if(hasAny){
+        html += '<div style="margin-top:8px;"><div class="panel-title" style="font-size:13px; margin-bottom:6px;">קו מגמה איכות לפי פקודת עבודה</div>'+
+          '<div style="display:flex; gap:16px; margin-bottom:8px; font-size:11px;">'+
+          '<span><span style="display:inline-block; width:12px; height:3px; background:var(--green); border-radius:2px; vertical-align:middle; margin-left:4px;"></span>ללא עלות (A1/A4/A5)</span>'+
+          '<span><span style="display:inline-block; width:12px; height:3px; background:var(--yellow); border-radius:2px; vertical-align:middle; margin-left:4px;"></span>ללא עלות (A7/A8)</span>'+
+          '<span><span style="display:inline-block; width:12px; height:3px; background:var(--red); border-radius:2px; vertical-align:middle; margin-left:4px;"></span>בעלות</span>'+
+          '</div>'+buildQualityTrendSVG(trendData)+'</div>';
+      }
+    }
 
     if(!qualityDetailMode){
       html += '<div class="table-empty">בחר אחד מכרטיסי האיכות כדי להציג את הרשומות המתאימות</div>';
@@ -985,6 +1194,11 @@ html, body { margin:0; padding:0; background:#0A0D12; }
         renderAll();
       };
     });
+    container.addEventListener('cost-cat-click', e=>{
+      const cat = e.detail && e.detail.cat;
+      qualityCostMode = qualityCostMode === cat ? null : cat;
+      renderAll();
+    }, { once: true });
     const closeBtn = container.querySelector('#closeQualityDetails');
     if(closeBtn) closeBtn.onclick = ()=>{ qualityDetailMode = null; renderAll(); };
   }
@@ -1142,6 +1356,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   let selectedFacilities = null; // null = all facilities (no filter)
   let showAdvancedDashboard = false;
   let qualityDetailMode = null; // null / all / bad / conditional
+  let qualityCostMode = null;   // null / cost label string
   let tableExpanded = false;
   let dailyUtilizationExpanded = false;
   let orderShortfallExpanded = false;
@@ -1189,6 +1404,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   const STORAGE_KEY_PROD_TARGETS = 'production_targets';
   const STORAGE_KEY_PERIOD_TARGETS = 'period_packaging_targets_v1';
   const STORAGE_KEY_EVENTS = 'production_events_quality_environment_v1';
+  const STORAGE_KEY_QUALITY = 'quality_ud_data_v1';
 
   function migrateFacilityKey(obj){
     let changed = false;
@@ -1233,6 +1449,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   async function loadEntries(){
     entries = [];
     let usedChunkedFormat = false;
+    let serverAvailable = true;
     try {
       const idxRes = await window.storage.get(ENTRIES_INDEX_KEY, true);
       const months = idxRes && idxRes.value ? JSON.parse(idxRes.value) : null;
@@ -1247,12 +1464,27 @@ html, body { margin:0; padding:0; background:#0A0D12; }
           }
         });
       }
-    } catch(e){ /* ignore, will fall back to legacy below */ }
+    } catch(e){
+      serverAvailable = false;
+      // Fallback: read from localStorage directly
+      try {
+        const idxLocal = localStorage.getItem(ENTRIES_INDEX_KEY);
+        const months = idxLocal ? JSON.parse(idxLocal) : null;
+        if(months && Array.isArray(months) && months.length > 0){
+          usedChunkedFormat = true;
+          months.forEach(m=>{
+            const raw = localStorage.getItem(ENTRIES_KEY_PREFIX + m);
+            if(raw){ try { entries = entries.concat(JSON.parse(raw)); } catch(e2){} }
+          });
+        }
+      } catch(e2){ entries = []; }
+    }
 
     if(!usedChunkedFormat){
-      // אין עדיין אינדקס חודשים — ייתכן שזה שימוש ראשון, או נתונים ישנים בפורמט הקודם (בלוב אחד גדול).
       try {
-        const legacy = await window.storage.get(STORAGE_KEY, true);
+        const legacy = serverAvailable
+          ? await window.storage.get(STORAGE_KEY, true).catch(()=>null)
+          : { value: localStorage.getItem(STORAGE_KEY) };
         if(legacy && legacy.value){
           entries = JSON.parse(legacy.value);
         }
@@ -1276,7 +1508,6 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       }
     });
     loaded = true;
-    // אם זו הייתה טעינה מהפורמט הישן (בלוב אחד), או שהיה צריך מיגרציה — נשמור מיד בפורמט המחולק החדש.
     if(migrated || !usedChunkedFormat) await persist();
   }
 
@@ -1286,7 +1517,8 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       const res = await window.storage.get(STORAGE_KEY_TARGETS, true);
       loadedTargets = res && res.value ? JSON.parse(res.value) : null;
     } catch(e){
-      loadedTargets = null;
+      try { const local = localStorage.getItem(STORAGE_KEY_TARGETS); loadedTargets = local ? JSON.parse(local) : null; }
+      catch(e2){ loadedTargets = null; }
     }
     if(loadedTargets){
       const isOldFlatFormat = PACKAGING_TYPES.some(p => loadedTargets[p] !== undefined);
@@ -1310,11 +1542,11 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   async function persistTargets(){
     try {
       const res = await window.storage.set(STORAGE_KEY_TARGETS, JSON.stringify(packagingTargets), true);
-      if(!res) throw new Error('no result');
+
       return true;
     } catch(e){
-      showToast('שגיאה בשמירת היעדים. נסו שוב.', true);
-      return false;
+      try { localStorage.setItem(STORAGE_KEY_TARGETS, JSON.stringify(packagingTargets)); return true; }
+      catch(e2){ showToast('שגיאה בשמירת היעדים.', true); return false; }
     }
   }
 
@@ -1324,7 +1556,8 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       const res = await window.storage.get(STORAGE_KEY_PROD_TARGETS, true);
       loadedTargets = res && res.value ? JSON.parse(res.value) : null;
     } catch(e){
-      loadedTargets = null;
+      try { const local = localStorage.getItem(STORAGE_KEY_PROD_TARGETS); loadedTargets = local ? JSON.parse(local) : null; }
+      catch(e2){ loadedTargets = null; }
     }
     if(loadedTargets){
       const facilityKeysMigrated = migrateFacilityKey(loadedTargets);
@@ -1339,11 +1572,11 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   async function persistProductionTargets(){
     try {
       const res = await window.storage.set(STORAGE_KEY_PROD_TARGETS, JSON.stringify(productionTargets), true);
-      if(!res) throw new Error('no result');
+
       return true;
     } catch(e){
-      showToast('שגיאה בשמירת יעדי הייצור. נסו שוב.', true);
-      return false;
+      try { localStorage.setItem(STORAGE_KEY_PROD_TARGETS, JSON.stringify(productionTargets)); return true; }
+      catch(e2){ showToast('שגיאה בשמירת יעדי הייצור.', true); return false; }
     }
   }
 
@@ -1576,7 +1809,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   async function persistPeriodPackagingTargets(){
     try {
       const res = await window.storage.set(STORAGE_KEY_PERIOD_TARGETS, JSON.stringify(periodPackagingTargets), true);
-      if(!res) throw new Error('no result');
+
       return true;
     } catch(e){
       showToast('שגיאה בשמירת היעד התקופתי', true);
@@ -1658,7 +1891,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   async function persistEventsEntries(){
     try {
       const res = await window.storage.set(STORAGE_KEY_EVENTS, JSON.stringify(eventsEntries), true);
-      if(!res) throw new Error('no result');
+
       return true;
     } catch(e){
       showToast('שגיאה בשמירת אירוע', true);
@@ -1690,14 +1923,17 @@ html, body { margin:0; padding:0; background:#0A0D12; }
         window.storage.delete(ENTRIES_KEY_PREFIX + m, true).catch(()=>null)
       );
       const indexWrite = window.storage.set(ENTRIES_INDEX_KEY, JSON.stringify(monthsNow), true);
-      // מנקים את הפורמט הישן (בלוב אחד גדול) ברגע שעברנו לפורמט המחולק, כדי לא להחזיק שני עותקים.
       const legacyClear = window.storage.delete(STORAGE_KEY, true).catch(()=>null);
 
-      const results = await Promise.all([...writes, indexWrite, legacyClear, ...deletes]);
-      if(!results || !results[0]) throw new Error('no result');
+      await Promise.all([...writes, indexWrite, legacyClear, ...deletes]);
       return true;
     } catch(e){
-      showToast('שגיאה בשמירת הנתונים. נסו שוב.', true);
+      // Check if it's a quota error
+      if(e && (e.name === 'QuotaExceededError' || (e.message && e.message.toLowerCase().includes('quota')))){
+        showToast('אחסון הדפדפן מלא. הנתונים נשמרו בזיכרון הזמני — בדף הבא הם יאבדו. מומלץ לייצא גיבוי עכשיו.', true);
+        return true; // data is in memory even if not saved
+      }
+      showToast('שגיאה בשמירת הנתונים.', true);
       return false;
     }
   }
@@ -1817,7 +2053,10 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     const buckets = [];
     for(let i=0;i<weeks;i++){
       const d = new Date(startSun); d.setDate(d.getDate()+i*7);
-      buckets.push(emptyBucket(ddmm(d)));
+      const dEnd = new Date(d); dEnd.setDate(dEnd.getDate()+6);
+      const b = emptyBucket(ddmm(d));
+      b._isoStart = toISO(d); b._isoEnd = toISO(dEnd);
+      buckets.push(b);
     }
     filtered.forEach(e=>{
       const idx = Math.floor((parseISO(e.date)-startSun)/86400000/7);
@@ -1837,7 +2076,11 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     for(let i=0;i<months;i++){
       const m = (start.getMonth()+i)%12;
       const y = start.getFullYear() + Math.floor((start.getMonth()+i)/12);
-      buckets.push(emptyBucket(monthsShort[m] + (months>12 ? " '"+(''+y).slice(2) : '')));
+      const b = emptyBucket(monthsShort[m] + (months>12 ? " '"+(''+y).slice(2) : ''));
+      b._isoStart = y+'-'+String(m+1).padStart(2,'0')+'-01';
+      const lastDay = new Date(y, m+1, 0);
+      b._isoEnd = toISO(lastDay);
+      buckets.push(b);
     }
     filtered.forEach(e=>{
       const d = parseISO(e.date);
@@ -2599,6 +2842,37 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     return {rows,totalPack,targetPack,pctPack,closedOrders,openOrders,qRows,goodLots,badLots,conditionalLots,totalQualityLots,typeRows,targetInfo};
   }
 
+  function buildQualityTrendSVG(trendData){
+    if(!trendData || trendData.length===0) return '<div class="chart-empty">אין נתוני מגמה</div>';
+    const W = Math.max(520, trendData.length*56), H=170, padL=36, padR=12, padT=12, padB=28;
+    const plotW = W-padL-padR, plotH = H-padT-padB;
+    const maxVal = Math.max(1, ...trendData.map(d=>d.ok+d.warn+d.bad)) * 1.2;
+    const step = trendData.length>1 ? plotW/(trendData.length-1) : plotW;
+    let grid='', labelsHtml='', lines={ok:'',warn:'',bad:''}, circles='';
+    [0,0.5,1].forEach(f=>{
+      const y = padT + plotH - plotH*f;
+      grid += '<line x1="'+padL+'" y1="'+y+'" x2="'+(W-padR)+'" y2="'+y+'" stroke="var(--border)" stroke-width="1" stroke-dasharray="3 4"/>';
+      grid += '<text x="'+(padL-6)+'" y="'+(y+3)+'" text-anchor="end" font-size="10" fill="var(--text-muted)">'+Math.round(maxVal*f)+'</text>';
+    });
+    const colors = { ok:'var(--green)', warn:'var(--yellow)', bad:'var(--red)' };
+    trendData.forEach((d,i)=>{
+      const x = padL + (trendData.length===1 ? plotW/2 : i*step);
+      ['ok','warn','bad'].forEach(k=>{
+        const y = padT + plotH - (d[k]/maxVal)*plotH;
+        lines[k] += (i?' L ':'M ') + x + ' ' + y;
+        circles += '<circle cx="'+x+'" cy="'+y+'" r="3" fill="'+colors[k]+'" opacity="0.9"/>';
+      });
+      if(i%Math.ceil(trendData.length/10)===0 || trendData.length<=10)
+        labelsHtml += '<text x="'+x+'" y="'+(H-9)+'" text-anchor="middle" font-size="10" fill="var(--text-muted)">'+escapeHtml(d.label)+'</text>';
+    });
+    let svg = '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%; max-width:'+W+'px; height:'+H+'px;">'+grid;
+    Object.entries(lines).forEach(([k,pts])=>{
+      svg += '<path d="'+pts+'" fill="none" stroke="'+colors[k]+'" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>';
+    });
+    svg += circles + labelsHtml + '</svg>';
+    return '<div class="table-scroll" style="padding-bottom:4px;">'+svg+'</div>';
+  }
+
   function buildTrendLineSVG(buckets, field){
     const vals = (buckets || []).map(b=>Number(b[field])||0);
     if(vals.length===0 || vals.every(v=>v===0)) return '<div class="chart-empty">אין נתונים למגמה בטווח הנבחר</div>';
@@ -2721,7 +2995,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       return;
     }
     let html = '<div class="table-scroll"><table><thead><tr>'+ 
-      '<th>תאריך</th><th>מפעל</th><th>מתקן</th><th>קו / מוצר</th><th>שם חומר</th><th>אצווה</th><th>פקודת עבודה</th><th>Order Type</th><th>סטטוס איכות</th><th>סוג אריזה</th><th>משמרת</th><th>ייצור</th><th>אריזה</th><th>יעד ייצור</th><th>יעד אריזה</th><th>עמידה</th><th>הערות</th><th></th>'+ 
+      '<th>תאריך</th><th>מפעל</th><th>מתקן</th><th>קו / מוצר</th><th>שם חומר</th><th>אצווה</th><th>פקודת עבודה</th><th>Order Type</th><th>UD Code</th><th>סוג אריזה</th><th>משמרת</th><th>ייצור</th><th>אריזה</th><th>יעד ייצור</th><th>יעד אריזה</th><th>עמידה</th><th>הערות</th><th></th>'+ 
       '</tr></thead><tbody>';
     rows.forEach(e=>{
       const effTargetProd = getProductionTarget(e);
@@ -2729,6 +3003,11 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       const pp = effTargetProd>0 ? (e.production/effTargetProd*100) : (e.production>0?100:0);
       const pk = effTargetPack>0 ? (e.packaging/effTargetPack*100) : (e.packaging>0?100:0);
       const avg = (effTargetProd+effTargetPack)>0 ? ((e.production+e.packaging)/(effTargetProd+effTargetPack)*100) : Math.max(pp,pk);
+      const rawUD = getUDCodeForEntry(e);
+      const udInfo = rawUD ? udCodeInfo(rawUD) : null;
+      const udCell = udInfo
+        ? '<span style="color:'+udInfo.color+'; font-weight:600;">'+escapeHtml(udInfo.label)+'</span>'+(udInfo.costLabel ? '<br><span style="font-size:11px; color:'+udInfo.color+';">'+udInfo.costLabel+'</span>' : '')
+        : '<span style="color:var(--text-muted);">—</span>';
       html += '<tr>'+ 
         '<td class="mono">'+e.date+'</td>'+ 
         '<td class="mono">'+escapeHtml(e.plant || getPlant(e.facility) || '—')+'</td>'+ 
@@ -2738,7 +3017,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
         '<td class="mono">'+escapeHtml(e.batch||'—')+'</td>'+ 
         '<td class="mono">'+escapeHtml(e.workOrder||'—')+'</td>'+ 
         '<td class="mono">'+escapeHtml(e.orderType||'—')+'</td>'+ 
-        '<td>'+ (getQualityForPackaging(e) ? '<span class="quality-badge '+getQualityForPackaging(e).worst+'">'+qualityLabel(getQualityForPackaging(e).worst)+'</span>' : '<span class="quality-badge ok">אין חריגה</span>') +'</td>'+ 
+        '<td>'+udCell+'</td>'+ 
         '<td>'+escapeHtml(e.packagingType||'—')+'</td>'+ 
         '<td>'+escapeHtml(e.shift||'—')+'</td>'+ 
         '<td class="mono">'+fmt(e.production)+'</td>'+ 
@@ -2784,7 +3063,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     });
   }
 
-  const TAB_LABELS = { day:'יום אחרון', period:'תקופה מותאמת', month:'חודשי', quarter:'רבעוני', year:'שנתי' };
+  const TAB_LABELS = { day:'יום אחרון', period:'תקופה מותאמת', month:'חודשי', quarter:'רבעוני', year:'שנתי', quality:'איכות' };
   function facilitySummaryText(){
     if(selectedFacilities === null) return 'כל המתקנים';
     return 'מתקן(ים): ' + Array.from(selectedFacilities).sort().join(', ');
@@ -3840,6 +4119,27 @@ function exportToWhatsApp(){
 function renderAll(){
     if(!loaded) return;
     root.querySelectorAll('.tabs .tab-btn').forEach(b=> b.classList.toggle('active', b.dataset.tab===tab));
+
+    // Quality tab — show its own content, hide production panels
+    const isQualityTab = tab === 'quality';
+    const mainPanels = ['kpiGrid','facilityTargetGaugesContainer','advancedDashboard','packagingBreakdownPanel',
+      'shiftComparisonPanel','operationalInsights','notesPanel','eventsPanel','qualityPanel',
+      'chartWrap','entriesTableWrap','filterBar','facilityBar'];
+    const qualityTabContent = root.querySelector('#qualityTabContent');
+
+    if(isQualityTab){
+      // Hide production panels
+      mainPanels.forEach(id=>{ const el = root.querySelector('#'+id); if(el) el.style.display='none'; });
+      if(qualityTabContent) qualityTabContent.style.display='';
+      renderQualityTab();
+      root.querySelector('#entryCount').textContent = entries.length + ' רשומות ייצור' + (qualityEntries.length > 0 ? ' · ' + qualityEntries.length + ' שורות איכות' : '');
+      return;
+    }
+
+    // Restore production panels
+    mainPanels.forEach(id=>{ const el = root.querySelector('#'+id); if(el) el.style.display=''; });
+    if(qualityTabContent) qualityTabContent.style.display='none';
+
     renderFacilityBar();
     renderFilterBar();
     const view = getView();
@@ -3856,13 +4156,13 @@ function renderAll(){
     renderTable(view);
     const toggleTableBtn = root.querySelector('#toggleTableBtn');
     if(toggleTableBtn) toggleTableBtn.textContent = tableExpanded ? 'הסתר פירוט רשומות' : 'הצג פירוט רשומות';
-    root.querySelector('#entryCount').textContent = entries.length + ' רשומות במערכת';
+    root.querySelector('#entryCount').textContent = entries.length + ' רשומות ייצור' + (qualityEntries.length > 0 ? ' · ' + qualityEntries.length + ' שורות איכות' : '');
     const badge = root.querySelector('#storageStatusBadge');
     if(badge){
-      if(_sharedStorageAvailable === true){
+      if(_netlifyAvailable === true){
         badge.textContent = '🟢 מצב שיתופי — כל המשתמשים רואים נתונים אלו';
         badge.className = 'storage-status ok';
-      } else if(_sharedStorageAvailable === false){
+      } else if(_netlifyAvailable === false){
         badge.textContent = '🟡 גיבוי מקומי בלבד — האחסון השיתופי לא זמין כרגע, נתונים נשמרים בדפדפן זה בלבד';
         badge.className = 'storage-status warn';
       } else {
@@ -3875,6 +4175,111 @@ function renderAll(){
       '<div style="font-size:13px; color:var(--text-muted); margin-top:4px;">'+
         'תצוגה: '+TAB_LABELS[tab]+' &nbsp;•&nbsp; טווח: '+view.rangeLabel+' &nbsp;•&nbsp; '+facilitySummaryText()+' &nbsp;•&nbsp; הופק בתאריך '+todayISO()+
       '</div>';
+  }
+
+  function renderQualityTab(){
+    const container = root.querySelector('#qualityTabContent');
+    if(!container) return;
+
+    if(qualityEntries.length === 0){
+      container.innerHTML =
+        '<div class="panel" style="margin-top:16px;">'+
+          '<div class="panel-head"><div class="panel-title">🔬 טאב איכות — רשומות מנות</div></div>'+
+          '<div class="table-empty" style="padding:32px;">'+
+            'לא נטענו נתוני איכות עדיין.<br>לחץ על <strong>🧪 טעינת איכות</strong> בסרגל הכלים למעלה.'+
+          '</div>'+
+        '</div>';
+      return;
+    }
+
+    // Build joined data: quality entries enriched with production data by material+batch
+    // Build lookup from production: materialCode+batch -> production entry
+    const prodLookup = {};
+    entries.forEach(e=>{
+      if(!e.materialCode && !e.workOrder) return;
+      const matNorm = String(e.materialCode||'').replace(/\.0$/,'').trim();
+      const batchNorm = String(e.batch||'').replace(/^0+/,'').trim();
+      if(matNorm && batchNorm){
+        const key = matNorm+'|'+batchNorm;
+        if(!prodLookup[key]) prodLookup[key] = e;
+      }
+    });
+
+    // Deduplicate quality: latest udDate per material+batch
+    const bestByKey = {};
+    qualityEntries.forEach(q=>{
+      const matNorm = String(q.materialCode||'').replace(/\.0$/,'').trim();
+      const batchNorm = String(q.batch||'').replace(/^0+/,'').trim();
+      if(!batchNorm) return;
+      const key = matNorm+'|'+batchNorm;
+      const existing = bestByKey[key];
+      if(!existing || (q.udDate||0) > (existing.udDate||0)){
+        bestByKey[key] = q;
+      }
+    });
+
+    // Count by UD Code category
+    const udCounts = {};
+    Object.values(bestByKey).forEach(q=>{
+      const info = udCodeInfo(q.udCode);
+      const cat = (info && info.costLabel) || q.udCode || 'אחר';
+      if(!udCounts[cat]) udCounts[cat] = {count:0, color:(info&&info.color)||'var(--text-muted)'};
+      udCounts[cat].count++;
+    });
+
+    const totalBatches = Object.keys(bestByKey).length;
+
+    let html = '<div class="panel" style="margin-top:16px;">'+
+      '<div class="panel-head">'+
+        '<div><div class="panel-title">🔬 רשומות איכות — סיכום לפי מנה</div>'+
+        '<div class="kpi-sub">'+totalBatches+' מנות ייחודיות · '+qualityEntries.length+' שורות מקובץ האיכות</div></div>'+
+        '<label for="qualityFileInput" class="panel-toggle-btn" style="cursor:pointer;">📂 טעינת קובץ איכות</label>'+
+      '</div>';
+
+    // Summary cards
+    html += '<div class="insight-stats" style="margin-bottom:16px;">';
+    Object.entries(udCounts).sort((a,b)=>b[1].count-a[1].count).forEach(([cat,{count,color}])=>{
+      html += '<div style="background:var(--panel-2);border-radius:8px;padding:10px 16px;display:flex;align-items:center;gap:10px;">'+
+        '<span style="color:'+color+';font-size:22px;font-weight:800;">'+count+'</span>'+
+        '<span style="color:'+color+';font-size:12px;">'+escapeHtml(cat)+'</span></div>';
+    });
+    html += '</div>';
+
+    // Full table sorted by udDate desc
+    const sortedRows = Object.values(bestByKey).sort((a,b)=>(b.udDate||0)-(a.udDate||0));
+    html += '<div class="table-scroll"><table><thead><tr>'+
+      '<th>Batch</th><th>מק"ט חומר</th><th>שם חומר</th><th>UD Code</th><th>עלות</th><th>QA Status</th><th>תאריך החלטה</th><th>מתקן</th>'+
+      '</tr></thead><tbody>';
+
+    sortedRows.slice(0, 500).forEach(q=>{
+      const info = udCodeInfo(q.udCode);
+      const color = info ? info.color : 'var(--text-muted)';
+      const costLabel = info ? info.costLabel : '';
+      const udDateStr = q.udDate ? (() => {
+        // Convert Excel serial or timestamp to date string
+        if(q.udDate > 1000000000000) return new Date(q.udDate).toLocaleDateString('he-IL');
+        if(q.udDate > 1000) {
+          const d = new Date((q.udDate - 25569) * 86400 * 1000);
+          return d.toLocaleDateString('he-IL');
+        }
+        return '';
+      })() : '';
+      html += '<tr>'+
+        '<td class="mono">'+escapeHtml(String(q.batch||'—').replace(/^0+/,'')||'—')+'</td>'+
+        '<td class="mono">'+escapeHtml(String(q.materialCode||'—').replace(/\.0$/,''))+'</td>'+
+        '<td>'+escapeHtml(q.materialName||'—')+'</td>'+
+        '<td style="color:'+color+';font-weight:600;">'+escapeHtml(q.udCode||'—')+'</td>'+
+        '<td style="color:'+color+';font-size:11px;">'+escapeHtml(costLabel)+'</td>'+
+        '<td>'+escapeHtml(q.qaApproval||'—')+'</td>'+
+        '<td class="mono">'+udDateStr+'</td>'+
+        '<td class="mono">'+escapeHtml(String(q.facility||'—'))+'</td>'+
+        '</tr>';
+    });
+    if(sortedRows.length > 500){
+      html += '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:8px;">מוצגות 500 מתוך '+sortedRows.length+' מנות</td></tr>';
+    }
+    html += '</tbody></table></div></div>';
+    container.innerHTML = html;
   }
 
   /* ---------------- modal: add entry ---------------- */
@@ -4060,6 +4465,7 @@ function renderAll(){
     'סוג_אריזה':'packaging_type','סוג אריזה':'packaging_type','packaging_type':'packaging_type',
     'description':'packaging_type_text','תיאור':'packaging_type_text',
     'שם_חומר':'material_name','שם חומר':'material_name','material description':'material_name','material discription':'material_name',
+    'material':'material_code','מקט':'material_code','material #':'material_code',
     'פקודת_עבודה':'work_order','פקודת עבודה':'work_order','order':'work_order','work order':'work_order',
     'order type':'order_type','ordertype':'order_type','סוג הזמנה':'order_type','סוג_הזמנה':'order_type',
     'ייצור':'production','production':'production','production_qty':'production',
@@ -4222,6 +4628,7 @@ function renderAll(){
         })(),
         packagingType: packagingTypeVal,
         materialName: getStr(cols, map.material_name, ''),
+        materialCode: getStr(cols, map.material_code, '').replace(/\.0$/, '').trim(),
         workOrder: getStr(cols, map.work_order, ''),
         orderType: getStr(cols, map.order_type, ''),
         production: productionVal,
@@ -4243,7 +4650,7 @@ function renderAll(){
       const name = file.name.toLowerCase();
       let headerRow, dataRows;
       if(name.endsWith('.xlsx') || name.endsWith('.xls')){
-        if(typeof XLSX === 'undefined'){ showToast('ספריית קריאת האקסל לא נטענה. נסו לרענן את העמוד.', true); return; }
+        if(typeof XLSX === 'undefined'){ showToast('ספריית Excel לא נטענה — ודאו שיש חיבור אינטרנט ורעננו את הדף (Ctrl+R / Cmd+R).', true); return; }
         const buf = await file.arrayBuffer();
         const wb = XLSX.read(buf, {type:'array', cellDates:false});
         const sheet = wb.Sheets[wb.SheetNames[0]];
@@ -4263,9 +4670,18 @@ function renderAll(){
       const rows = processRows(headerRow, dataRows);
       if(rows===null){ showToast('לא נמצאה עמודת תאריך בקובץ. בדקו את הכותרות.', true); return; }
       if(rows.length===0){ showToast('לא נמצאו שורות תקינות בקובץ', true); return; }
-      entries = entries.concat(rows);
+      const existingWorkOrders = new Set(entries.map(e=>e.workOrder).filter(Boolean));
+      const existingKeys = new Set(entries.map(e=>e.date+'|'+e.facility+'|'+e.packaging+'|'+e.production));
+      const newRows = rows.filter(r=>{
+        if(r.workOrder && existingWorkOrders.has(r.workOrder)) return false;
+        if(existingKeys.has(r.date+'|'+r.facility+'|'+r.packaging+'|'+r.production)) return false;
+        return true;
+      });
+      const skipped = rows.length - newRows.length;
+      if(newRows.length===0){ showToast('כל '+rows.length+' השורות כבר קיימות — לא נוסף חדש'); return; }
+      entries = entries.concat(newRows);
       const ok = await persist();
-      if(ok){ showToast('יובאו '+rows.length+' רשומות בהצלחה'); renderAll(); }
+      if(ok){ showToast(newRows.length+' רשומות יובאו'+(skipped>0?' ('+skipped+' כפולות דולגו)':'')); renderAll(); }
     } catch(e){
       showToast('שגיאה בקריאת הקובץ', true);
     }
@@ -4288,7 +4704,7 @@ function renderAll(){
           '<div class="brand-mark">⚙</div>'+
           '<div><h1>לוח בקרה — ייצור ואריזה</h1><p><span id="entryCount">טוען נתונים…</span> <span id="storageStatusBadge" class="storage-status"></span></p></div>'+
         '</div>'+
-        '<div class="topbar-actions"><button class="tab-btn" id="addEventTopBtn" style="background:rgba(139,183,255,0.12);color:#8BB7FF;font-size:12px;padding:6px 14px;">+ הוסף אירוע</button><button class="tab-btn" id="advancedDashboardBtn" style="background:var(--teal-soft);color:var(--green);font-size:12px;padding:6px 14px;">📊 דשבורד חדש</button><button class="tab-btn" id="excelAnalyzedExportBtn" style="background:rgba(124,217,146,0.12);color:#7CD992;font-size:12px;padding:6px 14px;">📥 ייצוא ניתוח לאקסל</button><button class="tab-btn" id="qualityImportBtn" style="background:rgba(239,68,68,0.12);color:var(--red);font-size:12px;padding:6px 14px;">🧪 טעינת איכות</button><button class="tab-btn" id="whatsappExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📲 WhatsApp טקסט</button><button class="tab-btn" id="whatsappImageExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📸 צילום דשבורד</button><button class="tab-btn" id="targetsProdBtn" style="background:var(--amber-soft);color:var(--amber);font-size:12px;padding:6px 14px;">⚙ יעדי ייצור</button><button class="tab-btn" id="targetsBtn" style="background:var(--teal-soft);color:var(--teal);font-size:12px;padding:6px 14px;">⚙ יעדי אריזה</button><button class="tab-btn" id="resetBtn" style="background:rgba(255,255,255,0.05);color:var(--text-muted);font-size:12px;padding:6px 14px;">איפוס</button></div>'+
+        '<div class="topbar-actions"><button class="tab-btn" id="addEventTopBtn" style="background:rgba(139,183,255,0.12);color:#8BB7FF;font-size:12px;padding:6px 14px;">+ הוסף אירוע</button><button class="tab-btn" id="advancedDashboardBtn" style="background:var(--teal-soft);color:var(--green);font-size:12px;padding:6px 14px;">📊 דשבורד חדש</button><button class="tab-btn" id="excelAnalyzedExportBtn" style="background:rgba(124,217,146,0.12);color:#7CD992;font-size:12px;padding:6px 14px;">📥 ייצוא ניתוח לאקסל</button><label for="qualityFileInput" class="tab-btn" style="background:rgba(239,68,68,0.12);color:var(--red);font-size:12px;padding:6px 14px;cursor:pointer;">🧪 טעינת איכות</label><button class="tab-btn" id="whatsappExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📲 WhatsApp טקסט</button><button class="tab-btn" id="whatsappImageExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📸 צילום דשבורד</button><button class="tab-btn" id="targetsProdBtn" style="background:var(--amber-soft);color:var(--amber);font-size:12px;padding:6px 14px;">⚙ יעדי ייצור</button><button class="tab-btn" id="targetsBtn" style="background:var(--teal-soft);color:var(--teal);font-size:12px;padding:6px 14px;">⚙ יעדי אריזה</button><button class="tab-btn" id="resetBtn" style="background:rgba(255,255,255,0.05);color:var(--text-muted);font-size:12px;padding:6px 14px;">איפוס</button></div>'+
       '</div>'+
       '<div class="tabs">'+
         '<button class="tab-btn" data-tab="day">יום אחרון</button>'+
@@ -4296,6 +4712,7 @@ function renderAll(){
         '<button class="tab-btn" data-tab="month">חודשי</button>'+
         '<button class="tab-btn" data-tab="quarter">רבעוני</button>'+
         '<button class="tab-btn" data-tab="year">שנתי</button>'+
+        '<button class="tab-btn" data-tab="quality">🔬 איכות</button>'+
       '</div>'+
       '<div class="facility-bar" id="facilityBar"></div>'+
       '<div class="filter-bar" id="filterBar"></div>'+
@@ -4304,6 +4721,7 @@ function renderAll(){
       '<div id="packagingTypeBreakdown"></div>'+
       '<div id="shiftComparisonPanel"></div>'+
       '<div id="operationalInsights"></div><div id="notesPanel"></div><div id="eventsPanel"></div><div id="qualityPanel"></div>'+
+      '<div id="qualityTabContent" style="display:none;"></div>'+
       '<div class="panel">'+
         '<div class="panel-head">'+
           '<div><div class="panel-title">מגמת ייצור ואריזה</div><div class="kpi-sub" id="chartRangeLabel" style="margin-top:2px;"></div></div>'+
@@ -4489,20 +4907,24 @@ root.querySelector('#printBtn').onclick = ()=> window.print();
     await loadEventsEntries();
     renderAll();
   
-  // quality delegated file loader
-  document.addEventListener('click', function(e){
-    const btn = e.target && e.target.closest ? e.target.closest('#qualityImportBtn') : null;
-    if(btn){
-      const input = document.querySelector('#qualityFileInput') || root.querySelector('#qualityFileInput');
-      if(input) input.click();
-      else showToast('שדה טעינת קובץ איכות לא נמצא', true);
-    }
-  });
+  // quality file input — label-for is the primary trigger, JS click is the fallback
   document.addEventListener('change', function(e){
     if(e.target && e.target.id === 'qualityFileInput'){
       const file = e.target.files && e.target.files[0];
       if(file) handleQualityFile(file);
       e.target.value = '';
+    }
+  });
+
+  // Fallback: if label-for doesn't open file dialog, catch click on the label and force it
+  document.addEventListener('click', function(e){
+    const lbl = e.target && e.target.closest ? e.target.closest('label[for="qualityFileInput"]') : null;
+    if(lbl){
+      const inp = document.getElementById('qualityFileInput');
+      if(inp){
+        e.preventDefault();
+        inp.click();
+      }
     }
   });
 
