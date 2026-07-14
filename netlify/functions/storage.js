@@ -1,4 +1,4 @@
-const { getStore } = require('@netlify/blobs');
+const store = getStore('production-dashboard');
 
 exports.handler = async (event) => {
   const headers = {
