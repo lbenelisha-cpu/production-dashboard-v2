@@ -584,12 +584,14 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   const _local = _localFallback();
 
   async function _isNetlifyAvailable(){
-    // Wait for the ping to complete (up to 6 seconds)
+    // Wait for the ping to complete (max 3 seconds)
     let waited = 0;
-    while(_netlifyAvailable === null && waited < 60){
+    while(_netlifyAvailable === null && waited < 30){
       await new Promise(r=>setTimeout(r,100));
       waited++;
     }
+    // If still null after 3 seconds, assume available (we're on Netlify)
+    if(_netlifyAvailable === null) _netlifyAvailable = true;
     return _netlifyAvailable === true;
   }
 
