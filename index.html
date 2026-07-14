@@ -581,8 +581,9 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 
   async function _isNetlifyAvailable(){ return _netlifyAvailable; }
 
-  if(!window.storage){
-    window.storage = {
+  let _dashStorage;
+  if(!_dashStorage){
+    _dashStorage = {
       async get(key){
         if(await _isNetlifyAvailable()){
           try {
@@ -834,7 +835,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       });
       const compact = JSON.stringify(compactMap);
       try {
-        await window.storage.set(QUALITY_STORAGE_KEY, compact, true);
+        await _dashStorage.set(QUALITY_STORAGE_KEY, compact, true);
       } catch(e){
         localStorage.setItem(QUALITY_STORAGE_KEY, compact);
       }
@@ -853,7 +854,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     // If not in localStorage, try Netlify (may be slow)
     if(!raw){
       try {
-        const res = await window.storage.get(QUALITY_STORAGE_KEY, true);
+        const res = await _dashStorage.get(QUALITY_STORAGE_KEY, true);
         raw = res && res.value ? res.value : null;
         // Cache locally for next time
         if(raw) try { localStorage.setItem(QUALITY_STORAGE_KEY, raw); } catch(e){}
@@ -1467,12 +1468,12 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     if(_netlifyAvailable){
       (async()=>{
         try {
-          const idxRes = await window.storage.get(ENTRIES_INDEX_KEY, true);
+          const idxRes = await _dashStorage.get(ENTRIES_INDEX_KEY, true);
           const months = idxRes && idxRes.value ? JSON.parse(idxRes.value) : null;
           if(months && Array.isArray(months) && months.length > 0){
             let netlifyEntries = [];
             const results = await Promise.all(months.map(m =>
-              window.storage.get(ENTRIES_KEY_PREFIX + m, true).catch(()=>null)
+              _dashStorage.get(ENTRIES_KEY_PREFIX + m, true).catch(()=>null)
             ));
             results.forEach(r=>{
               if(r && r.value){
@@ -1511,7 +1512,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   async function loadTargets(){
     let loadedTargets = null;
     try {
-      const res = await window.storage.get(STORAGE_KEY_TARGETS, true);
+      const res = await _dashStorage.get(STORAGE_KEY_TARGETS, true);
       loadedTargets = res && res.value ? JSON.parse(res.value) : null;
     } catch(e){
       try { const local = localStorage.getItem(STORAGE_KEY_TARGETS); loadedTargets = local ? JSON.parse(local) : null; }
@@ -1538,7 +1539,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 
   async function persistTargets(){
     try {
-      const res = await window.storage.set(STORAGE_KEY_TARGETS, JSON.stringify(packagingTargets), true);
+      const res = await _dashStorage.set(STORAGE_KEY_TARGETS, JSON.stringify(packagingTargets), true);
 
       return true;
     } catch(e){
@@ -1550,7 +1551,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   async function loadProductionTargets(){
     let loadedTargets = null;
     try {
-      const res = await window.storage.get(STORAGE_KEY_PROD_TARGETS, true);
+      const res = await _dashStorage.get(STORAGE_KEY_PROD_TARGETS, true);
       loadedTargets = res && res.value ? JSON.parse(res.value) : null;
     } catch(e){
       try { const local = localStorage.getItem(STORAGE_KEY_PROD_TARGETS); loadedTargets = local ? JSON.parse(local) : null; }
@@ -1568,7 +1569,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 
   async function persistProductionTargets(){
     try {
-      const res = await window.storage.set(STORAGE_KEY_PROD_TARGETS, JSON.stringify(productionTargets), true);
+      const res = await _dashStorage.set(STORAGE_KEY_PROD_TARGETS, JSON.stringify(productionTargets), true);
 
       return true;
     } catch(e){
@@ -1796,7 +1797,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 
   async function loadPeriodPackagingTargets(){
     try {
-      const res = await window.storage.get(STORAGE_KEY_PERIOD_TARGETS, true);
+      const res = await _dashStorage.get(STORAGE_KEY_PERIOD_TARGETS, true);
       periodPackagingTargets = res && res.value ? JSON.parse(res.value) : {};
     } catch(e){
       periodPackagingTargets = {};
@@ -1805,7 +1806,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 
   async function persistPeriodPackagingTargets(){
     try {
-      const res = await window.storage.set(STORAGE_KEY_PERIOD_TARGETS, JSON.stringify(periodPackagingTargets), true);
+      const res = await _dashStorage.set(STORAGE_KEY_PERIOD_TARGETS, JSON.stringify(periodPackagingTargets), true);
 
       return true;
     } catch(e){
@@ -1878,7 +1879,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 
   async function loadEventsEntries(){
     try {
-      const res = await window.storage.get(STORAGE_KEY_EVENTS, true);
+      const res = await _dashStorage.get(STORAGE_KEY_EVENTS, true);
       eventsEntries = res && res.value ? JSON.parse(res.value) : [];
     } catch(e){
       eventsEntries = [];
@@ -1887,7 +1888,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 
   async function persistEventsEntries(){
     try {
-      const res = await window.storage.set(STORAGE_KEY_EVENTS, JSON.stringify(eventsEntries), true);
+      const res = await _dashStorage.set(STORAGE_KEY_EVENTS, JSON.stringify(eventsEntries), true);
 
       return true;
     } catch(e){
@@ -1908,19 +1909,19 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 
       let prevMonths = [];
       try {
-        const idxRes = await window.storage.get(ENTRIES_INDEX_KEY, true);
+        const idxRes = await _dashStorage.get(ENTRIES_INDEX_KEY, true);
         prevMonths = (idxRes && idxRes.value) ? JSON.parse(idxRes.value) : [];
       } catch(e){ prevMonths = []; }
       const monthsToDelete = prevMonths.filter(m => !monthsNow.includes(m));
 
       const writes = Object.keys(byMonth).map(mk =>
-        window.storage.set(mk, JSON.stringify(byMonth[mk]), true)
+        _dashStorage.set(mk, JSON.stringify(byMonth[mk]), true)
       );
       const deletes = monthsToDelete.map(m =>
-        window.storage.delete(ENTRIES_KEY_PREFIX + m, true).catch(()=>null)
+        _dashStorage.delete(ENTRIES_KEY_PREFIX + m, true).catch(()=>null)
       );
-      const indexWrite = window.storage.set(ENTRIES_INDEX_KEY, JSON.stringify(monthsNow), true);
-      const legacyClear = window.storage.delete(STORAGE_KEY, true).catch(()=>null);
+      const indexWrite = _dashStorage.set(ENTRIES_INDEX_KEY, JSON.stringify(monthsNow), true);
+      const legacyClear = _dashStorage.delete(STORAGE_KEY, true).catch(()=>null);
 
       await Promise.all([...writes, indexWrite, legacyClear, ...deletes]);
       return true;
