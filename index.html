@@ -1438,48 +1438,53 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   async function loadEntries(){
     entries = [];
     let usedChunkedFormat = false;
-    let serverAvailable = true;
+
+    // STEP 1: Load immediately from localStorage for fast display
     try {
-      const idxRes = await window.storage.get(ENTRIES_INDEX_KEY, true);
-      const months = idxRes && idxRes.value ? JSON.parse(idxRes.value) : null;
+      const idxLocal = localStorage.getItem(ENTRIES_INDEX_KEY);
+      const months = idxLocal ? JSON.parse(idxLocal) : null;
       if(months && Array.isArray(months) && months.length > 0){
         usedChunkedFormat = true;
-        const results = await Promise.all(months.map(m =>
-          window.storage.get(ENTRIES_KEY_PREFIX + m, true).catch(()=>null)
-        ));
-        results.forEach(r=>{
-          if(r && r.value){
-            try { entries = entries.concat(JSON.parse(r.value)); } catch(e){}
-          }
+        months.forEach(m=>{
+          const raw = localStorage.getItem(ENTRIES_KEY_PREFIX + m);
+          if(raw){ try { entries = entries.concat(JSON.parse(raw)); } catch(e2){} }
         });
       }
-    } catch(e){
-      serverAvailable = false;
-      // Fallback: read from localStorage directly
-      try {
-        const idxLocal = localStorage.getItem(ENTRIES_INDEX_KEY);
-        const months = idxLocal ? JSON.parse(idxLocal) : null;
-        if(months && Array.isArray(months) && months.length > 0){
-          usedChunkedFormat = true;
-          months.forEach(m=>{
-            const raw = localStorage.getItem(ENTRIES_KEY_PREFIX + m);
-            if(raw){ try { entries = entries.concat(JSON.parse(raw)); } catch(e2){} }
-          });
-        }
-      } catch(e2){ entries = []; }
+      if(!usedChunkedFormat){
+        const legacy = localStorage.getItem(STORAGE_KEY);
+        if(legacy){ try { entries = JSON.parse(legacy); usedChunkedFormat = true; } catch(e){} }
+      }
+    } catch(e){ entries = []; }
+
+    // Mark as loaded immediately so UI can render
+    loaded = true;
+
+    // STEP 2: Try Netlify in background (don't block UI)
+    if(_netlifyAvailable){
+      (async()=>{
+        try {
+          const idxRes = await window.storage.get(ENTRIES_INDEX_KEY, true);
+          const months = idxRes && idxRes.value ? JSON.parse(idxRes.value) : null;
+          if(months && Array.isArray(months) && months.length > 0){
+            let netlifyEntries = [];
+            const results = await Promise.all(months.map(m =>
+              window.storage.get(ENTRIES_KEY_PREFIX + m, true).catch(()=>null)
+            ));
+            results.forEach(r=>{
+              if(r && r.value){
+                try { netlifyEntries = netlifyEntries.concat(JSON.parse(r.value)); } catch(e){}
+              }
+            });
+            if(netlifyEntries.length > 0){
+              entries = netlifyEntries;
+              renderAll();
+            }
+          }
+        } catch(e){ /* silent — already showing localStorage data */ }
+      })();
     }
 
-    if(!usedChunkedFormat){
-      try {
-        const legacy = serverAvailable
-          ? await window.storage.get(STORAGE_KEY, true).catch(()=>null)
-          : { value: localStorage.getItem(STORAGE_KEY) };
-        if(legacy && legacy.value){
-          entries = JSON.parse(legacy.value);
-        }
-      } catch(e){ entries = []; }
-    }
-
+    // Run migrations on locally loaded entries
     let migrated = false;
     entries.forEach(e=>{
       if(e.facility && OLD_TO_NEW_FACILITY[e.facility]){
@@ -1496,8 +1501,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
         migrated = true;
       }
     });
-    loaded = true;
-    if(migrated || !usedChunkedFormat) await persist();
+    if(migrated) await persist();
   }
 
   async function loadTargets(){
