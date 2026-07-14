@@ -538,13 +538,18 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   // הנתונים נשמרים בפועל בצד השרת (Netlify Function + Netlify Blobs), לא בדפדפן.
   // אם הפונקציה לא זמינה (למשל פתיחת הקובץ ישירות בלי Netlify) — חוזרים אוטומטית ל-localStorage המקומי כגיבוי.
   const STORAGE_API_URL = '/.netlify/functions/storage';
-  let _netlifyAvailable = false; // default: assume local file, use localStorage
+  let _netlifyAvailable = null; // null = not checked yet
 
-  // בדיקה מהירה האם שרת Netlify זמין — אם לא, כל הפעולות יעברו ישירות ל-localStorage
+  // Check if Netlify function is available — use longer timeout
   (async()=>{
     try {
-      const res = await fetch(STORAGE_API_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({action:'get',key:'__ping__'}), signal: AbortSignal.timeout(2000) });
-      _netlifyAvailable = res.ok;
+      const res = await fetch(STORAGE_API_URL, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({action:'get',key:'__ping__'}),
+        signal: AbortSignal.timeout(5000)
+      });
+      _netlifyAvailable = res.ok || res.status === 400; // 400 = function exists but missing params = still available
     } catch(e){ _netlifyAvailable = false; }
   })();
 
@@ -578,38 +583,51 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 
   const _local = _localFallback();
 
+  async function _isNetlifyAvailable(){
+    // Wait for the ping to complete (up to 6 seconds)
+    let waited = 0;
+    while(_netlifyAvailable === null && waited < 60){
+      await new Promise(r=>setTimeout(r,100));
+      waited++;
+    }
+    return _netlifyAvailable === true;
+  }
+
   if(!window.storage){
     window.storage = {
       async get(key){
-        if(!_netlifyAvailable) return _local.get(key);
-        try {
-          const data = await _callStorageApi('get', key);
-          if(data && data.value != null) return { value: data.value };
-          return _local.get(key);
-        } catch(e){
-          _netlifyAvailable = false;
-          return _local.get(key);
+        if(await _isNetlifyAvailable()){
+          try {
+            const data = await _callStorageApi('get', key);
+            if(data && data.value != null) return { value: data.value };
+            return null;
+          } catch(e){
+            _netlifyAvailable = false;
+          }
         }
+        return _local.get(key);
       },
       async set(key, value){
-        if(!_netlifyAvailable) return _local.set(key, value);
-        try {
-          await _callStorageApi('set', key, value);
-          return { ok: true };
-        } catch(e){
-          _netlifyAvailable = false;
-          return _local.set(key, value);
+        if(await _isNetlifyAvailable()){
+          try {
+            await _callStorageApi('set', key, value);
+            return { ok: true };
+          } catch(e){
+            _netlifyAvailable = false;
+          }
         }
+        return _local.set(key, value);
       },
       async delete(key){
-        if(!_netlifyAvailable) return _local.delete(key);
-        try {
-          await _callStorageApi('delete', key);
-          return { ok: true };
-        } catch(e){
-          _netlifyAvailable = false;
-          return _local.delete(key);
+        if(await _isNetlifyAvailable()){
+          try {
+            await _callStorageApi('delete', key);
+            return { ok: true };
+          } catch(e){
+            _netlifyAvailable = false;
+          }
         }
+        return _local.delete(key);
       }
     };
   }
