@@ -846,20 +846,25 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   }
 
   async function loadQuality(){
+    // Try localStorage first (instant)
     let raw = null;
-    try {
-      const res = await window.storage.get(QUALITY_STORAGE_KEY, true);
-      raw = res && res.value ? res.value : null;
-    } catch(e){
-      try { raw = localStorage.getItem(QUALITY_STORAGE_KEY); } catch(e2){}
+    try { raw = localStorage.getItem(QUALITY_STORAGE_KEY); } catch(e){}
+
+    // If not in localStorage, try Netlify (may be slow)
+    if(!raw){
+      try {
+        const res = await window.storage.get(QUALITY_STORAGE_KEY, true);
+        raw = res && res.value ? res.value : null;
+        // Cache locally for next time
+        if(raw) try { localStorage.setItem(QUALITY_STORAGE_KEY, raw); } catch(e){}
+      } catch(e){}
     }
+
     if(raw){
       try {
         const parsed = JSON.parse(raw);
-        // Check if it's the new compact format (batch->udCode map)
         const firstVal = Object.values(parsed)[0];
         if(firstVal && typeof firstVal === 'object' && 'udCode' in firstVal){
-          // Compact format — rebuild qualityEntries as minimal rows
           qualityEntries = Object.entries(parsed).map(([batch, v])=>({
             id: 'q_'+batch, batch, udCode: v.udCode, udDate: v.udDate||0,
             date:'', workOrder:'', materialName:'', qaApproval:'', resultStatus:'',
@@ -867,7 +872,6 @@ html, body { margin:0; padding:0; background:#0A0D12; }
             inspectionLot:'', facility:'', line:'', testName:'', remarks:'', createdAt:0
           }));
         } else {
-          // Old full format
           qualityEntries = Array.isArray(parsed) ? parsed : [];
         }
       } catch(e){ qualityEntries = []; }
@@ -4911,11 +4915,13 @@ root.querySelector('#printBtn').onclick = ()=> window.print();
   /* ---------------- init ---------------- */
   (async function init(){
     await loadEntries();
-    await loadQuality();
-    await loadTargets();
-    await loadProductionTargets();
-    await loadPeriodPackagingTargets();
-    await loadEventsEntries();
+    // Load targets from localStorage immediately (non-blocking)
+    try { await Promise.race([ loadTargets(), new Promise(r=>setTimeout(r,3000)) ]); } catch(e){}
+    try { await Promise.race([ loadProductionTargets(), new Promise(r=>setTimeout(r,2000)) ]); } catch(e){}
+    try { await Promise.race([ loadPeriodPackagingTargets(), new Promise(r=>setTimeout(r,2000)) ]); } catch(e){}
+    try { await Promise.race([ loadEventsEntries(), new Promise(r=>setTimeout(r,2000)) ]); } catch(e){}
+    // Load quality silently in background
+    loadQuality().catch(()=>{});
     renderAll();
   
   // quality file input — label-for is the primary trigger, JS click is the fallback
