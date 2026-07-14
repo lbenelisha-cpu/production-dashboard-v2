@@ -821,7 +821,6 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 
   async function persistQuality(){
     try {
-      // First deduplicate by udDate, then store only udCode string
       const bestByDate = {};
       qualityEntries.forEach(q=>{
         if(!q.batch || !q.udCode) return;
@@ -831,13 +830,23 @@ html, body { margin:0; padding:0; background:#0A0D12; }
           bestByDate[bk] = { udCode: q.udCode, udDate: q.udDate||0 };
         }
       });
-      // Store only batch->udCode (smallest possible)
       const compactMap = {};
       Object.entries(bestByDate).forEach(([batch, v])=>{ compactMap[batch] = v.udCode; });
       const compact = JSON.stringify(compactMap);
-      console.log('Quality compact size:', (compact.length/1024).toFixed(1), 'KB, batches:', Object.keys(compactMap).length);
-      try { localStorage.setItem(QUALITY_STORAGE_KEY, compact); } catch(e){ console.warn('localStorage full'); }
-      try { await _dashStorage.set(QUALITY_STORAGE_KEY, compact); } catch(e){}
+      console.log('persistQuality: batches='+Object.keys(compactMap).length+', size='+Math.round(compact.length/1024)+'KB');
+      
+      // Save to localStorage
+      try { 
+        localStorage.setItem(QUALITY_STORAGE_KEY, compact);
+        console.log('persistQuality: saved to localStorage OK');
+      } catch(e){ console.warn('persistQuality: localStorage failed:', e.message); }
+      
+      // Save to Netlify
+      try { 
+        await _dashStorage.set(QUALITY_STORAGE_KEY, compact);
+        console.log('persistQuality: saved to Netlify OK');
+      } catch(e){ console.warn('persistQuality: Netlify failed:', e.message); }
+      
       // Update in-memory cache
       qualityBestByKey = {};
       Object.entries(compactMap).forEach(([batch, udCode])=>{
@@ -845,6 +854,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       });
       return true;
     } catch(e2){
+      console.error('persistQuality error:', e2);
       return true;
     }
   }
