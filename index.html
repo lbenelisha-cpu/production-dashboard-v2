@@ -538,32 +538,28 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   // הנתונים נשמרים בפועל בצד השרת (Netlify Function + Netlify Blobs), לא בדפדפן.
   // אם הפונקציה לא זמינה (למשל פתיחת הקובץ ישירות בלי Netlify) — חוזרים אוטומטית ל-localStorage המקומי כגיבוי.
   const STORAGE_API_URL = '/.netlify/functions/storage';
-  let _netlifyAvailable = null; // null = not checked yet
-
-  // Check if Netlify function is available — use longer timeout
-  (async()=>{
-    try {
-      const res = await fetch(STORAGE_API_URL, {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({action:'get',key:'__ping__'}),
-        signal: AbortSignal.timeout(5000)
-      });
-      _netlifyAvailable = res.ok || res.status === 400; // 400 = function exists but missing params = still available
-    } catch(e){ _netlifyAvailable = false; }
-  })();
+  let _netlifyAvailable = true; // always try Netlify first, fall back on error
 
   async function _callStorageApi(action, key, value){
-    const res = await fetch(STORAGE_API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action, key, value })
-    });
-    if(!res.ok) throw new Error('storage api error ' + res.status);
-    return res.json();
+    const controller = new AbortController();
+    const timer = setTimeout(()=>controller.abort(), 8000);
+    try {
+      const res = await fetch(STORAGE_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, key, value }),
+        signal: controller.signal
+      });
+      clearTimeout(timer);
+      if(!res.ok) throw new Error('storage api error ' + res.status);
+      return res.json();
+    } catch(e){
+      clearTimeout(timer);
+      _netlifyAvailable = false; // mark as unavailable on timeout/error
+      throw e;
+    }
   }
 
-  // שכבת אחסון אחידה: מנסה Netlify אם זמין, אחרת localStorage ישירות
   function _localFallback(){
     return {
       async get(key){
@@ -583,17 +579,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 
   const _local = _localFallback();
 
-  async function _isNetlifyAvailable(){
-    // Wait for the ping to complete (max 3 seconds)
-    let waited = 0;
-    while(_netlifyAvailable === null && waited < 30){
-      await new Promise(r=>setTimeout(r,100));
-      waited++;
-    }
-    // If still null after 3 seconds, assume available (we're on Netlify)
-    if(_netlifyAvailable === null) _netlifyAvailable = true;
-    return _netlifyAvailable === true;
-  }
+  async function _isNetlifyAvailable(){ return _netlifyAvailable; }
 
   if(!window.storage){
     window.storage = {
