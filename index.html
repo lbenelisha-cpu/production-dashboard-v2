@@ -821,20 +821,28 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 
   async function persistQuality(){
     try {
-      const compactMap = {};
+      // First deduplicate by udDate, then store only udCode string
+      const bestByDate = {};
       qualityEntries.forEach(q=>{
         if(!q.batch || !q.udCode) return;
         const bk = String(q.batch).trim();
-        const existing = compactMap[bk];
+        const existing = bestByDate[bk];
         if(!existing || (q.udDate||0) > (existing.udDate||0)){
-          compactMap[bk] = { udCode: q.udCode, udDate: q.udDate||0 };
+          bestByDate[bk] = { udCode: q.udCode, udDate: q.udDate||0 };
         }
       });
+      // Store only batch->udCode (smallest possible)
+      const compactMap = {};
+      Object.entries(bestByDate).forEach(([batch, v])=>{ compactMap[batch] = v.udCode; });
       const compact = JSON.stringify(compactMap);
-      // Save to localStorage immediately (fast, local)
-      try { localStorage.setItem(QUALITY_STORAGE_KEY, compact); } catch(e){}
-      // Also save to Netlify (shared, async)
+      console.log('Quality compact size:', (compact.length/1024).toFixed(1), 'KB, batches:', Object.keys(compactMap).length);
+      try { localStorage.setItem(QUALITY_STORAGE_KEY, compact); } catch(e){ console.warn('localStorage full'); }
       try { await _dashStorage.set(QUALITY_STORAGE_KEY, compact); } catch(e){}
+      // Update in-memory cache
+      qualityBestByKey = {};
+      Object.entries(compactMap).forEach(([batch, udCode])=>{
+        qualityBestByKey[batch] = { batch, udCode, udDate:0, materialCode:'', materialName:'', qaApproval:'', facility:'' };
+      });
       return true;
     } catch(e2){
       return true;
@@ -842,31 +850,33 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   }
 
   async function loadQuality(){
-    // Try localStorage first (instant)
     let raw = null;
     try { raw = localStorage.getItem(QUALITY_STORAGE_KEY); } catch(e){}
-
-    // If not in localStorage, try Netlify (may be slow)
     if(!raw){
       try {
         const res = await _dashStorage.get(QUALITY_STORAGE_KEY);
         raw = res && res.value ? res.value : null;
-        // Cache locally for next time
         if(raw) try { localStorage.setItem(QUALITY_STORAGE_KEY, raw); } catch(e){}
       } catch(e){}
     }
-
     if(raw){
       try {
         const parsed = JSON.parse(raw);
         const firstVal = Object.values(parsed)[0];
-        if(firstVal && typeof firstVal === 'object' && 'udCode' in firstVal){
-          qualityEntries = Object.entries(parsed).map(([batch, v])=>({
-            id: 'q_'+batch, batch, udCode: v.udCode, udDate: v.udDate||0,
-            date:'', workOrder:'', materialName:'', qaApproval:'', resultStatus:'',
-            rejectedCharacteristics:0, approvedCharacteristics:0, deliveredQuantity:0,
-            inspectionLot:'', facility:'', line:'', testName:'', remarks:'', createdAt:0
-          }));
+        if(typeof firstVal === 'string'){
+          // New simple format: { batch: udCode }
+          qualityBestByKey = {};
+          Object.entries(parsed).forEach(([batch, udCode])=>{
+            qualityBestByKey[batch] = { batch, udCode, udDate:0, materialCode:'', materialName:'', qaApproval:'', facility:'' };
+          });
+          qualityEntries = Object.values(qualityBestByKey);
+        } else if(firstVal && typeof firstVal === 'object' && 'udCode' in firstVal){
+          // Old format: { batch: { udCode, udDate } }
+          qualityBestByKey = {};
+          Object.entries(parsed).forEach(([batch, v])=>{
+            qualityBestByKey[batch] = { batch, udCode:v.udCode, udDate:v.udDate||0, materialCode:'', materialName:'', qaApproval:'', facility:'' };
+          });
+          qualityEntries = Object.values(qualityBestByKey);
         } else {
           qualityEntries = Array.isArray(parsed) ? parsed : [];
         }
