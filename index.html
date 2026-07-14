@@ -529,7 +529,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 </head>
 <body>
 <div id="prod-dash-root" dir="rtl" lang="he"></div>
-<input type="file" id="qualityFileInput" accept=".xlsx,.xls,.csv" style="position:fixed;bottom:0;left:0;width:0;height:0;opacity:0;overflow:hidden;border:none;padding:0;">
+<input type="file" id="qualityFileInput" accept=".xlsx,.xls,.csv" style="position:fixed;top:-100px;left:-100px;width:1px;height:1px;opacity:0;">
 <script>
 (function(){
   const root = document.getElementById('prod-dash-root');
@@ -820,9 +820,6 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   }
 
   async function persistQuality(){
-    // qualityEntries can be 70,000+ rows — too large for localStorage.
-    // Instead, save only the summary (per batch: latest udCode + udDate).
-    // qualitySummary is the processed object, but we save a compact batch->udCode map.
     try {
       const compactMap = {};
       qualityEntries.forEach(q=>{
@@ -834,14 +831,12 @@ html, body { margin:0; padding:0; background:#0A0D12; }
         }
       });
       const compact = JSON.stringify(compactMap);
-      try {
-        await _dashStorage.set(QUALITY_STORAGE_KEY, compact);
-      } catch(e){
-        localStorage.setItem(QUALITY_STORAGE_KEY, compact);
-      }
+      // Save to localStorage immediately (fast, local)
+      try { localStorage.setItem(QUALITY_STORAGE_KEY, compact); } catch(e){}
+      // Also save to Netlify (shared, async)
+      try { await _dashStorage.set(QUALITY_STORAGE_KEY, compact); } catch(e){}
       return true;
     } catch(e2){
-      // Even compact save failed — data stays in memory only
       return true;
     }
   }
