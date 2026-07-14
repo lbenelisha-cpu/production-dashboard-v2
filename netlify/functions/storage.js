@@ -1,11 +1,9 @@
 const { getStore } = require('@netlify/blobs');
 
-exports.handler = async (event, context) => {
+exports.handler = async (event) => {
   const headers = {
     'Content-Type': 'application/json',
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
   };
 
   if (event.httpMethod === 'OPTIONS') {
@@ -13,7 +11,7 @@ exports.handler = async (event, context) => {
   }
 
   if (event.httpMethod !== 'POST') {
-    return { statusCode: 405, headers, body: JSON.stringify({ error: 'Method Not Allowed' }) };
+    return { statusCode: 405, headers, body: '{}' };
   }
 
   let body;
@@ -22,12 +20,12 @@ exports.handler = async (event, context) => {
 
   const { action, key, value } = body;
   if (!action || !key) {
-    return { statusCode: 400, headers, body: JSON.stringify({ error: 'Missing action or key' }) };
+    return { statusCode: 400, headers, body: JSON.stringify({ error: 'Missing params' }) };
   }
 
   try {
-    const store = getStore({ name: 'dashboard-storage', siteID: context.site.id, token: process.env.NETLIFY_BLOBS_TOKEN || process.env.TOKEN });
-    
+    const store = getStore('dashboard-storage');
+
     if (action === 'get') {
       const val = await store.get(key);
       return { statusCode: 200, headers, body: JSON.stringify({ value: val ?? null }) };
@@ -42,7 +40,7 @@ exports.handler = async (event, context) => {
     }
     return { statusCode: 400, headers, body: JSON.stringify({ error: 'Unknown action' }) };
   } catch (err) {
-    console.error('Storage error:', err);
+    console.error('Storage error:', err.message);
     return { statusCode: 500, headers, body: JSON.stringify({ error: err.message }) };
   }
 };
