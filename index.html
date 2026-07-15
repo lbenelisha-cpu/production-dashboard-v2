@@ -1405,7 +1405,8 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   function isOrderClosed(e){
     return /\bTECO\b/.test(e.systemStatus||'');
   }
-  let selectedFacilities = null; // null = all facilities (no filter)
+  let selectedFacilities = new Set(FACILITY_OPTIONS); // default: only 15xx facilities
+  let showAllFacilities = false; // toggle for showing all vs 15xx only
   let showAdvancedDashboard = false;
   let qualityDetailMode = null; // null / all / bad / conditional
   let qualityCostMode = null;   // null / cost label string
@@ -1443,7 +1444,11 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   }
   function toggleFacility(fac){
     if(fac === '__all__'){ selectedFacilities = null; return; }
-    if(selectedFacilities === null){ selectedFacilities = new Set([fac]); return; }
+    if(selectedFacilities === null){
+      // Was "all" — switch to just this one
+      selectedFacilities = new Set([fac]);
+      return;
+    }
     if(selectedFacilities.has(fac)) selectedFacilities.delete(fac);
     else selectedFacilities.add(fac);
     if(selectedFacilities.size === 0) selectedFacilities = null;
@@ -3124,15 +3129,34 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 
   function renderFacilityBar(){
     const fb = root.querySelector('#facilityBar');
-    const facs = allFacilities();
-    let html = '<span class="facility-label" style="width:100%; margin-bottom:2px;">מפעל: <span class="mono" style="color:var(--text);">'+PLANTS.join(', ')+'</span></span>';
+    const allFacs = allFacilities();
+    const facs15 = allFacs.filter(f => f.startsWith('15') || FACILITY_OPTIONS.includes(f));
+    const facsOther = allFacs.filter(f => !f.startsWith('15') && !FACILITY_OPTIONS.includes(f));
+    const displayFacs = showAllFacilities ? allFacs : facs15;
+
+    let html = '';
+
+    // Toggle button for all facilities
+    if(facsOther.length > 0){
+      html += '<span class="facility-label" style="width:100%; margin-bottom:2px;">'+
+        '<button id="toggleAllFacsBtn" style="font-size:11px;padding:2px 8px;border-radius:6px;border:1px dashed var(--border-strong);background:rgba(255,255,255,0.05);color:var(--text-muted);cursor:pointer;">'+
+        (showAllFacilities ? '◀ 15xx בלבד' : '▶ הצג כל המתקנים ('+allFacs.length+')')+
+        '</button></span>';
+    }
+
     html += '<span class="facility-label">סינון לפי מתקן:</span>';
     html += '<button class="facility-chip all-chip'+(selectedFacilities===null?' active':'')+'" data-fac="__all__">הכל</button>';
-    facs.forEach(f=>{
+
+    displayFacs.forEach(f=>{
       const active = selectedFacilities!==null && selectedFacilities.has(f);
       html += '<button class="facility-chip'+(active?' active':'')+'" data-fac="'+f+'">'+escapeHtml(f)+'</button>';
     });
+
     fb.innerHTML = html;
+
+    const toggleBtn = fb.querySelector('#toggleAllFacsBtn');
+    if(toggleBtn) toggleBtn.onclick = ()=>{ showAllFacilities = !showAllFacilities; renderAll(); };
+
     fb.querySelectorAll('.facility-chip').forEach(btn=>{
       btn.onclick = ()=>{ toggleFacility(btn.dataset.fac); renderAll(); };
     });
