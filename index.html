@@ -897,14 +897,38 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     buildQualitySummary();
   }
 
+  function normalizeQualityHeader(h){
+    return String(h == null ? '' : h)
+      .replace(/^\uFEFF/, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+  }
+
   function mapQualityHeaders(headerRow){
     const map = {};
     headerRow.forEach((h,i)=>{
-      const raw = String(h || '').trim();
-      const k = QUALITY_HEADER_MAP[raw] || QUALITY_HEADER_MAP[raw.toLowerCase()];
+      const raw = String(h == null ? '' : h).replace(/^\uFEFF/, '').replace(/\s+/g, ' ').trim();
+      const normalized = normalizeQualityHeader(raw);
+      const k = QUALITY_HEADER_MAP[raw] || QUALITY_HEADER_MAP[normalized];
       if(k && map[k] === undefined) map[k] = i;
     });
     return map;
+  }
+
+  function findQualityHeaderRow(grid){
+    const maxScan = Math.min(grid.length, 40);
+    let best = null;
+    for(let r=0; r<maxScan; r++){
+      const row = Array.isArray(grid[r]) ? grid[r] : [];
+      const map = mapQualityHeaders(row);
+      const score = Object.keys(map).length;
+      const hasBatch = map.batch !== undefined;
+      const hasUD = map.ud_code !== undefined || map.qa_approval !== undefined || map.result_status !== undefined;
+      if(!best || score > best.score) best = { index:r, map, score, hasBatch, hasUD };
+      if(score >= 3 && hasBatch && hasUD) return { index:r, map, score };
+    }
+    return best && best.score >= 2 ? best : null;
   }
 
   function processQualityRows(headerRow, dataRows){
@@ -960,10 +984,23 @@ html, body { margin:0; padding:0; background:#0A0D12; }
         if(typeof XLSX === 'undefined'){ showToast('ספריית Excel לא נטענה — ודאו שיש חיבור אינטרנט ורעננו את הדף (Ctrl+R / Cmd+R).', true); return; }
         const buf = await file.arrayBuffer();
         const wb = XLSX.read(buf, {type:'array', cellDates:false});
-        const sheet = wb.Sheets[wb.SheetNames[0]];
-        const grid = XLSX.utils.sheet_to_json(sheet, {header:1, defval:'', raw:true});
-        if(grid.length<2){ showToast('קובץ האיכות לא מכיל שורות נתונים', true); return; }
-        headerRow = grid[0]; dataRows = grid.slice(1);
+        let selected = null;
+        for(const sheetName of wb.SheetNames){
+          const sheet = wb.Sheets[sheetName];
+          const grid = XLSX.utils.sheet_to_json(sheet, {header:1, defval:'', raw:true, blankrows:false});
+          const found = findQualityHeaderRow(grid);
+          if(found && (!selected || found.score > selected.found.score)){
+            selected = { sheetName, grid, found };
+          }
+          if(found && found.score >= 3 && found.map.batch !== undefined && found.map.ud_code !== undefined) break;
+        }
+        if(!selected || selected.grid.length < selected.found.index + 2){
+          showToast('לא נמצאה שורת כותרות מתאימה בקובץ האיכות', true);
+          return;
+        }
+        headerRow = selected.grid[selected.found.index];
+        dataRows = selected.grid.slice(selected.found.index + 1);
+        console.log('Quality import sheet:', selected.sheetName, 'header row:', selected.found.index + 1, 'mapped:', selected.found.map);
       } else {
         const text = await file.text();
         const lines = text.split(/\r?\n/).filter(l=>l.trim().length>0);
@@ -975,7 +1012,13 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       }
       const rows = processQualityRows(headerRow, dataRows);
       showToast('נמצאו '+rows.length+' שורות בקובץ האיכות');
-      if(rows.length===0){ showToast('לא נמצאו רשומות איכות תקינות — בדוק שהכותרות תואמות', true); return; }
+      if(rows.length===0){
+        const mapped = mapQualityHeaders(headerRow);
+        const foundNames = Object.keys(mapped).join(', ') || 'ללא התאמות';
+        console.warn('Quality headers:', headerRow, 'mapped:', mapped);
+        showToast('לא נמצאו רשומות איכות. זוהו עמודות: '+foundNames, true);
+        return;
+      }
       qualityEntries = rows;
       buildQualitySummary();
       const ok = await persistQuality();
@@ -2557,7 +2600,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       html += '<div class="kpi-card" style="margin-top:8px; border-color:var(--yellow); background:rgba(232,197,71,0.07);">'+
         '<div class="kpi-label" style="color:var(--yellow);">⚠️ '+unknownShiftCount+' רשומות ללא נתוני משמרת ('+unknownPct+'% מהכמות)</div>'+
         '<div class="kpi-sub" style="margin-top:6px;">רשומות אלו יובאו לפני שנוסף זיהוי משמרת אוטומטי. '+
-        '<strong>ייבא מחדש את קובץ ה-SAP</strong> כדי לקבל חלוקה מלאה לפי משמרות — עמודת "Time Stamp" תשמש לזיהוי אוטומטי.</div>'+
+        '<strong>ייבא מחדש את קובץ ה-SAP</strong> כדי לקבל חלוקה מלאה לפי משמרות — עמודת "Actual Finish Time" תשמש לזיהוי אוטומטי של המשמרת.</div>'+
       '</div>';
     }
     html += '</div></div>';
@@ -4527,7 +4570,7 @@ function renderAll(){
     'time stamp':'time_stamp','timestamp':'time_stamp','בול זמן':'time_stamp'
   };
 
-  // חישוב משמרת לפי שעה: בוקר 08-15, ערב 15-23, לילה 23-07
+  // חישוב משמרת לפי שעה: בוקר 07:00-14:59, ערב 15:00-22:59, לילה 23:00-06:59
   function shiftFromHour(hour){
     if(hour >= 7 && hour < 15) return 'בוקר';
     if(hour >= 15 && hour < 23) return 'ערב';
@@ -4650,20 +4693,21 @@ function renderAll(){
         facility: facilityVal,
         plant: getStr(cols, map.plant, '') || getPlant(facilityVal),
         line: getStr(cols, map.line, 'כללי'),
+        actualFinishTime: map.finish_time !== undefined ? getStr(cols, map.finish_time, '') : '',
         shift: (()=>{
-          // עדיפות: עמודת משמרת מפורשת → Time Stamp (datetime מלא) → Actual Finish Time → ריק
-          const explicitShift = getStr(cols, map.shift, '');
-          if(explicitShift && SHIFTS.includes(explicitShift)) return explicitShift;
-          // Time Stamp (datetime מלא מ-SAP, למשל "05.01.2026 16:08:42") — מקור עיקרי
-          if(map.time_stamp !== undefined){
-            const rawTs = cols[map.time_stamp];
-            const h = parseFinishTimeToHour(rawTs);
-            if(h !== null) return shiftFromHour(h);
-          }
-          // Actual Finish Time (שעה בלבד, למשל "8:39:11") — גיבוי
+          // עדיפות: Actual Finish Time (שעת יצירת המשטח) → משמרת מפורשת → Time Stamp כגיבוי בלבד
+          // חשוב: Time Stamp בקובץ SAP עשוי להיות מועד עדכון/שליפת הרשומה ולא מועד יצירת המשטח.
           if(map.finish_time !== undefined){
             const rawFt = cols[map.finish_time];
             const h = parseFinishTimeToHour(rawFt);
+            if(h !== null) return shiftFromHour(h);
+          }
+          const explicitShift = getStr(cols, map.shift, '');
+          if(explicitShift && SHIFTS.includes(explicitShift)) return explicitShift;
+          // גיבוי בלבד כאשר Actual Finish Time חסר או לא ניתן לפענוח
+          if(map.time_stamp !== undefined){
+            const rawTs = cols[map.time_stamp];
+            const h = parseFinishTimeToHour(rawTs);
             if(h !== null) return shiftFromHour(h);
           }
           return explicitShift;
@@ -4712,18 +4756,30 @@ function renderAll(){
       const rows = processRows(headerRow, dataRows);
       if(rows===null){ showToast('לא נמצאה עמודת תאריך בקובץ. בדקו את הכותרות.', true); return; }
       if(rows.length===0){ showToast('לא נמצאו שורות תקינות בקובץ', true); return; }
-      const existingWorkOrders = new Set(entries.map(e=>e.workOrder).filter(Boolean));
-      const existingKeys = new Set(entries.map(e=>e.date+'|'+e.facility+'|'+e.packaging+'|'+e.production));
-      const newRows = rows.filter(r=>{
-        if(r.workOrder && existingWorkOrders.has(r.workOrder)) return false;
-        if(existingKeys.has(r.date+'|'+r.facility+'|'+r.packaging+'|'+r.production)) return false;
-        return true;
-      });
-      const skipped = rows.length - newRows.length;
-      if(newRows.length===0){ showToast('כל '+rows.length+' השורות כבר קיימות — לא נוסף חדש'); return; }
-      entries = entries.concat(newRows);
+      // ייבוא SAP הוא Upsert: רשומה קיימת מוחלפת בגרסה העדכנית מהקובץ.
+      // כך טעינה חוזרת מעדכנת Actual Finish Time/משמרת במקום להשאיר נתונים ישנים.
+      // אין לזהות כפילות רק לפי תאריך+מתקן+כמות, מכיוון ששני משטחים שונים יכולים להיות באותה כמות.
+      const sapIdentity = r => {
+        const wo = String(r.workOrder || '').trim();
+        const batch = String(r.batch || '').trim();
+        const fac = String(r.facility || '').trim();
+        if(wo) return 'WO|'+wo+'|'+fac;
+        if(batch) return 'BATCH|'+batch+'|'+fac+'|'+String(r.date||'');
+        return 'ROW|'+[r.date,fac,r.materialCode,r.packaging,r.production,r.shift].join('|');
+      };
+
+      const importedKeys = new Set(rows.map(sapIdentity));
+      const beforeCount = entries.length;
+      // הסר רק רשומות שמתאימות לרשומות שבקובץ החדש, ואז הכנס את הגרסה המעודכנת.
+      // רשומות ידניות/היסטוריות שאינן נמצאות בקובץ נשמרות.
+      entries = entries.filter(e => !importedKeys.has(sapIdentity(e)));
+      const replaced = beforeCount - entries.length;
+      entries = entries.concat(rows);
       const ok = await persist();
-      if(ok){ showToast(newRows.length+' רשומות יובאו'+(skipped>0?' ('+skipped+' כפולות דולגו)':'')); renderAll(); }
+      if(ok){
+        showToast(rows.length+' רשומות יובאו ועודכנו'+(replaced>0?' ('+replaced+' רשומות ישנות הוחלפו)':''));
+        renderAll();
+      }
     } catch(e){
       showToast('שגיאה בקריאת הקובץ', true);
     }
@@ -4939,6 +4995,27 @@ root.querySelector('#printBtn').onclick = ()=> window.print();
   root.querySelector('#eventSave').onclick = saveEventFromModal;
   root.querySelector('#eventOverlay').onclick = e=>{ if(e.target===root.querySelector('#eventOverlay')) root.querySelector('#eventOverlay').classList.remove('open'); };
 
+  // quality file input — register immediately so early file selection is never lost
+  document.addEventListener('change', function(e){
+    if(e.target && e.target.id === 'qualityFileInput'){
+      const file = e.target.files && e.target.files[0];
+      if(file) handleQualityFile(file);
+      e.target.value = '';
+    }
+  });
+
+  // Fallback for browsers that do not activate a hidden file input through label-for
+  document.addEventListener('click', function(e){
+    const lbl = e.target && e.target.closest ? e.target.closest('label[for="qualityFileInput"]') : null;
+    if(lbl){
+      const inp = document.getElementById('qualityFileInput');
+      if(inp){
+        e.preventDefault();
+        inp.click();
+      }
+    }
+  });
+
   /* ---------------- init ---------------- */
   (async function init(){
     const statusLine = ()=>{
@@ -4956,28 +5033,6 @@ root.querySelector('#printBtn').onclick = ()=> window.print();
     loadQuality().then(statusLine).catch(()=>{});
     renderAll();
   
-  // quality file input — label-for is the primary trigger, JS click is the fallback
-  document.addEventListener('change', function(e){
-    if(e.target && e.target.id === 'qualityFileInput'){
-      const file = e.target.files && e.target.files[0];
-      if(file) handleQualityFile(file);
-      e.target.value = '';
-    }
-  });
-
-  // Fallback: if label-for doesn't open file dialog, catch click on the label and force it
-  document.addEventListener('click', function(e){
-    const lbl = e.target && e.target.closest ? e.target.closest('label[for="qualityFileInput"]') : null;
-    if(lbl){
-      const inp = document.getElementById('qualityFileInput');
-      if(inp){
-        e.preventDefault();
-        inp.click();
-      }
-    }
-  });
-
-
   // whatsapp delegated export
   document.addEventListener('click', function(e){
     const btn = e.target && e.target.closest ? e.target.closest('#whatsappExportBtn') : null;
