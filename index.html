@@ -5021,7 +5021,13 @@ function renderAll(){
       if(!res.ok || !data.token) throw new Error(data.error||'login failed');
       adminToken=data.token; isAdmin=true; sessionStorage.setItem('dashboard_admin_token',adminToken);
       root.querySelector('#adminCodeInput').value=''; root.querySelector('#adminLoginOverlay').classList.remove('open'); applyRoleUI(); showToast('מצב מנהל הופעל');
-    }catch(e){ showToast('קוד מנהל שגוי או שהשרת אינו מוגדר', true); }
+    }catch(e){
+      const msg=String(e && e.message || '');
+      if(msg.includes('ADMIN_CODE_NOT_CONFIGURED')) showToast('משתנה ADMIN_CODE אינו מוגדר בפונקציית Netlify', true);
+      else if(msg.includes('INVALID_ADMIN_CODE')) showToast('קוד המנהל אינו תואם לערך ADMIN_CODE', true);
+      else showToast('שגיאת התחברות לשרת: '+(msg||'לא ידועה'), true);
+      console.error('Admin login failed:', e);
+    }
   }
   root.querySelector('#adminSubmitBtn').onclick = submitAdminLogin;
   root.querySelector('#adminCodeInput').onkeydown = e=>{ if(e.key==='Enter') submitAdminLogin(); };

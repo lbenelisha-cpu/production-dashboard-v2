@@ -1,0 +1,6 @@
+Production Dashboard V3.1 Admin Fixed
+
+חשוב: קובץ פונקציית המנהל נמצא כאן:
+netlify/functions/storage.js
+
+לאחר העלאה ל-GitHub, ודא שב-GitHub מופיע לקובץ זה תאריך עדכון חדש.
