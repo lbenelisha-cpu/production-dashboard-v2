@@ -379,7 +379,10 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 #prod-dash-root .storage-status { font-size: 11px; font-weight: 700; }
 #prod-dash-root .storage-status.ok { color: var(--green); }
 #prod-dash-root .storage-status.warn { color: var(--yellow); }
-
+#prod-dash-root.viewer-mode .admin-only { display:none !important; }
+#prod-dash-root .role-badge { font-size:11px;font-weight:800;padding:4px 9px;border-radius:999px;border:1px solid var(--border-strong); }
+#prod-dash-root .role-badge.viewer { color:var(--text-muted); }
+#prod-dash-root .role-badge.admin { color:var(--green);border-color:rgba(16,185,129,.45);background:rgba(16,185,129,.10); }
 
 /* ═══════════════════════════════════════════════════
    MOBILE RESPONSIVE — iPhone / Small screens (≤640px)
@@ -533,6 +536,26 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 <script>
 (function(){
   const root = document.getElementById('prod-dash-root');
+  let adminToken = sessionStorage.getItem('dashboard_admin_token') || '';
+  let isAdmin = !!adminToken;
+  function requireAdmin(){
+    if(isAdmin && adminToken) return true;
+    const overlay = root.querySelector('#adminLoginOverlay');
+    if(overlay) overlay.classList.add('open');
+    const input = root.querySelector('#adminCodeInput');
+    if(input) setTimeout(()=>input.focus(), 50);
+    showToast('הפעולה זמינה למנהל בלבד', true);
+    return false;
+  }
+  function applyRoleUI(){
+    root.classList.toggle('viewer-mode', !isAdmin);
+    const badge = root.querySelector('#roleBadge');
+    if(badge){ badge.textContent = isAdmin ? '🟢 מנהל' : '👁 צפייה בלבד'; badge.className='role-badge '+(isAdmin?'admin':'viewer'); }
+    const loginBtn = root.querySelector('#adminLoginBtn');
+    if(loginBtn) loginBtn.textContent = isAdmin ? 'יציאה ממנהל' : '🔐 כניסת מנהל';
+    ['#addEventTopBtn','#targetsProdBtn','#targetsBtn','#resetBtn','#addBtn'].forEach(sel=>{ const el=root.querySelector(sel); if(el) el.classList.add('admin-only'); });
+    root.querySelectorAll('label[for="qualityFileInput"], label[for="csvInput"], .row-del, #f_period_pack_target, #f_save_period_target, #f_clear_period_target').forEach(el=>el.classList.add('admin-only'));
+  }
 
   // אחסון שיתופי: כל המשתמשים שנכנסים לאתר רואים ועורכים את אותם נתונים.
   // הנתונים נשמרים בפועל בצד השרת (Netlify Function + Netlify Blobs), לא בדפדפן.
@@ -547,7 +570,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       const res = await fetch(STORAGE_API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, key, value }),
+        body: JSON.stringify({ action, key, value, token: adminToken }),
         signal: controller.signal
       });
       clearTimeout(timer);
@@ -597,6 +620,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
         return _local.get(key);
       },
       async set(key, value){
+        if(!requireAdmin()) throw new Error('ADMIN_REQUIRED');
         if(await _isNetlifyAvailable()){
           try {
             await _callStorageApi('set', key, value);
@@ -608,6 +632,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
         return _local.set(key, value);
       },
       async delete(key){
+        if(!requireAdmin()) throw new Error('ADMIN_REQUIRED');
         if(await _isNetlifyAvailable()){
           try {
             await _callStorageApi('delete', key);
@@ -3106,7 +3131,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
         '<td class="mono">'+(effTargetPack?fmt(effTargetPack):'—')+'</td>'+ 
         '<td>'+achievementPill(avg)+'</td>'+ 
         '<td>'+escapeHtml(getEntryNotes(e))+'</td>'+ 
-        '<td><button class="row-del" data-id="'+e.id+'" title="מחיקה">✕</button></td>'+ 
+        '<td><button class="row-del admin-only" data-id="'+e.id+'" title="מחיקה">✕</button></td>'+ 
         '</tr>';
     });
     html += '</tbody></table></div>';
@@ -4217,6 +4242,7 @@ function exportToWhatsApp(){
 
 function renderAll(){
     if(!loaded) return;
+    applyRoleUI();
 
     // Update data status line
     const dataStatusLine = root.querySelector('#dataStatusLine');
@@ -4243,6 +4269,7 @@ function renderAll(){
       if(qualityTabContent) qualityTabContent.style.display='';
       renderQualityTab();
       root.querySelector('#entryCount').textContent = entries.length + ' רשומות ייצור' + (qualityEntries.length > 0 ? ' · ' + qualityEntries.length + ' שורות איכות' : '');
+      applyRoleUI();
       return;
     }
 
@@ -4280,6 +4307,7 @@ function renderAll(){
         badge.className = 'storage-status';
       }
     }
+    applyRoleUI();
     root.querySelector('#printHeader').innerHTML =
       '<div style="font-size:18px; font-weight:800;">דוח ייצור ואריזה</div>'+
       '<div style="font-size:13px; color:var(--text-muted); margin-top:4px;">'+
@@ -4336,7 +4364,7 @@ function renderAll(){
       '<div class="panel-head">'+
         '<div><div class="panel-title">🔬 רשומות איכות — סיכום לפי מנה</div>'+
         '<div class="kpi-sub">'+totalBatches+' מנות ייחודיות · '+qualityEntries.length+' שורות מקובץ האיכות</div></div>'+
-        '<label for="qualityFileInput" class="panel-toggle-btn" style="cursor:pointer;">📂 טעינת קובץ איכות</label>'+
+        '<label for="qualityFileInput" class="panel-toggle-btn admin-only" style="cursor:pointer;">📂 טעינת קובץ איכות</label>'+
       '</div>';
 
     // Summary cards
@@ -4826,7 +4854,7 @@ function renderAll(){
           '<div class="brand-mark">⚙</div>'+
           '<div><h1>לוח בקרה — ייצור ואריזה</h1><p><span id="entryCount">טוען נתונים…</span> <span id="storageStatusBadge" class="storage-status"></span></p><p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;"><span id="dataStatusLine">בודק נתונים…</span></p></div>'+
         '</div>'+
-        '<div class="topbar-actions"><button class="tab-btn" id="addEventTopBtn" style="background:rgba(139,183,255,0.12);color:#8BB7FF;font-size:12px;padding:6px 14px;">+ הוסף אירוע</button><button class="tab-btn" id="advancedDashboardBtn" style="background:var(--teal-soft);color:var(--green);font-size:12px;padding:6px 14px;">📊 דשבורד חדש</button><button class="tab-btn" id="excelAnalyzedExportBtn" style="background:rgba(124,217,146,0.12);color:#7CD992;font-size:12px;padding:6px 14px;">📥 ייצוא ניתוח לאקסל</button><label for="qualityFileInput" class="tab-btn" style="background:rgba(239,68,68,0.12);color:var(--red);font-size:12px;padding:6px 14px;cursor:pointer;">🧪 טעינת איכות</label><button class="tab-btn" id="whatsappExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📲 WhatsApp טקסט</button><button class="tab-btn" id="whatsappImageExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📸 צילום דשבורד</button><button class="tab-btn" id="targetsProdBtn" style="background:var(--amber-soft);color:var(--amber);font-size:12px;padding:6px 14px;">⚙ יעדי ייצור</button><button class="tab-btn" id="targetsBtn" style="background:var(--teal-soft);color:var(--teal);font-size:12px;padding:6px 14px;">⚙ יעדי אריזה</button><button class="tab-btn" id="resetBtn" style="background:rgba(255,255,255,0.05);color:var(--text-muted);font-size:12px;padding:6px 14px;">איפוס</button></div>'+
+        '<div class="topbar-actions"><span id="roleBadge" class="role-badge viewer">👁 צפייה בלבד</span><button class="tab-btn" id="adminLoginBtn" style="background:rgba(255,255,255,0.06);color:var(--text);font-size:12px;padding:6px 14px;">🔐 כניסת מנהל</button><button class="tab-btn admin-only" id="addEventTopBtn" style="background:rgba(139,183,255,0.12);color:#8BB7FF;font-size:12px;padding:6px 14px;">+ הוסף אירוע</button><button class="tab-btn" id="advancedDashboardBtn" style="background:var(--teal-soft);color:var(--green);font-size:12px;padding:6px 14px;">📊 דשבורד חדש</button><button class="tab-btn" id="excelAnalyzedExportBtn" style="background:rgba(124,217,146,0.12);color:#7CD992;font-size:12px;padding:6px 14px;">📥 ייצוא ניתוח לאקסל</button><label for="qualityFileInput" class="tab-btn admin-only" style="background:rgba(239,68,68,0.12);color:var(--red);font-size:12px;padding:6px 14px;cursor:pointer;">🧪 טעינת איכות</label><button class="tab-btn" id="whatsappExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📲 WhatsApp טקסט</button><button class="tab-btn" id="whatsappImageExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📸 צילום דשבורד</button><button class="tab-btn admin-only" id="targetsProdBtn" style="background:var(--amber-soft);color:var(--amber);font-size:12px;padding:6px 14px;">⚙ יעדי ייצור</button><button class="tab-btn admin-only" id="targetsBtn" style="background:var(--teal-soft);color:var(--teal);font-size:12px;padding:6px 14px;">⚙ יעדי אריזה</button><button class="tab-btn admin-only" id="resetBtn" style="background:rgba(255,255,255,0.05);color:var(--text-muted);font-size:12px;padding:6px 14px;">איפוס</button></div>'+
       '</div>'+
       '<div class="tabs">'+
         '<button class="tab-btn" data-tab="day">יום אחרון</button>'+
@@ -4856,8 +4884,8 @@ function renderAll(){
         '<div id="tableWrap"></div>'+
       '</div>'+
       '<div class="actions-row">'+
-        '<button class="btn primary" id="addBtn">+ הזנת נתון</button>'+
-        '<label class="btn secondary" for="csvInput" style="cursor:pointer;">ייבוא קובץ CSV / Excel</label>'+
+        '<button class="btn primary admin-only" id="addBtn">+ הזנת נתון</button>'+
+        '<label class="btn secondary admin-only" for="csvInput" style="cursor:pointer;">ייבוא קובץ CSV / Excel</label>'+
         '<input type="file" id="csvInput" accept=".csv,.xlsx,.xls,.txt" style="position:absolute; width:1px; height:1px; opacity:0; overflow:hidden;">'+
         '<span class="file-hint">תומך בקבצי CSV ואקסל (xlsx/xls). לא בטוחים מה הפורמט? <button id="templateBtn">הורידו תבנית לדוגמה</button></span>'+
         '<button class="btn secondary" id="printBtn">🖨 הדפסת דוח</button>'+
@@ -4965,6 +4993,11 @@ function renderAll(){
     '</div>'+
     '<div class="modal-overlay" id="whatsappOverlay"><div class="modal" style="max-width:620px;">'+
   '<h3>ייצוא ל‑WhatsApp</h3>'+  '<div id="whatsappPreview" class="wa-preview"></div>'+'<div id="whatsappNote" class="shared-note">בטלפון הכפתור יפתח את אפליקציית WhatsApp. במחשב הוא יפתח WhatsApp Web. אם לא נפתח — לחץ העתק הודעה והדבק ידנית.</div>'+  '<div class="modal-foot">'+    '<button class="btn secondary" id="whatsappCopyBtn">העתק הודעה</button>'+    '<button class="btn primary" id="whatsappOpenBtn">פתח WhatsApp</button>'+    '<button class="btn secondary" id="whatsappCloseBtn">סגור</button>'+  '</div>'+'</div></div>'+
+      '<div class="modal-overlay" id="adminLoginOverlay"><div class="modal" style="max-width:390px;">'+
+        '<h3>🔐 כניסת מנהל</h3><p style="color:var(--text-muted);font-size:13px;">הזן קוד מנהל כדי לפתוח הזנה, טעינת קבצים, שינוי יעדים ומחיקה.</p>'+
+        '<div class="field"><label>קוד מנהל</label><input type="password" id="adminCodeInput" autocomplete="current-password" style="width:100%;"></div>'+
+        '<div class="modal-foot"><button class="btn secondary" id="adminCancelBtn">ביטול</button><button class="btn primary" id="adminSubmitBtn">כניסה</button></div>'+
+      '</div></div>'+
       '<div class="toast" id="toast"></div>'+
     '<div class="facility-drilldown-overlay" id="facilityDrilldownOverlay"></div>';
 
@@ -4972,7 +5005,27 @@ function renderAll(){
   root.querySelectorAll('.tabs .tab-btn').forEach(b=>{
     b.onclick = ()=>{ tab = b.dataset.tab; renderAll(); };
   });
-  root.querySelector('#addBtn').onclick = openModal;
+  root.querySelector('#adminLoginBtn').onclick = ()=>{
+    if(isAdmin){ adminToken=''; isAdmin=false; sessionStorage.removeItem('dashboard_admin_token'); applyRoleUI(); showToast('יצאת ממצב מנהל'); return; }
+    root.querySelector('#adminLoginOverlay').classList.add('open');
+    setTimeout(()=>root.querySelector('#adminCodeInput').focus(),50);
+  };
+  root.querySelector('#adminCancelBtn').onclick = ()=>root.querySelector('#adminLoginOverlay').classList.remove('open');
+  root.querySelector('#adminLoginOverlay').onclick = e=>{ if(e.target.id==='adminLoginOverlay') e.currentTarget.classList.remove('open'); };
+  async function submitAdminLogin(){
+    const code=(root.querySelector('#adminCodeInput').value||'').trim();
+    if(!code){ showToast('יש להזין קוד מנהל', true); return; }
+    try{
+      const res=await fetch(STORAGE_API_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'auth',key:'admin',code})});
+      const data=await res.json();
+      if(!res.ok || !data.token) throw new Error(data.error||'login failed');
+      adminToken=data.token; isAdmin=true; sessionStorage.setItem('dashboard_admin_token',adminToken);
+      root.querySelector('#adminCodeInput').value=''; root.querySelector('#adminLoginOverlay').classList.remove('open'); applyRoleUI(); showToast('מצב מנהל הופעל');
+    }catch(e){ showToast('קוד מנהל שגוי או שהשרת אינו מוגדר', true); }
+  }
+  root.querySelector('#adminSubmitBtn').onclick = submitAdminLogin;
+  root.querySelector('#adminCodeInput').onkeydown = e=>{ if(e.key==='Enter') submitAdminLogin(); };
+  root.querySelector('#addBtn').onclick = ()=>{ if(requireAdmin()) openModal(); };
   const toggleTableBtn = root.querySelector('#toggleTableBtn');
   if(toggleTableBtn){
     toggleTableBtn.onclick = ()=>{ tableExpanded = !tableExpanded; renderAll(); };
@@ -4985,7 +5038,7 @@ function renderAll(){
   root.querySelector('#m_facility').onchange = updateTargetPreviews;
   root.querySelector('#m_shift').onchange = updateTargetPreviews;
   root.querySelector('#m_ptype').onchange = updateTargetPreviews;
-  root.querySelector('#targetsBtn').onclick = openTargetsModal;
+  root.querySelector('#targetsBtn').onclick = ()=>{ if(requireAdmin()) openTargetsModal(); };
   root.querySelector('#targetsCancel').onclick = closeTargetsModal;
   root.querySelector('#targetsSave').onclick = saveTargetsFromModal;
   root.querySelector('#targetsOverlay').onclick = (e)=>{ if(e.target.id==='targetsOverlay') closeTargetsModal(); };
@@ -4994,17 +5047,18 @@ function renderAll(){
   });
   root.querySelector('#tgt_facility_select').onchange = (e)=> populateTargetsTableFor(e.target.value);
   root.querySelector('#targetsRemoveOverride').onclick = removeTargetsOverride;
-  root.querySelector('#targetsProdBtn').onclick = openProdTargetsModal;
+  root.querySelector('#targetsProdBtn').onclick = ()=>{ if(requireAdmin()) openProdTargetsModal(); };
   root.querySelector('#targetsProdCancel').onclick = closeProdTargetsModal;
   root.querySelector('#targetsProdSave').onclick = saveProdTargetsFromModal;
   root.querySelector('#targetsProdOverlay').onclick = (e)=>{ if(e.target.id==='targetsProdOverlay') closeProdTargetsModal(); };
   root.querySelector('#targetsProdTable').addEventListener('input', (e)=>{
     if(e.target.classList.contains('tgtp-input')) recalcProdTargetsTotal(e.target.dataset.fac);
   });
-  root.querySelector('#csvInput').onchange = (e)=>{ if(e.target.files[0]) handleDataFile(e.target.files[0]); e.target.value=''; };
+  root.querySelector('#csvInput').onchange = (e)=>{ if(!requireAdmin()){e.target.value='';return;} if(e.target.files[0]) handleDataFile(e.target.files[0]); e.target.value=''; };
   root.querySelector('#templateBtn').onclick = downloadTemplate;
 root.querySelector('#printBtn').onclick = ()=> window.print();
   root.querySelector('#resetBtn').onclick = async ()=>{
+    if(!requireAdmin()) return;
     const ok1 = await showConfirm('פעולה זו תמחק את כל הנתונים השמורים לכל המשתמשים. להמשיך?');
     if(!ok1) return;
     entries = [];
@@ -5014,7 +5068,7 @@ root.querySelector('#printBtn').onclick = ()=> window.print();
   };
 
 
-  root.querySelector('#addEventTopBtn').onclick = openEventModal;
+  root.querySelector('#addEventTopBtn').onclick = ()=>{ if(requireAdmin()) openEventModal(); };
   root.querySelector('#eventCancel').onclick = ()=> root.querySelector('#eventOverlay').classList.remove('open');
   root.querySelector('#eventSave').onclick = saveEventFromModal;
   root.querySelector('#eventOverlay').onclick = e=>{ if(e.target===root.querySelector('#eventOverlay')) root.querySelector('#eventOverlay').classList.remove('open'); };
@@ -5022,6 +5076,7 @@ root.querySelector('#printBtn').onclick = ()=> window.print();
   // quality file input — register immediately so early file selection is never lost
   document.addEventListener('change', function(e){
     if(e.target && e.target.id === 'qualityFileInput'){
+      if(!requireAdmin()){ e.target.value=''; return; }
       const file = e.target.files && e.target.files[0];
       if(file) handleQualityFile(file);
       e.target.value = '';
@@ -5032,6 +5087,7 @@ root.querySelector('#printBtn').onclick = ()=> window.print();
   document.addEventListener('click', function(e){
     const lbl = e.target && e.target.closest ? e.target.closest('label[for="qualityFileInput"]') : null;
     if(lbl){
+      if(!requireAdmin()) return;
       const inp = document.getElementById('qualityFileInput');
       if(inp){
         e.preventDefault();
@@ -5056,6 +5112,7 @@ root.querySelector('#printBtn').onclick = ()=> window.print();
     // Load quality silently in background
     loadQuality().then(statusLine).catch(()=>{});
     renderAll();
+    applyRoleUI();
   
   // whatsapp delegated export
   document.addEventListener('click', function(e){

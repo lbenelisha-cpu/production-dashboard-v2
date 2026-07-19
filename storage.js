@@ -1,50 +1,62 @@
-const { getStore } = require('@netlify/blobs');
+const https = require('https');
+const crypto = require('crypto');
+
+const TOKEN_TTL_MS = 8 * 60 * 60 * 1000;
+function secret(){ return process.env.ADMIN_TOKEN_SECRET || process.env.ADMIN_CODE || ''; }
+function sign(payload){ return crypto.createHmac('sha256', secret()).update(payload).digest('hex'); }
+function makeToken(){
+  const payload = Buffer.from(JSON.stringify({role:'admin', exp:Date.now()+TOKEN_TTL_MS})).toString('base64url');
+  return payload + '.' + sign(payload);
+}
+function validToken(token){
+  try{
+    if(!token || !secret()) return false;
+    const [payload,sig]=String(token).split('.');
+    const expected=sign(payload);
+    if(!sig || sig.length!==expected.length || !crypto.timingSafeEqual(Buffer.from(sig),Buffer.from(expected))) return false;
+    const data=JSON.parse(Buffer.from(payload,'base64url').toString('utf8'));
+    return data.role==='admin' && Number(data.exp)>Date.now();
+  }catch(e){ return false; }
+}
 
 exports.handler = async (event) => {
-  if (event.httpMethod !== 'POST') {
-    return { statusCode: 405, body: 'Method Not Allowed' };
-  }
-
+  const headers = {'Content-Type':'application/json','Access-Control-Allow-Origin':'*'};
+  if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers, body: '' };
+  if (event.httpMethod !== 'POST') return { statusCode: 405, headers, body: '{}' };
   let body;
-  try { body = JSON.parse(event.body); }
-  catch { return { statusCode: 400, body: 'Invalid JSON' }; }
+  try { body = JSON.parse(event.body || '{}'); }
+  catch { return { statusCode: 400, headers, body: JSON.stringify({ error: 'Invalid JSON' }) }; }
 
-  const { action, key, value } = body;
-  if (!action || !key) return { statusCode: 400, body: 'Missing action or key' };
-
-  const store = getStore('dashboard-storage');
-
-  try {
-    if (action === 'get') {
-      const val = await store.get(key);
-      return {
-        statusCode: 200,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ value: val ?? null })
-      };
-    }
-
-    if (action === 'set') {
-      await store.set(key, value ?? '');
-      return {
-        statusCode: 200,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ok: true })
-      };
-    }
-
-    if (action === 'delete') {
-      await store.delete(key);
-      return {
-        statusCode: 200,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ok: true })
-      };
-    }
-
-    return { statusCode: 400, body: 'Unknown action' };
-  } catch (err) {
-    console.error('Storage error:', err);
-    return { statusCode: 500, body: 'Storage error: ' + err.message };
+  if(body.action === 'auth'){
+    const configured=process.env.ADMIN_CODE || '';
+    const supplied=String(body.code || '');
+    const ok=configured && supplied.length===configured.length && crypto.timingSafeEqual(Buffer.from(supplied),Buffer.from(configured));
+    return ok
+      ? {statusCode:200,headers,body:JSON.stringify({token:makeToken(),expiresIn:TOKEN_TTL_MS})}
+      : {statusCode:401,headers,body:JSON.stringify({error:'Unauthorized'})};
   }
+
+  const { action, key, value, token } = body;
+  if (!action || !key) return { statusCode: 400, headers, body: JSON.stringify({ error: 'Missing params' }) };
+  if ((action === 'set' || action === 'delete') && !validToken(token))
+    return { statusCode: 401, headers, body: JSON.stringify({ error: 'Admin authorization required' }) };
+
+  const siteId = process.env.SITE_ID || process.env.NETLIFY_SITE_ID;
+  const accessToken = process.env.NETLIFY_TOKEN || process.env.NETLIFY_ACCESS_TOKEN;
+  if(!siteId || !accessToken) return {statusCode:500,headers,body:JSON.stringify({error:'Storage environment variables missing'})};
+  const store = 'production-dashboard';
+  const encodedKey = encodeURIComponent(key);
+  const baseUrl = `https://api.netlify.com/api/v1/sites/${siteId}/blobs/${store}/${encodedKey}`;
+  const request = (method, data) => new Promise((resolve, reject) => {
+    const url = new URL(baseUrl);
+    const options = {hostname:url.hostname,path:url.pathname,method,headers:{'Authorization':`Bearer ${accessToken}`,'Content-Type':'application/octet-stream'}};
+    const req = https.request(options, res => { let buf=''; res.on('data',d=>buf+=d); res.on('end',()=>resolve({status:res.statusCode,body:buf})); });
+    req.on('error', reject); if(data !== undefined && data !== null) req.write(String(data)); req.end();
+  });
+  try {
+    if (action === 'get') { const res=await request('GET'); return {statusCode:200,headers,body:JSON.stringify({value:res.status===200?res.body:null})}; }
+    if (action === 'set') { const res=await request('PUT', value ?? ''); if(res.status<200||res.status>=300) throw new Error('Blob write failed '+res.status); return {statusCode:200,headers,body:JSON.stringify({ok:true})}; }
+    if (action === 'delete') { const res=await request('DELETE'); if(res.status<200||res.status>=300) throw new Error('Blob delete failed '+res.status); return {statusCode:200,headers,body:JSON.stringify({ok:true})}; }
+    return { statusCode: 400, headers, body: JSON.stringify({ error: 'Unknown action' }) };
+  } catch (err) { return { statusCode: 500, headers, body: JSON.stringify({ error: err.message }) }; }
 };
