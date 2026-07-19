@@ -1,7 +1,7 @@
 const crypto = require('crypto');
 const { getStore } = require('@netlify/blobs');
 
-const FUNCTION_VERSION = '3.3.0';
+const FUNCTION_VERSION = '3.4.0';
 const TOKEN_TTL_MS = 8 * 60 * 60 * 1000;
 const STORE_NAME = 'production-dashboard';
 
@@ -84,8 +84,18 @@ exports.handler = async (event) => {
   }
 
   try {
-    // In Netlify Functions, project credentials are provided automatically.
-    const store = getStore({ name: STORE_NAME, consistency: 'strong' });
+    const siteID = String(process.env.NETLIFY_SITE_ID || process.env.SITE_ID || '').trim();
+    const netlifyToken = String(process.env.NETLIFY_TOKEN || '').trim();
+
+    if (!siteID || !netlifyToken) {
+      return response(500, {
+        error: 'BLOB_CREDENTIALS_NOT_CONFIGURED',
+        message: 'NETLIFY_SITE_ID and NETLIFY_TOKEN must be configured for shared storage.',
+        version: FUNCTION_VERSION
+      });
+    }
+
+    const store = getStore(STORE_NAME, { siteID, token: netlifyToken });
 
     if (action === 'status') {
       return response(200, { ok: true, backend: 'netlify-blobs', store: STORE_NAME, version: FUNCTION_VERSION });
