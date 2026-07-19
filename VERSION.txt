@@ -1,5 +1,1 @@
-Production Dashboard V3.2 - Shared Data
-- Netlify Blobs official SDK
-- Strong consistency
-- No silent localStorage fallback on live site
-- Existing browser data migrates to shared storage after manager login
+3.3.0

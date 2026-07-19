@@ -873,13 +873,13 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 
   async function loadQuality(){
     let raw = null;
-    try { raw = localStorage.getItem(QUALITY_STORAGE_KEY); } catch(e){}
-    if(!raw){
+    if(!IS_LOCAL_FILE){
       try {
         const res = await _dashStorage.get(QUALITY_STORAGE_KEY);
         raw = res && res.value ? res.value : null;
-        if(raw) try { localStorage.setItem(QUALITY_STORAGE_KEY, raw); } catch(e){}
-      } catch(e){}
+      } catch(e){ console.error('Shared quality load failed:', e); }
+    }else{
+      try { raw = localStorage.getItem(QUALITY_STORAGE_KEY); } catch(e){}
     }
     if(raw){
       try {
@@ -1517,54 +1517,47 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 
   async function loadEntries(){
     entries = [];
-    let usedChunkedFormat = false;
 
-    // STEP 1: Load immediately from localStorage for fast display
-    try {
-      const idxLocal = localStorage.getItem(ENTRIES_INDEX_KEY);
-      const months = idxLocal ? JSON.parse(idxLocal) : null;
-      if(months && Array.isArray(months) && months.length > 0){
-        usedChunkedFormat = true;
-        months.forEach(m=>{
-          const raw = localStorage.getItem(ENTRIES_KEY_PREFIX + m);
-          if(raw){ try { entries = entries.concat(JSON.parse(raw)); } catch(e2){} }
-        });
+    // באתר החי: מקור האמת הוא האחסון המשותף. localStorage אינו מוצג לפני הענן.
+    if(!IS_LOCAL_FILE){
+      try{
+        const idxRes = await _dashStorage.get(ENTRIES_INDEX_KEY);
+        const months = idxRes && idxRes.value ? JSON.parse(idxRes.value) : [];
+        if(Array.isArray(months) && months.length){
+          const results = await Promise.all(months.map(m =>
+            _dashStorage.get(ENTRIES_KEY_PREFIX + m).catch(()=>null)
+          ));
+          results.forEach(r=>{
+            if(r && r.value){ try { entries = entries.concat(JSON.parse(r.value)); } catch(e){} }
+          });
+        }else{
+          // תאימות לגרסה הישנה שבה כל הרשומות נשמרו במפתח אחד.
+          const legacy = await _dashStorage.get(STORAGE_KEY).catch(()=>null);
+          if(legacy && legacy.value){ try { entries = JSON.parse(legacy.value); } catch(e){} }
+        }
+      }catch(e){
+        console.error('Shared entries load failed:', e);
+        showToast('לא ניתן לטעון את הנתונים המשותפים מהשרת: '+(e.message||e), true);
       }
-      if(!usedChunkedFormat){
-        const legacy = localStorage.getItem(STORAGE_KEY);
-        if(legacy){ try { entries = JSON.parse(legacy); usedChunkedFormat = true; } catch(e){} }
-      }
-    } catch(e){ entries = []; }
-
-    // Mark as loaded immediately so UI can render
-    loaded = true;
-
-    // STEP 2: Try Netlify in background (don't block UI)
-    if(_netlifyAvailable){
-      (async()=>{
-        try {
-          const idxRes = await _dashStorage.get(ENTRIES_INDEX_KEY);
-          const months = idxRes && idxRes.value ? JSON.parse(idxRes.value) : null;
-          if(months && Array.isArray(months) && months.length > 0){
-            let netlifyEntries = [];
-            const results = await Promise.all(months.map(m =>
-              _dashStorage.get(ENTRIES_KEY_PREFIX + m).catch(()=>null)
-            ));
-            results.forEach(r=>{
-              if(r && r.value){
-                try { netlifyEntries = netlifyEntries.concat(JSON.parse(r.value)); } catch(e){}
-              }
-            });
-            if(netlifyEntries.length > 0){
-              entries = netlifyEntries;
-              renderAll();
-            }
-          }
-        } catch(e){ /* silent — already showing localStorage data */ }
-      })();
+    }else{
+      // רק בהרצה ישירה מהמחשב משתמשים באחסון המקומי.
+      try{
+        const idxLocal = localStorage.getItem(ENTRIES_INDEX_KEY);
+        const months = idxLocal ? JSON.parse(idxLocal) : [];
+        if(Array.isArray(months) && months.length){
+          months.forEach(m=>{
+            const raw = localStorage.getItem(ENTRIES_KEY_PREFIX + m);
+            if(raw){ try { entries = entries.concat(JSON.parse(raw)); } catch(e){} }
+          });
+        }else{
+          const legacy = localStorage.getItem(STORAGE_KEY);
+          if(legacy){ try { entries = JSON.parse(legacy); } catch(e){} }
+        }
+      }catch(e){ entries=[]; }
     }
 
-    // Run migrations on locally loaded entries
+    loaded = true;
+
     let migrated = false;
     entries.forEach(e=>{
       if(e.facility && OLD_TO_NEW_FACILITY[e.facility]){
@@ -1576,12 +1569,9 @@ html, body { margin:0; padding:0; background:#0A0D12; }
         e.packagingType = OLD_TO_NEW_PACKAGING_TYPE[e.packagingType];
         migrated = true;
       }
-      if(e.orderType === undefined){
-        e.orderType = '';
-        migrated = true;
-      }
+      if(e.orderType === undefined){ e.orderType=''; migrated=true; }
     });
-    if(migrated) await persist();
+    if(migrated && isAdmin) await persist();
   }
 
   async function loadTargets(){
@@ -4999,22 +4989,63 @@ function renderAll(){
   };
   root.querySelector('#adminCancelBtn').onclick = ()=>root.querySelector('#adminLoginOverlay').classList.remove('open');
   root.querySelector('#adminLoginOverlay').onclick = e=>{ if(e.target.id==='adminLoginOverlay') e.currentTarget.classList.remove('open'); };
+  function entryMergeKey(e){
+    if(e && e.id != null && String(e.id)!=='') return 'id:'+String(e.id);
+    const fields=['date','facility','workOrder','order','batch','material','materialCode','materialName','quantity','qty','productionQty','packagingQty','actualFinishTime','packagingType','shift','orderType'];
+    return 'row:'+fields.map(k=>String((e&&e[k])??'')).join('|');
+  }
+
+  function readLocalEntriesForMigration(){
+    let result=[];
+    try{
+      const idxRaw=localStorage.getItem(ENTRIES_INDEX_KEY);
+      const months=idxRaw?JSON.parse(idxRaw):[];
+      if(Array.isArray(months) && months.length){
+        months.forEach(m=>{ const raw=localStorage.getItem(ENTRIES_KEY_PREFIX+m); if(raw) try{ result=result.concat(JSON.parse(raw)); }catch(e){} });
+      }else{
+        const legacy=localStorage.getItem(STORAGE_KEY); if(legacy) try{ result=JSON.parse(legacy); }catch(e){}
+      }
+    }catch(e){}
+    return Array.isArray(result)?result:[];
+  }
+
   async function migrateCurrentDataToSharedStorage(){
     if(IS_LOCAL_FILE || !isAdmin) return;
     try{
-      showToast('מעביר את הנתונים הקיימים לאחסון המשותף...');
+      const localEntries=readLocalEntriesForMigration();
+      const merged=new Map();
+      entries.forEach(e=>merged.set(entryMergeKey(e),e));
+      localEntries.forEach(e=>merged.set(entryMergeKey(e),e));
+      const before=entries.length;
+      entries=Array.from(merged.values());
+
+      let localQualityRaw=null;
+      try{ localQualityRaw=localStorage.getItem(QUALITY_STORAGE_KEY); }catch(e){}
+      if(localQualityRaw){
+        try{
+          const localQ=JSON.parse(localQualityRaw);
+          const cloudQ={};
+          qualityEntries.forEach(q=>{ if(q&&q.batch) cloudQ[String(q.batch).trim()]=q.udCode||''; });
+          Object.entries(localQ||{}).forEach(([batch,v])=>{ cloudQ[batch]=(v&&typeof v==='object')?(v.udCode||''):v; });
+          qualityEntries=Object.entries(cloudQ).map(([batch,udCode])=>({batch,udCode,udDate:0,materialCode:'',materialName:'',qaApproval:'',facility:''}));
+        }catch(e){}
+      }
+
+      showToast('מאחד נתונים מקומיים עם האחסון המשותף...');
       await persist();
       await persistTargets();
       await persistProductionTargets();
       await persistPeriodPackagingTargets();
       await persistEventsEntries();
       if(qualityEntries && qualityEntries.length) await persistQuality();
-      showToast('הנתונים נשמרו באחסון המשותף. כעת הם זמינים מכל מחשב.');
+      renderAll();
+      showToast('האיחוד הושלם: '+entries.length+' רשומות זמינות כעת לכל המשתמשים'+(entries.length>before?' (נוספו '+(entries.length-before)+')':'')+'.');
     }catch(e){
       console.error('Shared storage migration failed:', e);
-      showToast('הכניסה הצליחה, אך העברת הנתונים לענן נכשלה: '+(e.message||e), true);
+      showToast('הכניסה הצליחה, אך איחוד הנתונים לענן נכשל: '+(e.message||e), true);
     }
   }
+
 
   async function submitAdminLogin(){
     const code=(root.querySelector('#adminCodeInput').value||'').trim();

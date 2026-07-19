@@ -1,9 +1,7 @@
-[build]
-  publish = "."
-  functions = "netlify/functions"
+# Production Dashboard V3.3
 
-[[redirects]]
-  from = "/api/storage"
-  to = "/.netlify/functions/storage"
-  status = 200
-  force = true
+גרסה זו מתקנת סנכרון בין מחשבים:
+- באתר החי הנתונים נטענים קודם ורק מ-Netlify Blobs.
+- בעת כניסת מנהל מתבצע איחוד בין הנתונים המקומיים במחשב הראשי לבין הנתונים שכבר בענן.
+- האיחוד אינו מוחק רשומות קיימות ומונע כפילויות לפי מזהה/מאפייני הרשומה.
+- נתוני איכות מקומיים מתאחדים גם הם עם הענן.
