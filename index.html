@@ -557,29 +557,34 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     root.querySelectorAll('label[for="qualityFileInput"], label[for="csvInput"], .row-del, #f_period_pack_target, #f_save_period_target, #f_clear_period_target').forEach(el=>el.classList.add('admin-only'));
   }
 
-  // אחסון שיתופי: כל המשתמשים שנכנסים לאתר רואים ועורכים את אותם נתונים.
-  // הנתונים נשמרים בפועל בצד השרת (Netlify Function + Netlify Blobs), לא בדפדפן.
-  // אם הפונקציה לא זמינה (למשל פתיחת הקובץ ישירות בלי Netlify) — חוזרים אוטומטית ל-localStorage המקומי כגיבוי.
+  // אחסון משותף אמיתי: באתר החי כל קריאה ושמירה מתבצעת דרך Netlify Blobs.
+  // localStorage משמש רק כאשר פותחים את index.html ישירות מהמחשב (file://).
   const STORAGE_API_URL = '/.netlify/functions/storage';
-  let _netlifyAvailable = true; // always try Netlify first, fall back on error
+  const IS_LOCAL_FILE = location.protocol === 'file:';
+  let _netlifyAvailable = !IS_LOCAL_FILE;
 
   async function _callStorageApi(action, key, value){
     const controller = new AbortController();
-    const timer = setTimeout(()=>controller.abort(), 8000);
+    const timer = setTimeout(()=>controller.abort(), 15000);
     try {
       const res = await fetch(STORAGE_API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action, key, value, token: adminToken }),
-        signal: controller.signal
+        signal: controller.signal,
+        cache: 'no-store'
       });
+      const data = await res.json().catch(()=>({}));
+      if(!res.ok){
+        const err = new Error(data.message || data.error || ('storage api error ' + res.status));
+        err.code = data.error || '';
+        err.status = res.status;
+        throw err;
+      }
+      _netlifyAvailable = true;
+      return data;
+    } finally {
       clearTimeout(timer);
-      if(!res.ok) throw new Error('storage api error ' + res.status);
-      return res.json();
-    } catch(e){
-      clearTimeout(timer);
-      _netlifyAvailable = false; // mark as unavailable on timeout/error
-      throw e;
     }
   }
 
@@ -608,40 +613,22 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   if(!_dashStorage){
     _dashStorage = {
       async get(key){
-        if(await _isNetlifyAvailable()){
-          try {
-            const data = await _callStorageApi('get', key);
-            if(data && data.value != null) return { value: data.value };
-            return null;
-          } catch(e){
-            _netlifyAvailable = false;
-          }
-        }
-        return _local.get(key);
+        if(IS_LOCAL_FILE) return _local.get(key);
+        const data = await _callStorageApi('get', key);
+        if(data && data.value != null) return { value: data.value };
+        return null;
       },
       async set(key, value){
         if(!requireAdmin()) throw new Error('ADMIN_REQUIRED');
-        if(await _isNetlifyAvailable()){
-          try {
-            await _callStorageApi('set', key, value);
-            return { ok: true };
-          } catch(e){
-            _netlifyAvailable = false;
-          }
-        }
-        return _local.set(key, value);
+        if(IS_LOCAL_FILE) return _local.set(key, value);
+        await _callStorageApi('set', key, value);
+        return { ok: true };
       },
       async delete(key){
         if(!requireAdmin()) throw new Error('ADMIN_REQUIRED');
-        if(await _isNetlifyAvailable()){
-          try {
-            await _callStorageApi('delete', key);
-            return { ok: true };
-          } catch(e){
-            _netlifyAvailable = false;
-          }
-        }
-        return _local.delete(key);
+        if(IS_LOCAL_FILE) return _local.delete(key);
+        await _callStorageApi('delete', key);
+        return { ok: true };
       }
     };
   }
@@ -5012,6 +4999,23 @@ function renderAll(){
   };
   root.querySelector('#adminCancelBtn').onclick = ()=>root.querySelector('#adminLoginOverlay').classList.remove('open');
   root.querySelector('#adminLoginOverlay').onclick = e=>{ if(e.target.id==='adminLoginOverlay') e.currentTarget.classList.remove('open'); };
+  async function migrateCurrentDataToSharedStorage(){
+    if(IS_LOCAL_FILE || !isAdmin) return;
+    try{
+      showToast('מעביר את הנתונים הקיימים לאחסון המשותף...');
+      await persist();
+      await persistTargets();
+      await persistProductionTargets();
+      await persistPeriodPackagingTargets();
+      await persistEventsEntries();
+      if(qualityEntries && qualityEntries.length) await persistQuality();
+      showToast('הנתונים נשמרו באחסון המשותף. כעת הם זמינים מכל מחשב.');
+    }catch(e){
+      console.error('Shared storage migration failed:', e);
+      showToast('הכניסה הצליחה, אך העברת הנתונים לענן נכשלה: '+(e.message||e), true);
+    }
+  }
+
   async function submitAdminLogin(){
     const code=(root.querySelector('#adminCodeInput').value||'').trim();
     if(!code){ showToast('יש להזין קוד מנהל', true); return; }
@@ -5021,6 +5025,7 @@ function renderAll(){
       if(!res.ok || !data.token) throw new Error(data.error||'login failed');
       adminToken=data.token; isAdmin=true; sessionStorage.setItem('dashboard_admin_token',adminToken);
       root.querySelector('#adminCodeInput').value=''; root.querySelector('#adminLoginOverlay').classList.remove('open'); applyRoleUI(); showToast('מצב מנהל הופעל');
+      await migrateCurrentDataToSharedStorage();
     }catch(e){
       const msg=String(e && e.message || '');
       if(msg.includes('ADMIN_CODE_NOT_CONFIGURED')) showToast('משתנה ADMIN_CODE אינו מוגדר בפונקציית Netlify', true);
