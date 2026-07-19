@@ -1,11 +1,9 @@
-# Production Dashboard V3.3
+# Production Dashboard V3.6
 
-גרסה זו מתקנת סנכרון בין מחשבים:
-- באתר החי הנתונים נטענים קודם ורק מ-Netlify Blobs.
-- בעת כניסת מנהל מתבצע איחוד בין הנתונים המקומיים במחשב הראשי לבין הנתונים שכבר בענן.
-- האיחוד אינו מוחק רשומות קיימות ומונע כפילויות לפי מזהה/מאפייני הרשומה.
-- נתוני איכות מקומיים מתאחדים גם הם עם הענן.
+תיקון אחסון משותף: הפונקציה משתמשת ב-Netlify REST API, פותחת קישור הורדה זמני בצד השרת ומחזירה לדפדפן רק את תוכן הנתונים.
 
-
-## V3.4
-Fixed Netlify Blobs shared storage by explicitly using NETLIFY_SITE_ID and NETLIFY_TOKEN.
+נדרשים משתני הסביבה:
+- ADMIN_CODE
+- ADMIN_TOKEN_SECRET
+- NETLIFY_SITE_ID
+- NETLIFY_TOKEN

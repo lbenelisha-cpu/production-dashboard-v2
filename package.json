@@ -1,9 +1,6 @@
 {
   "name": "production-dashboard-netlify",
-  "version": "1.0.0",
+  "version": "3.6.0",
   "private": true,
-  "description": "לוח בקרה לייצור ואריזה עם אחסון שיתופי דרך Netlify Functions + Netlify Blobs",
-  "dependencies": {
-    "@netlify/blobs": "^8.1.0"
-  }
+  "description": "Production dashboard with shared Netlify storage"
 }

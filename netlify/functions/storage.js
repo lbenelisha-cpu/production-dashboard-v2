@@ -1,7 +1,6 @@
 const crypto = require('crypto');
-const { getStore } = require('@netlify/blobs');
 
-const FUNCTION_VERSION = '3.5.0';
+const FUNCTION_VERSION = '3.6.0';
 const TOKEN_TTL_MS = 8 * 60 * 60 * 1000;
 const STORE_NAME = 'production-dashboard';
 
@@ -48,6 +47,37 @@ function response(statusCode, payload) {
   };
 }
 
+function extractSignedUrl(raw) {
+  const text = String(raw || '').trim();
+  if (!text) return null;
+  if (/^https:\/\//i.test(text)) return text;
+  try {
+    const parsed = JSON.parse(text);
+    if (typeof parsed === 'string' && /^https:\/\//i.test(parsed)) return parsed;
+    for (const key of ['url', 'download_url', 'downloadUrl', 'signed_url', 'signedUrl']) {
+      if (parsed && typeof parsed[key] === 'string' && /^https:\/\//i.test(parsed[key])) return parsed[key];
+    }
+  } catch {}
+  return null;
+}
+
+async function blobRequest({ siteID, token, key, method, value }) {
+  const encodedStore = encodeURIComponent(STORE_NAME);
+  const encodedKey = encodeURIComponent(key);
+  const url = `https://api.netlify.com/api/v1/sites/${encodeURIComponent(siteID)}/blobs/${encodedStore}/${encodedKey}`;
+  const res = await fetch(url, {
+    method,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      ...(method === 'PUT' ? { 'Content-Type': 'application/octet-stream' } : {})
+    },
+    body: method === 'PUT' ? String(value == null ? '' : value) : undefined,
+    cache: 'no-store'
+  });
+  const text = await res.text();
+  return { ok: res.ok, status: res.status, text };
+}
+
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return response(204, null);
   if (event.httpMethod !== 'POST') return response(405, { error: 'METHOD_NOT_ALLOWED', version: FUNCTION_VERSION });
@@ -63,7 +93,6 @@ exports.handler = async (event) => {
     const configured = String(process.env.ADMIN_CODE || '').trim();
     const supplied = String(body.code || '').trim();
     if (!configured) return response(500, { error: 'ADMIN_CODE_NOT_CONFIGURED', version: FUNCTION_VERSION });
-
     const a = Buffer.from(supplied);
     const b = Buffer.from(configured);
     const ok = a.length === b.length && crypto.timingSafeEqual(a, b);
@@ -83,49 +112,50 @@ exports.handler = async (event) => {
     return response(401, { error: 'ADMIN_AUTHORIZATION_REQUIRED', version: FUNCTION_VERSION });
   }
 
+  const siteID = String(process.env.NETLIFY_SITE_ID || process.env.SITE_ID || '').trim();
+  const netlifyToken = String(process.env.NETLIFY_TOKEN || process.env.NETLIFY_ACCESS_TOKEN || '').trim();
+  if (!siteID || !netlifyToken) {
+    return response(500, {
+      error: 'BLOB_CREDENTIALS_NOT_CONFIGURED',
+      message: 'NETLIFY_SITE_ID and NETLIFY_TOKEN must be configured for shared storage.',
+      version: FUNCTION_VERSION
+    });
+  }
+
   try {
-    const siteID = String(process.env.NETLIFY_SITE_ID || process.env.SITE_ID || '').trim();
-    const netlifyToken = String(process.env.NETLIFY_TOKEN || '').trim();
-
-    if (!siteID || !netlifyToken) {
-      return response(500, {
-        error: 'BLOB_CREDENTIALS_NOT_CONFIGURED',
-        message: 'NETLIFY_SITE_ID and NETLIFY_TOKEN must be configured for shared storage.',
-        version: FUNCTION_VERSION
-      });
-    }
-
-    const store = getStore(STORE_NAME, { siteID, token: netlifyToken });
-
     if (action === 'status') {
-      return response(200, { ok: true, backend: 'netlify-blobs', store: STORE_NAME, version: FUNCTION_VERSION });
+      return response(200, { ok: true, backend: 'netlify-blobs-rest', store: STORE_NAME, version: FUNCTION_VERSION });
     }
-    if (action === 'get') {
-      let storedValue = await store.get(key, { type: 'text', consistency: 'strong' });
 
-      // Some Netlify Blobs environments may return a temporary signed download URL.
-      // Never expose that URL to the browser: resolve it inside the function and return
-      // the actual stored content instead.
-      if (typeof storedValue === 'string' && /^https:\/\//i.test(storedValue) && /X-Amz-(Algorithm|Credential|Signature)/i.test(storedValue)) {
-        const download = await fetch(storedValue, { cache: 'no-store' });
-        if (!download.ok) {
-          throw new Error(`BLOB_DOWNLOAD_FAILED_${download.status}`);
-        }
-        storedValue = await download.text();
+    if (action === 'get') {
+      const result = await blobRequest({ siteID, token: netlifyToken, key, method: 'GET' });
+      if (result.status === 404) return response(200, { value: null, backend: 'netlify-blobs-rest', version: FUNCTION_VERSION });
+      if (!result.ok) throw new Error(`BLOB_GET_FAILED_${result.status}: ${result.text.slice(0, 300)}`);
+
+      const signedUrl = extractSignedUrl(result.text);
+      if (signedUrl) {
+        const download = await fetch(signedUrl, { cache: 'no-store' });
+        const downloadedText = await download.text();
+        if (!download.ok) throw new Error(`BLOB_DOWNLOAD_FAILED_${download.status}: ${downloadedText.slice(0, 300)}`);
+        return response(200, { value: downloadedText, backend: 'netlify-blobs-rest', version: FUNCTION_VERSION });
       }
 
-      return response(200, { value: storedValue, backend: 'netlify-blobs', version: FUNCTION_VERSION });
+      return response(200, { value: result.text, backend: 'netlify-blobs-rest', version: FUNCTION_VERSION });
     }
+
     if (action === 'set') {
-      await store.set(key, value == null ? '' : String(value));
-      return response(200, { ok: true, backend: 'netlify-blobs', version: FUNCTION_VERSION });
+      const result = await blobRequest({ siteID, token: netlifyToken, key, method: 'PUT', value });
+      if (!result.ok) throw new Error(`BLOB_SET_FAILED_${result.status}: ${result.text.slice(0, 300)}`);
+      return response(200, { ok: true, backend: 'netlify-blobs-rest', version: FUNCTION_VERSION });
     }
+
     if (action === 'delete') {
-      await store.delete(key);
-      return response(200, { ok: true, backend: 'netlify-blobs', version: FUNCTION_VERSION });
+      const result = await blobRequest({ siteID, token: netlifyToken, key, method: 'DELETE' });
+      if (!result.ok && result.status !== 404) throw new Error(`BLOB_DELETE_FAILED_${result.status}: ${result.text.slice(0, 300)}`);
+      return response(200, { ok: true, backend: 'netlify-blobs-rest', version: FUNCTION_VERSION });
     }
   } catch (error) {
-    console.error('Netlify Blobs error:', error);
+    console.error('Shared storage error:', error);
     return response(500, {
       error: 'BLOB_STORAGE_ERROR',
       message: error && error.message ? error.message : 'Unknown storage error',
