@@ -1,7 +1,7 @@
 const crypto = require('crypto');
 const { getStore } = require('@netlify/blobs');
 
-const FUNCTION_VERSION = '3.4.0';
+const FUNCTION_VERSION = '3.5.0';
 const TOKEN_TTL_MS = 8 * 60 * 60 * 1000;
 const STORE_NAME = 'production-dashboard';
 
@@ -101,7 +101,19 @@ exports.handler = async (event) => {
       return response(200, { ok: true, backend: 'netlify-blobs', store: STORE_NAME, version: FUNCTION_VERSION });
     }
     if (action === 'get') {
-      const storedValue = await store.get(key, { type: 'text', consistency: 'strong' });
+      let storedValue = await store.get(key, { type: 'text', consistency: 'strong' });
+
+      // Some Netlify Blobs environments may return a temporary signed download URL.
+      // Never expose that URL to the browser: resolve it inside the function and return
+      // the actual stored content instead.
+      if (typeof storedValue === 'string' && /^https:\/\//i.test(storedValue) && /X-Amz-(Algorithm|Credential|Signature)/i.test(storedValue)) {
+        const download = await fetch(storedValue, { cache: 'no-store' });
+        if (!download.ok) {
+          throw new Error(`BLOB_DOWNLOAD_FAILED_${download.status}`);
+        }
+        storedValue = await download.text();
+      }
+
       return response(200, { value: storedValue, backend: 'netlify-blobs', version: FUNCTION_VERSION });
     }
     if (action === 'set') {
