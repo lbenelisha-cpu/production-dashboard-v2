@@ -1,1 +1,1 @@
-Production Dashboard V3.9 - Official Netlify Blobs SDK
+Production Dashboard V4.0 — General table and quality detail fixes
