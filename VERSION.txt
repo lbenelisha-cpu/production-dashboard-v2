@@ -1,1 +1,1 @@
-V3.8 - Viewer cloud reload and safe admin login
+Production Dashboard V3.9 - Official Netlify Blobs SDK
