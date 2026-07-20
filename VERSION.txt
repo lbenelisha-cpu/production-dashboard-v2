@@ -1,2 +1,1 @@
-3.7.0
-Fix: treat Netlify/S3 NoSuchKey as empty shared data on first run.
+V3.8 - Viewer cloud reload and safe admin login

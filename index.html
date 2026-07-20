@@ -4831,7 +4831,7 @@ function renderAll(){
           '<div class="brand-mark">⚙</div>'+
           '<div><h1>לוח בקרה — ייצור ואריזה</h1><p><span id="entryCount">טוען נתונים…</span> <span id="storageStatusBadge" class="storage-status"></span></p><p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;"><span id="dataStatusLine">בודק נתונים…</span></p></div>'+
         '</div>'+
-        '<div class="topbar-actions"><span id="roleBadge" class="role-badge viewer">👁 צפייה בלבד</span><button class="tab-btn" id="adminLoginBtn" style="background:rgba(255,255,255,0.06);color:var(--text);font-size:12px;padding:6px 14px;">🔐 כניסת מנהל</button><button class="tab-btn admin-only" id="addEventTopBtn" style="background:rgba(139,183,255,0.12);color:#8BB7FF;font-size:12px;padding:6px 14px;">+ הוסף אירוע</button><button class="tab-btn" id="advancedDashboardBtn" style="background:var(--teal-soft);color:var(--green);font-size:12px;padding:6px 14px;">📊 דשבורד חדש</button><button class="tab-btn" id="excelAnalyzedExportBtn" style="background:rgba(124,217,146,0.12);color:#7CD992;font-size:12px;padding:6px 14px;">📥 ייצוא ניתוח לאקסל</button><label for="qualityFileInput" class="tab-btn admin-only" style="background:rgba(239,68,68,0.12);color:var(--red);font-size:12px;padding:6px 14px;cursor:pointer;">🧪 טעינת איכות</label><button class="tab-btn" id="whatsappExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📲 WhatsApp טקסט</button><button class="tab-btn" id="whatsappImageExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📸 צילום דשבורד</button><button class="tab-btn admin-only" id="targetsProdBtn" style="background:var(--amber-soft);color:var(--amber);font-size:12px;padding:6px 14px;">⚙ יעדי ייצור</button><button class="tab-btn admin-only" id="targetsBtn" style="background:var(--teal-soft);color:var(--teal);font-size:12px;padding:6px 14px;">⚙ יעדי אריזה</button><button class="tab-btn admin-only" id="resetBtn" style="background:rgba(255,255,255,0.05);color:var(--text-muted);font-size:12px;padding:6px 14px;">איפוס</button></div>'+
+        '<div class="topbar-actions"><span id="roleBadge" class="role-badge viewer">👁 צפייה בלבד</span><button class="tab-btn" id="adminLoginBtn" style="background:rgba(255,255,255,0.06);color:var(--text);font-size:12px;padding:6px 14px;">🔐 כניסת מנהל</button><button class="tab-btn" id="refreshSharedBtn" style="background:rgba(20,184,166,0.12);color:var(--teal);font-size:12px;padding:6px 14px;">🔄 רענן נתונים</button><button class="tab-btn admin-only" id="addEventTopBtn" style="background:rgba(139,183,255,0.12);color:#8BB7FF;font-size:12px;padding:6px 14px;">+ הוסף אירוע</button><button class="tab-btn" id="advancedDashboardBtn" style="background:var(--teal-soft);color:var(--green);font-size:12px;padding:6px 14px;">📊 דשבורד חדש</button><button class="tab-btn" id="excelAnalyzedExportBtn" style="background:rgba(124,217,146,0.12);color:#7CD992;font-size:12px;padding:6px 14px;">📥 ייצוא ניתוח לאקסל</button><label for="qualityFileInput" class="tab-btn admin-only" style="background:rgba(239,68,68,0.12);color:var(--red);font-size:12px;padding:6px 14px;cursor:pointer;">🧪 טעינת איכות</label><button class="tab-btn" id="whatsappExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📲 WhatsApp טקסט</button><button class="tab-btn" id="whatsappImageExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📸 צילום דשבורד</button><button class="tab-btn admin-only" id="targetsProdBtn" style="background:var(--amber-soft);color:var(--amber);font-size:12px;padding:6px 14px;">⚙ יעדי ייצור</button><button class="tab-btn admin-only" id="targetsBtn" style="background:var(--teal-soft);color:var(--teal);font-size:12px;padding:6px 14px;">⚙ יעדי אריזה</button><button class="tab-btn admin-only" id="resetBtn" style="background:rgba(255,255,255,0.05);color:var(--text-muted);font-size:12px;padding:6px 14px;">איפוס</button></div>'+
       '</div>'+
       '<div class="tabs">'+
         '<button class="tab-btn" data-tab="day">יום אחרון</button>'+
@@ -5013,6 +5013,10 @@ function renderAll(){
     if(IS_LOCAL_FILE || !isAdmin) return;
     try{
       const localEntries=readLocalEntriesForMigration();
+      if(!localEntries.length){
+        showToast('במחשב זה אין נתונים מקומיים להעברה. הנתונים אמורים להיטען אוטומטית מהענן.');
+        return;
+      }
       const merged=new Map();
       entries.forEach(e=>merged.set(entryMergeKey(e),e));
       localEntries.forEach(e=>merged.set(entryMergeKey(e),e));
@@ -5055,8 +5059,7 @@ function renderAll(){
       const data=await res.json();
       if(!res.ok || !data.token) throw new Error(data.error||'login failed');
       adminToken=data.token; isAdmin=true; sessionStorage.setItem('dashboard_admin_token',adminToken);
-      root.querySelector('#adminCodeInput').value=''; root.querySelector('#adminLoginOverlay').classList.remove('open'); applyRoleUI(); showToast('מצב מנהל הופעל');
-      await migrateCurrentDataToSharedStorage();
+      root.querySelector('#adminCodeInput').value=''; root.querySelector('#adminLoginOverlay').classList.remove('open'); applyRoleUI(); showToast('מצב מנהל הופעל. הנתונים נטענים מהענן ואינם מועתקים מהמחשב הזה.');
     }catch(e){
       const msg=String(e && e.message || '');
       if(msg.includes('ADMIN_CODE_NOT_CONFIGURED')) showToast('משתנה ADMIN_CODE אינו מוגדר בפונקציית Netlify', true);
@@ -5067,6 +5070,29 @@ function renderAll(){
   }
   root.querySelector('#adminSubmitBtn').onclick = submitAdminLogin;
   root.querySelector('#adminCodeInput').onkeydown = e=>{ if(e.key==='Enter') submitAdminLogin(); };
+
+  async function reloadSharedData(){
+    const btn = root.querySelector('#refreshSharedBtn');
+    if(btn){ btn.disabled=true; btn.textContent='טוען…'; }
+    try{
+      await loadEntries();
+      await Promise.all([
+        loadQuality().catch(()=>{}),
+        loadTargets().catch(()=>{}),
+        loadProductionTargets().catch(()=>{}),
+        loadPeriodPackagingTargets().catch(()=>{}),
+        loadEventsEntries().catch(()=>{})
+      ]);
+      renderAll();
+      applyRoleUI();
+      showToast(entries.length ? ('נטענו '+entries.length+' רשומות מהאחסון המשותף') : 'אין עדיין נתוני ייצור באחסון המשותף. יש לטעון את הקובץ פעם אחת במחשב המנהל.');
+    }catch(e){
+      showToast('לא ניתן לרענן נתונים מהשרת: '+(e.message||e), true);
+    }finally{
+      if(btn){ btn.disabled=false; btn.textContent='🔄 רענן נתונים'; }
+    }
+  }
+  root.querySelector('#refreshSharedBtn').onclick = reloadSharedData;
   root.querySelector('#addBtn').onclick = ()=>{ if(requireAdmin()) openModal(); };
   const toggleTableBtn = root.querySelector('#toggleTableBtn');
   if(toggleTableBtn){

@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 
-const FUNCTION_VERSION = '3.7.0';
+const FUNCTION_VERSION = '3.8.0';
 const TOKEN_TTL_MS = 8 * 60 * 60 * 1000;
 const STORE_NAME = 'production-dashboard';
 
