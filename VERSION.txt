@@ -1,1 +1,1 @@
-Production Dashboard V4.3 — Chunked quality cloud storage
+Production Dashboard V4.4 — Quality filters synchronized with selected period and facilities

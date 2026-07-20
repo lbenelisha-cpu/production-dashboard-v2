@@ -14,3 +14,9 @@
 
 ## V4.3
 Quality data is saved in multiple Netlify Blobs chunks to support large Excel files.
+
+
+## V4.4
+- סיכום ופירוט מנות האיכות מסוננים לפי יום, חודש, רבעון, שנה או טווח מותאם.
+- סינון האיכות מכבד מתקן יחיד, מספר מתקנים או כל המתקנים.
+- במתקן 1542 נשמר כלל ZFIN גם בסינון האיכות.

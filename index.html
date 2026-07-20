@@ -543,7 +543,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 }
 
 
-/* V4.3 — תיקון חזק לטבלאות פירוט, RTL וטקסט מלא */
+/* V4.4 — תיקון חזק לטבלאות פירוט, RTL וטקסט מלא */
 #prod-dash-root .table-scroll { overflow-x:auto !important; overflow-y:visible !important; }
 #prod-dash-root table.detail-table,
 #prod-dash-root table.records-full {
@@ -1270,6 +1270,70 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     if(ok){ root.querySelector('#eventOverlay').classList.remove('open'); showToast('האירוע נשמר'); renderAll(); }
   }
 
+  function currentQualityDateRange(){
+    if(tab === 'day'){
+      const day = effectiveDay();
+      return { start:day, end:day, label:day };
+    }
+    if(tab === 'period'){
+      const r = effectivePeriod();
+      return { start:r.start, end:r.end, label:r.start+' – '+r.end };
+    }
+    if(tab === 'month'){
+      const ym = effectiveMonth();
+      const parts = ym.split('-').map(Number);
+      const start = toISO(new Date(parts[0], parts[1]-1, 1));
+      const end = toISO(new Date(parts[0], parts[1], 0));
+      return { start, end, label:ym };
+    }
+    if(tab === 'quarter'){
+      const y = effectiveQYear(), q = effectiveQQuarter();
+      const sm = (q-1)*3;
+      const start = toISO(new Date(y, sm, 1));
+      const end = toISO(new Date(y, sm+3, 0));
+      return { start, end, label:'רבעון '+q+' '+y };
+    }
+    const y = effectiveYear();
+    return { start:y+'-01-01', end:y+'-12-31', label:String(y) };
+  }
+
+  function filteredQualityBatchesForView(){
+    const range = currentQualityDateRange();
+    const facFilter = selectedFacilities === null ? null : new Set(Array.from(selectedFacilities).map(normalizeFacilityForQuality));
+    const prodByBatch = new Map();
+    entries.forEach(e=>{
+      const bk = String(e.batch||'').replace(/^0+/,'').trim();
+      if(!bk) return;
+      const current = prodByBatch.get(bk);
+      if(!current || String(e.date||'') > String(current.date||'')) prodByBatch.set(bk, e);
+    });
+    const best = new Map();
+    (qualityEntries||[]).forEach(q0=>{
+      const bk = String(q0.batch||'').replace(/^0+/,'').trim();
+      const prod = bk ? (prodByBatch.get(bk)||{}) : {};
+      const date = String(q0.date || prod.date || '').slice(0,10);
+      if(!date || date < range.start || date > range.end) return;
+      const facility = normalizeFacilityForQuality(q0.facility || prod.facility || '');
+      if(facFilter && (!facility || !facFilter.has(facility))) return;
+      const orderType = q0.orderType || prod.orderType || '';
+      if(facility === '1542' && !String(orderType).toUpperCase().includes('ZFIN')) return;
+      const q = Object.assign({}, q0, {
+        date, facility,
+        materialCode:q0.materialCode || prod.materialCode || '',
+        materialName:q0.materialName || prod.materialName || '',
+        workOrder:q0.workOrder || prod.workOrder || '',
+        orderType
+      });
+      const key = bk || String(q.inspectionLot||'').trim() || [date,q.workOrder,q.udCode].join('|');
+      if(!key) return;
+      const old = best.get(key);
+      const qSort = Number(q.udDate||0) || Date.parse(date) || 0;
+      const oldSort = old ? (Number(old.udDate||0) || Date.parse(old.date||'') || 0) : -1;
+      if(!old || qSort >= oldSort) best.set(key, q);
+    });
+    return { rows:Array.from(best.values()), range, facFilter };
+  }
+
   function renderQualityDashboard(view){
     const container = root.querySelector('#qualityPanel');
     if(!container) return;
@@ -1278,12 +1342,11 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       return;
     }
 
-    // Build category counts — filter by selected facility if one is chosen
-    const facFilter = selectedFacilities && selectedFacilities.size > 0 ? selectedFacilities : null;
+    // V4.4: מנות האיכות מסוננות לפי התקופה והמתקנים שנבחרו בדשבורד.
+    const qualityView = filteredQualityBatchesForView();
+    const facFilter = qualityView.facFilter;
     const catGroups = {}; // costLabel -> { count, color, rows[] }
-    Object.values(qualityBestByKey).forEach(q=>{
-      // Apply facility filter
-      if(facFilter && q.facility && !facFilter.has(q.facility)) return;
+    qualityView.rows.forEach(q=>{
       const info = udCodeInfo(q.udCode);
       const cat = (info && info.costLabel) || q.udCode || 'N/A';
       const color = (info && info.color) || 'var(--text-muted)';
@@ -1292,13 +1355,14 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       catGroups[cat].rows.push(q);
     });
 
-    const totalBatches = Object.values(catGroups).reduce((s,c)=>s+c.count,0);
+    const totalBatches = qualityView.rows.length;
     const facilityLabel = facFilter ? Array.from(facFilter).join(', ') : 'כל המתקנים';
     const sortedCats = Object.entries(catGroups).sort((a,b)=>b[1].count-a[1].count);
+    if(qualityCostMode && !catGroups[qualityCostMode]) qualityCostMode = null;
 
-    let html = '<div class="panel"><div class="panel-head"><div class="panel-title">איכות — סיכום מנות</div>'+
-      '<div class="legend"><span>'+totalBatches+' מנות · '+escapeHtml(facilityLabel)+'</span></div></div>'+
-      '<div class="insight-stats quality-summary-grid">';
+    let html = '<div class="panel"><div class="panel-head"><div class="panel-title">איכות — סיכום מנות</div>'+ 
+      '<div class="legend"><span>'+totalBatches+' מנות · '+escapeHtml(facilityLabel)+' · '+escapeHtml(qualityView.range.label)+'</span></div></div>'+ 
+      (totalBatches===0 ? '<div class="table-empty">לא נמצאו מנות איכות בתקופה ובמתקנים שנבחרו</div>' : '<div class="insight-stats quality-summary-grid">');
 
     sortedCats.forEach(([cat, {count, color}])=>{
       const isActive = qualityCostMode === cat;
@@ -1308,7 +1372,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
         '<div class="kpi-sub">לחץ להצגת המנות</div>'+
         '</div>';
     });
-    html += '</div>';
+    if(totalBatches>0) html += '</div>';
 
     // Drill-down table when a category is selected
     if(qualityCostMode && catGroups[qualityCostMode]){
@@ -4980,7 +5044,7 @@ function renderAll(){
       '<div class="topbar">'+
         '<div class="brand">'+
           '<div class="brand-mark">⚙</div>'+
-          '<div><h1>לוח בקרה — ייצור ואריזה <span class="app-version-badge">V4.3</span></h1><p><span id="entryCount">טוען נתונים…</span> <span id="storageStatusBadge" class="storage-status"></span></p><p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;"><span id="dataStatusLine">בודק נתונים…</span></p></div>'+
+          '<div><h1>לוח בקרה — ייצור ואריזה <span class="app-version-badge">V4.4</span></h1><p><span id="entryCount">טוען נתונים…</span> <span id="storageStatusBadge" class="storage-status"></span></p><p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;"><span id="dataStatusLine">בודק נתונים…</span></p></div>'+
         '</div>'+
         '<div class="topbar-actions"><span id="roleBadge" class="role-badge viewer">👁 צפייה בלבד</span><button class="tab-btn" id="adminLoginBtn" style="background:rgba(255,255,255,0.06);color:var(--text);font-size:12px;padding:6px 14px;">🔐 כניסת מנהל</button><button class="tab-btn" id="refreshSharedBtn" style="background:rgba(20,184,166,0.12);color:var(--teal);font-size:12px;padding:6px 14px;">🔄 רענן נתונים</button><button class="tab-btn admin-only" id="addEventTopBtn" style="background:rgba(139,183,255,0.12);color:#8BB7FF;font-size:12px;padding:6px 14px;">+ הוסף אירוע</button><button class="tab-btn" id="advancedDashboardBtn" style="background:var(--teal-soft);color:var(--green);font-size:12px;padding:6px 14px;">📊 דשבורד חדש</button><button class="tab-btn" id="excelAnalyzedExportBtn" style="background:rgba(124,217,146,0.12);color:#7CD992;font-size:12px;padding:6px 14px;">📥 ייצוא ניתוח לאקסל</button><label for="qualityFileInput" class="tab-btn admin-only" style="background:rgba(239,68,68,0.12);color:var(--red);font-size:12px;padding:6px 14px;cursor:pointer;">🧪 טעינת איכות</label><button class="tab-btn" id="whatsappExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📲 WhatsApp טקסט</button><button class="tab-btn" id="whatsappImageExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📸 צילום דשבורד</button><button class="tab-btn admin-only" id="targetsProdBtn" style="background:var(--amber-soft);color:var(--amber);font-size:12px;padding:6px 14px;">⚙ יעדי ייצור</button><button class="tab-btn admin-only" id="targetsBtn" style="background:var(--teal-soft);color:var(--teal);font-size:12px;padding:6px 14px;">⚙ יעדי אריזה</button><button class="tab-btn admin-only" id="resetBtn" style="background:rgba(255,255,255,0.05);color:var(--text-muted);font-size:12px;padding:6px 14px;">איפוס</button></div>'+
       '</div>'+
@@ -5349,7 +5413,7 @@ root.querySelector('#printBtn').onclick = ()=> window.print();
 })();
 })();
 
-  // V4.3-real-table-fix
+  // V4.4-quality-period-facility-filter
 </script>
 </body>
 </html>
