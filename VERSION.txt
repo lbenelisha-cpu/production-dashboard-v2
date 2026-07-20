@@ -1,1 +1,1 @@
-Production Dashboard V4.0 — General table and quality detail fixes
+Production Dashboard V4.1 — Real table layout and full-text fixes
