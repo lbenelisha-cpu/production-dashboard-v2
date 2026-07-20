@@ -10,3 +10,7 @@
 - התאמת רוחבי עמודות, גלישת שורות ו-tooltip לערכים ארוכים.
 
 לאחר העלאת הגרסה יש לטעון פעם אחת מחדש את קובץ האיכות במחשב מנהל, כדי לשמור בענן את התיאורים המלאים.
+
+
+## V4.3
+Quality data is saved in multiple Netlify Blobs chunks to support large Excel files.
