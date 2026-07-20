@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 
-const FUNCTION_VERSION = '3.6.0';
+const FUNCTION_VERSION = '3.7.0';
 const TOKEN_TTL_MS = 8 * 60 * 60 * 1000;
 const STORE_NAME = 'production-dashboard';
 
@@ -136,6 +136,14 @@ exports.handler = async (event) => {
       if (signedUrl) {
         const download = await fetch(signedUrl, { cache: 'no-store' });
         const downloadedText = await download.text();
+
+        // Netlify can return a signed download URL even when the object does not
+        // exist yet. Amazon S3 then answers with 404 / NoSuchKey. This is a normal
+        // first-run state and must be treated as an empty value, not as an error.
+        if (download.status === 404 || /<Code>\s*NoSuchKey\s*<\/Code>/i.test(downloadedText)) {
+          return response(200, { value: null, backend: 'netlify-blobs-rest', version: FUNCTION_VERSION });
+        }
+
         if (!download.ok) throw new Error(`BLOB_DOWNLOAD_FAILED_${download.status}: ${downloadedText.slice(0, 300)}`);
         return response(200, { value: downloadedText, backend: 'netlify-blobs-rest', version: FUNCTION_VERSION });
       }

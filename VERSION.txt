@@ -1,1 +1,2 @@
-3.6.0
+3.7.0
+Fix: treat Netlify/S3 NoSuchKey as empty shared data on first run.
