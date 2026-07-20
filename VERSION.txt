@@ -1,1 +1,1 @@
-Production Dashboard V4.1 — Real table layout and full-text fixes
+Production Dashboard V4.2 — Full quality import and verified shared storage
