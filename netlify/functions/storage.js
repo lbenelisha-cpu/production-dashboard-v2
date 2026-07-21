@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 
-const FUNCTION_VERSION = '3.9.0';
+const FUNCTION_VERSION = '4.5.0';
 const TOKEN_TTL_MS = 8 * 60 * 60 * 1000;
 const STORE_NAME = 'production-dashboard';
 
@@ -84,7 +84,7 @@ exports.handler = async (event) => {
   }
 
   const { action, key, value, token } = body;
-  if (!['get', 'set', 'delete', 'status'].includes(action)) {
+  if (!['get', 'set', 'delete', 'status', 'appendEvent'].includes(action)) {
     return response(400, { error: 'UNKNOWN_ACTION', version: FUNCTION_VERSION });
   }
   if (action !== 'status' && (!key || typeof key !== 'string')) {
@@ -111,6 +111,41 @@ exports.handler = async (event) => {
       const verification = await store.get(key, { type: 'text', consistency: 'strong' });
       if (verification === null) throw new Error('WRITE_VERIFICATION_FAILED');
       return response(200, { ok: true, verified: true, backend: 'netlify-blobs-sdk', version: FUNCTION_VERSION });
+    }
+
+    if (action === 'appendEvent') {
+      const EVENTS_KEY = 'production_events_quality_environment_v1';
+      if (key !== EVENTS_KEY) return response(403, { error: 'PUBLIC_WRITE_NOT_ALLOWED', version: FUNCTION_VERSION });
+      const input = value && typeof value === 'object' ? value : {};
+      const allowedTypes = new Set(['quality', 'safety', 'environment']);
+      const cleanText = (v, max) => String(v == null ? '' : v).trim().slice(0, max);
+      const date = cleanText(input.date, 10);
+      const description = cleanText(input.description, 3000);
+      const type = cleanText(input.type, 20);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !description || !allowedTypes.has(type)) {
+        return response(400, { error: 'INVALID_EVENT_DATA', version: FUNCTION_VERSION });
+      }
+      const savedEvent = {
+        id: cleanText(input.id, 80) || `e_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
+        date,
+        type,
+        facility: cleanText(input.facility, 40),
+        area: cleanText(input.area, 200),
+        workOrder: cleanText(input.workOrder, 100),
+        batch: cleanText(input.batch, 100),
+        severity: cleanText(input.severity, 50),
+        description,
+        action: cleanText(input.action, 3000),
+        source: 'manual',
+        createdAt: Number.isFinite(Number(input.createdAt)) ? Number(input.createdAt) : Date.now()
+      };
+      const existingText = await store.get(key, { type: 'text', consistency: 'strong' });
+      let rows = [];
+      try { rows = existingText ? JSON.parse(existingText) : []; } catch { rows = []; }
+      if (!Array.isArray(rows)) rows = [];
+      if (!rows.some(row => row && row.id === savedEvent.id)) rows.push(savedEvent);
+      await store.set(key, JSON.stringify(rows));
+      return response(200, { ok: true, event: savedEvent, count: rows.length, backend: 'netlify-blobs-sdk', version: FUNCTION_VERSION });
     }
 
     if (action === 'delete') {
