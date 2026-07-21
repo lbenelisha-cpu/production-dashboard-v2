@@ -543,7 +543,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 }
 
 
-/* V4.4 — תיקון חזק לטבלאות פירוט, RTL וטקסט מלא */
+/* V4.5 — תיקון חזק לטבלאות פירוט, RTL וטקסט מלא */
 #prod-dash-root .table-scroll { overflow-x:auto !important; overflow-y:visible !important; }
 #prod-dash-root table.detail-table,
 #prod-dash-root table.records-full {
@@ -614,7 +614,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     if(badge){ badge.textContent = isAdmin ? '🟢 מנהל' : '👁 צפייה בלבד'; badge.className='role-badge '+(isAdmin?'admin':'viewer'); }
     const loginBtn = root.querySelector('#adminLoginBtn');
     if(loginBtn) loginBtn.textContent = isAdmin ? 'יציאה ממנהל' : '🔐 כניסת מנהל';
-    ['#addEventTopBtn','#targetsProdBtn','#targetsBtn','#resetBtn','#addBtn'].forEach(sel=>{ const el=root.querySelector(sel); if(el) el.classList.add('admin-only'); });
+    ['#targetsProdBtn','#targetsBtn','#resetBtn','#addBtn'].forEach(sel=>{ const el=root.querySelector(sel); if(el) el.classList.add('admin-only'); });
     root.querySelectorAll('label[for="qualityFileInput"], label[for="csvInput"], .row-del, #f_period_pack_target, #f_save_period_target, #f_clear_period_target').forEach(el=>el.classList.add('admin-only'));
   }
 
@@ -1342,7 +1342,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       return;
     }
 
-    // V4.4: מנות האיכות מסוננות לפי התקופה והמתקנים שנבחרו בדשבורד.
+    // V4.5: מנות האיכות מסוננות לפי התקופה והמתקנים שנבחרו בדשבורד.
     const qualityView = filteredQualityBatchesForView();
     const facFilter = qualityView.facFilter;
     const catGroups = {}; // costLabel -> { count, color, rows[] }
@@ -5044,7 +5044,7 @@ function renderAll(){
       '<div class="topbar">'+
         '<div class="brand">'+
           '<div class="brand-mark">⚙</div>'+
-          '<div><h1>לוח בקרה — ייצור ואריזה <span class="app-version-badge">V4.4</span></h1><p><span id="entryCount">טוען נתונים…</span> <span id="storageStatusBadge" class="storage-status"></span></p><p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;"><span id="dataStatusLine">בודק נתונים…</span></p></div>'+
+          '<div><h1>לוח בקרה — ייצור ואריזה <span class="app-version-badge">V4.5</span></h1><p><span id="entryCount">טוען נתונים…</span> <span id="storageStatusBadge" class="storage-status"></span></p><p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;"><span id="dataStatusLine">בודק נתונים…</span></p></div>'+
         '</div>'+
         '<div class="topbar-actions"><span id="roleBadge" class="role-badge viewer">👁 צפייה בלבד</span><button class="tab-btn" id="adminLoginBtn" style="background:rgba(255,255,255,0.06);color:var(--text);font-size:12px;padding:6px 14px;">🔐 כניסת מנהל</button><button class="tab-btn" id="refreshSharedBtn" style="background:rgba(20,184,166,0.12);color:var(--teal);font-size:12px;padding:6px 14px;">🔄 רענן נתונים</button><button class="tab-btn admin-only" id="addEventTopBtn" style="background:rgba(139,183,255,0.12);color:#8BB7FF;font-size:12px;padding:6px 14px;">+ הוסף אירוע</button><button class="tab-btn" id="advancedDashboardBtn" style="background:var(--teal-soft);color:var(--green);font-size:12px;padding:6px 14px;">📊 דשבורד חדש</button><button class="tab-btn" id="excelAnalyzedExportBtn" style="background:rgba(124,217,146,0.12);color:#7CD992;font-size:12px;padding:6px 14px;">📥 ייצוא ניתוח לאקסל</button><label for="qualityFileInput" class="tab-btn admin-only" style="background:rgba(239,68,68,0.12);color:var(--red);font-size:12px;padding:6px 14px;cursor:pointer;">🧪 טעינת איכות</label><button class="tab-btn" id="whatsappExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📲 WhatsApp טקסט</button><button class="tab-btn" id="whatsappImageExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📸 צילום דשבורד</button><button class="tab-btn admin-only" id="targetsProdBtn" style="background:var(--amber-soft);color:var(--amber);font-size:12px;padding:6px 14px;">⚙ יעדי ייצור</button><button class="tab-btn admin-only" id="targetsBtn" style="background:var(--teal-soft);color:var(--teal);font-size:12px;padding:6px 14px;">⚙ יעדי אריזה</button><button class="tab-btn admin-only" id="resetBtn" style="background:rgba(255,255,255,0.05);color:var(--text-muted);font-size:12px;padding:6px 14px;">איפוס</button></div>'+
       '</div>'+
@@ -5351,7 +5351,7 @@ root.querySelector('#printBtn').onclick = ()=> window.print();
   };
 
 
-  root.querySelector('#addEventTopBtn').onclick = ()=>{ if(requireAdmin()) openEventModal(); };
+  root.querySelector('#addEventTopBtn').onclick = ()=>{ openEventModal(); };
   root.querySelector('#eventCancel').onclick = ()=> root.querySelector('#eventOverlay').classList.remove('open');
   root.querySelector('#eventSave').onclick = saveEventFromModal;
   root.querySelector('#eventOverlay').onclick = e=>{ if(e.target===root.querySelector('#eventOverlay')) root.querySelector('#eventOverlay').classList.remove('open'); };
@@ -5413,7 +5413,7 @@ root.querySelector('#printBtn').onclick = ()=> window.print();
 })();
 })();
 
-  // V4.4-quality-period-facility-filter
+  // V4.5-quality-period-facility-filter
 </script>
 </body>
 </html>
