@@ -3,7 +3,15 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>לוח בקרה — ייצור ואריזה</title>
+<title>IML Production Dashboard</title>
+<meta name="application-name" content="IML Production Dashboard">
+<meta name="apple-mobile-web-app-title" content="IML Production Dashboard">
+<meta name="theme-color" content="#030812">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icons/favicon.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" onerror="window._xlsxLoadError=true"></script>
@@ -68,10 +76,10 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 #prod-dash-root .brand { display: flex; align-items: center; gap: 14px; }
 #prod-dash-root .brand-mark {
   width: 42px; height: 42px; border-radius: 11px;
-  background: linear-gradient(135deg, #F59E0B, #B45309);
+  background: linear-gradient(135deg, #071426, #030812);
   display:flex; align-items:center; justify-content:center;
-  font-weight: 900; color: #1a1300; font-size: 20px;
-  box-shadow: 0 0 0 1px rgba(245,158,11,0.3), 0 8px 24px rgba(245,158,11,0.2);
+  font-weight: 900; color: #FFFFFF; font-size: 15px; letter-spacing: -0.6px;
+  box-shadow: 0 0 0 1px rgba(20,184,166,0.45), 0 8px 24px rgba(20,184,166,0.16);
 }
 #prod-dash-root .brand h1 { margin: 0; font-size: 20px; font-weight: 900; letter-spacing: -0.3px; }
 #prod-dash-root .brand p { margin: 3px 0 0; font-size: 11.5px; color: var(--text-muted); }
@@ -136,6 +144,41 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 #prod-dash-root .small-link-btn {
   background: none; border: none; color: var(--amber); font-size: 12px; font-weight: 700;
   cursor: pointer; font-family: inherit; padding: 8px 2px; text-decoration: underline; text-underline-offset: 3px;
+}
+
+
+/* ── V4.6 Enhanced Target vs Actual cards ───────── */
+#prod-dash-root .target-compare-card{
+  --status-color: var(--teal);
+  position:relative; overflow:hidden; padding:18px;
+  background:linear-gradient(145deg, color-mix(in srgb, var(--status-color) 9%, var(--panel)), var(--panel));
+  border:1px solid color-mix(in srgb, var(--status-color) 55%, var(--border));
+  border-radius:12px; min-height:190px;
+}
+#prod-dash-root .target-compare-card::before{
+  content:""; position:absolute; inset:0 auto 0 0; width:4px; background:var(--status-color);
+}
+#prod-dash-root .target-compare-card.status-ok{--status-color:var(--green)}
+#prod-dash-root .target-compare-card.status-warn{--status-color:var(--yellow)}
+#prod-dash-root .target-compare-card.status-bad{--status-color:var(--red)}
+#prod-dash-root .target-compare-head{display:flex; justify-content:space-between; gap:12px; align-items:center; margin-bottom:14px}
+#prod-dash-root .target-compare-title{font-size:15px; font-weight:900; color:var(--status-color)}
+#prod-dash-root .target-status-badge{font-size:11px; font-weight:900; color:var(--status-color); border:1px solid color-mix(in srgb,var(--status-color) 60%,transparent); background:color-mix(in srgb,var(--status-color) 12%,transparent); padding:5px 9px; border-radius:999px; white-space:nowrap}
+#prod-dash-root .target-values{display:grid; grid-template-columns:1fr 1px 1fr; gap:14px; align-items:center; text-align:center}
+#prod-dash-root .target-divider{width:1px; height:52px; background:var(--border)}
+#prod-dash-root .target-value-label{font-size:11px; color:var(--text-muted); font-weight:800; margin-bottom:5px}
+#prod-dash-root .target-value-number{font-family:'JetBrains Mono',monospace; font-size:27px; font-weight:900; line-height:1; color:var(--text)}
+#prod-dash-root .target-value-number.actual{color:var(--status-color)}
+#prod-dash-root .target-progress{height:11px; background:var(--panel-2); border-radius:999px; overflow:hidden; margin:17px 0 10px; border:1px solid var(--border)}
+#prod-dash-root .target-progress > span{display:block; height:100%; width:0; max-width:100%; background:linear-gradient(90deg,color-mix(in srgb,var(--status-color) 70%,#fff),var(--status-color)); border-radius:999px; transition:width .65s ease}
+#prod-dash-root .target-result-row{display:flex; justify-content:space-between; gap:10px; align-items:flex-end}
+#prod-dash-root .target-percent{font-family:'JetBrains Mono',monospace; font-size:25px; font-weight:900; color:var(--status-color)}
+#prod-dash-root .target-delta{font-size:12px; line-height:1.35; font-weight:900; text-align:left; color:var(--status-color)}
+#prod-dash-root .target-note{font-size:10.5px; color:var(--text-muted); margin-top:8px; line-height:1.45}
+@media(max-width:760px){
+ #prod-dash-root .target-compare-card{min-height:175px;padding:14px}
+ #prod-dash-root .target-value-number{font-size:22px}
+ #prod-dash-root .target-percent{font-size:21px}
 }
 
 /* ── KPI Grid ────────────────────────────────────── */
@@ -364,6 +407,39 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 #prod-dash-root .drilldown-stat-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; margin-bottom: 18px; }
 @media(max-width:760px){ #prod-dash-root .drilldown-stat-grid { grid-template-columns: repeat(2,1fr); } }
 
+
+#prod-dash-root .shift-day-panel { margin-bottom:16px; }
+#prod-dash-root .shift-choice-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; margin:14px 0; }
+#prod-dash-root .shift-choice { border:1px solid var(--border-strong); background:var(--panel-2); border-radius:14px; padding:16px; cursor:pointer; transition:.18s; user-select:none; }
+#prod-dash-root .shift-choice:hover { transform:translateY(-2px); }
+#prod-dash-root .shift-choice.selected { box-shadow:0 0 0 2px rgba(255,255,255,.06) inset; }
+#prod-dash-root .shift-choice[data-shift="בוקר"].selected { border-color:var(--green); background:rgba(34,197,94,.09); }
+#prod-dash-root .shift-choice[data-shift="ערב"].selected { border-color:var(--amber); background:rgba(245,158,11,.09); }
+#prod-dash-root .shift-choice[data-shift="לילה"].selected { border-color:#9B7FE8; background:rgba(155,127,232,.10); }
+#prod-dash-root .shift-choice .shift-name { font-weight:900; font-size:15px; margin-bottom:5px; }
+#prod-dash-root .shift-choice .shift-hours { color:var(--text-muted); font-size:12px; }
+#prod-dash-root .shift-choice .shift-value { font-family:'JetBrains Mono',monospace; font-size:24px; font-weight:900; margin-top:10px; direction:ltr; text-align:right; }
+#prod-dash-root .shift-bars { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; align-items:end; min-height:190px; padding:12px 12px 0; border-bottom:1px solid var(--border-strong); }
+#prod-dash-root .shift-bar-col { display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:170px; gap:7px; }
+#prod-dash-root .shift-bar-value { font-family:'JetBrains Mono',monospace; font-weight:900; font-size:13px; }
+#prod-dash-root .shift-bar { width:min(76px,62%); min-height:3px; border-radius:8px 8px 0 0; transition:height .3s; }
+#prod-dash-root .shift-bar-label { font-weight:900; font-size:13px; }
+#prod-dash-root .shift-detail-table { table-layout:fixed; width:100%; min-width:1120px; }
+#prod-dash-root .shift-detail-table th, #prod-dash-root .shift-detail-table td { text-align:center; vertical-align:middle; padding:10px 8px; overflow-wrap:anywhere; }
+#prod-dash-root .shift-detail-table th:nth-child(1), #prod-dash-root .shift-detail-table td:nth-child(1) { width:16%; }
+#prod-dash-root .shift-detail-table th:nth-child(2), #prod-dash-root .shift-detail-table td:nth-child(2) { width:9%; }
+#prod-dash-root .shift-detail-table th:nth-child(3), #prod-dash-root .shift-detail-table td:nth-child(3) { width:8%; }
+#prod-dash-root .shift-detail-table th:nth-child(4), #prod-dash-root .shift-detail-table td:nth-child(4) { width:14%; }
+#prod-dash-root .shift-detail-table th:nth-child(5), #prod-dash-root .shift-detail-table td:nth-child(5) { width:13%; }
+#prod-dash-root .shift-detail-table th:nth-child(6), #prod-dash-root .shift-detail-table td:nth-child(6) { width:11%; }
+#prod-dash-root .shift-detail-table th:nth-child(7), #prod-dash-root .shift-detail-table td:nth-child(7) { width:19%; text-align:right; }
+#prod-dash-root .shift-detail-table th:nth-child(8), #prod-dash-root .shift-detail-table td:nth-child(8) { width:10%; }
+#prod-dash-root .shift-pill { display:inline-block; min-width:58px; padding:4px 10px; border-radius:999px; font-weight:900; }
+#prod-dash-root .shift-pill.morning { color:var(--green); background:rgba(34,197,94,.13); }
+#prod-dash-root .shift-pill.evening { color:var(--amber); background:rgba(245,158,11,.13); }
+#prod-dash-root .shift-pill.night { color:#B39AF4; background:rgba(155,127,232,.16); }
+@media(max-width:760px){ #prod-dash-root .shift-choice-grid, #prod-dash-root .shift-bars { grid-template-columns:1fr; } #prod-dash-root .shift-bars { min-height:unset; } #prod-dash-root .shift-bar-col { height:110px; } }
+
 /* ── WhatsApp snapshot (keep as-is) ─────────────── */
 #prod-dash-root .wa-shot {
   position: fixed; left: -99999px; top: 0; width: 1080px; min-height: 1350px;
@@ -589,11 +665,30 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   display:inline-block; margin-inline-start:8px; padding:2px 8px; border:1px solid rgba(32,201,151,.55);
   border-radius:999px; color:#20c997; font-size:10px; font-weight:800; vertical-align:middle;
 }
+
+#prod-dash-root .quality-test-row { cursor:pointer; }
+#prod-dash-root .quality-test-row:hover { background:rgba(20,184,166,.10) !important; }
+#prod-dash-root .quality-test-count { display:inline-flex;align-items:center;justify-content:center;min-width:28px;padding:3px 8px;border-radius:999px;background:rgba(239,68,68,.14);color:var(--red);font-weight:800; }
+#prod-dash-root .quality-test-count.none { background:rgba(148,163,184,.10);color:var(--text-muted); }
+#prod-dash-root .quality-results-overlay { position:fixed;inset:0;z-index:99999;background:rgba(2,6,23,.82);display:none;align-items:center;justify-content:center;padding:22px; }
+#prod-dash-root .quality-results-overlay.open { display:flex; }
+#prod-dash-root .quality-results-modal { width:min(1180px,96vw);max-height:88vh;overflow:hidden;background:#0b1220;border:1px solid rgba(20,184,166,.45);border-radius:18px;box-shadow:0 24px 80px rgba(0,0,0,.55);display:flex;flex-direction:column; }
+#prod-dash-root .quality-results-head { display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 20px;border-bottom:1px solid rgba(148,163,184,.18); }
+#prod-dash-root .quality-results-title { font-size:18px;font-weight:900;color:var(--text); }
+#prod-dash-root .quality-results-sub { margin-top:4px;font-size:12px;color:var(--text-muted); }
+#prod-dash-root .quality-results-close { border:0;border-radius:10px;background:rgba(255,255,255,.08);color:var(--text);padding:8px 14px;cursor:pointer;font-weight:800; }
+#prod-dash-root .quality-results-body { overflow:auto;padding:0 18px 18px; }
+#prod-dash-root table.quality-results-table { min-width:1000px!important;table-layout:fixed!important; }
+#prod-dash-root table.quality-results-table th,#prod-dash-root table.quality-results-table td { text-align:center!important;vertical-align:middle!important; }
+#prod-dash-root table.quality-results-table td.test-name { text-align:right!important;white-space:normal!important; }
+#prod-dash-root .quality-result-bad { color:var(--red);font-weight:900; }
+#prod-dash-root .quality-result-text { color:var(--yellow);font-weight:800; }
+
 </style>
 </head>
 <body>
 <div id="prod-dash-root" dir="rtl" lang="he"></div>
-<input type="file" id="qualityFileInput" accept=".xlsx,.xls,.csv" style="position:fixed;top:-100px;left:-100px;width:1px;height:1px;opacity:0;">
+<input type="file" id="qualityFileInput" accept=".xlsx,.xls,.csv" multiple style="position:fixed;top:-100px;left:-100px;width:1px;height:1px;opacity:0;">
 <script>
 (function(){
   const root = document.getElementById('prod-dash-root');
@@ -623,6 +718,22 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   const STORAGE_API_URL = '/.netlify/functions/storage';
   const IS_LOCAL_FILE = location.protocol === 'file:';
   let _netlifyAvailable = !IS_LOCAL_FILE;
+  const STORAGE_CACHE_TTL_MS = 2 * 60 * 1000;
+  const _storageMemoryCache = new Map();
+  const _storageInflight = new Map();
+  let _forceFreshStorageReads = false;
+
+  function _cacheRead(key){
+    const item = _storageMemoryCache.get(key);
+    if(!item || (Date.now() - item.savedAt) > STORAGE_CACHE_TTL_MS){
+      _storageMemoryCache.delete(key);
+      return null;
+    }
+    return item.value;
+  }
+  function _cacheWrite(key, value){ _storageMemoryCache.set(key, { value, savedAt: Date.now() }); }
+  function _cacheDelete(key){ _storageMemoryCache.delete(key); _storageInflight.delete(key); }
+  function _cacheClear(){ _storageMemoryCache.clear(); _storageInflight.clear(); }
 
   async function _callStorageApi(action, key, value){
     const controller = new AbortController();
@@ -673,22 +784,57 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   let _dashStorage;
   if(!_dashStorage){
     _dashStorage = {
-      async get(key){
+      async get(key, options={}){
         if(IS_LOCAL_FILE) return _local.get(key);
-        const data = await _callStorageApi('get', key);
-        if(data && data.value != null) return { value: data.value };
-        return null;
+        const fresh = !!options.fresh || _forceFreshStorageReads;
+        if(!fresh){
+          const cached = _cacheRead(key);
+          if(cached !== null) return cached == null ? null : { value: cached };
+          if(_storageInflight.has(key)) return _storageInflight.get(key);
+        }
+        const promise = _callStorageApi('get', key).then(data=>{
+          const value = data && data.value != null ? data.value : null;
+          _cacheWrite(key, value);
+          return value == null ? null : { value };
+        }).finally(()=>_storageInflight.delete(key));
+        if(!fresh) _storageInflight.set(key, promise);
+        return promise;
+      },
+      async getMany(keys, options={}){
+        const unique = Array.from(new Set((keys||[]).filter(k=>typeof k==='string' && k)));
+        if(IS_LOCAL_FILE) return Promise.all(unique.map(async key=>({ key, result: await _local.get(key) })));
+        const fresh = !!options.fresh || _forceFreshStorageReads;
+        const output = [];
+        const missing = [];
+        unique.forEach(key=>{
+          const cached = fresh ? null : _cacheRead(key);
+          if(cached !== null) output.push({ key, result: cached == null ? null : { value: cached } });
+          else missing.push(key);
+        });
+        if(missing.length){
+          const data = await _callStorageApi('getMany', '', missing);
+          const values = data && data.values && typeof data.values==='object' ? data.values : {};
+          missing.forEach(key=>{
+            const value = Object.prototype.hasOwnProperty.call(values,key) ? values[key] : null;
+            _cacheWrite(key, value);
+            output.push({ key, result: value == null ? null : { value } });
+          });
+        }
+        const byKey = new Map(output.map(x=>[x.key,x.result]));
+        return unique.map(key=>byKey.get(key) || { key, result:null }).map((result,i)=>({ key:unique[i], result }));
       },
       async set(key, value){
         if(!requireAdmin()) throw new Error('ADMIN_REQUIRED');
         if(IS_LOCAL_FILE) return _local.set(key, value);
         await _callStorageApi('set', key, value);
+        _cacheWrite(key, typeof value === 'string' ? value : JSON.stringify(value));
         return { ok: true };
       },
       async delete(key){
         if(!requireAdmin()) throw new Error('ADMIN_REQUIRED');
         if(IS_LOCAL_FILE) return _local.delete(key);
         await _callStorageApi('delete', key);
+        _cacheDelete(key);
         return { ok: true };
       },
       async appendEvent(key, eventData){
@@ -700,7 +846,9 @@ html, body { margin:0; padding:0; background:#0A0D12; }
           await _local.set(key, JSON.stringify(rows));
           return { ok:true, event:eventData };
         }
-        return _callStorageApi('appendEvent', key, eventData);
+        const result = await _callStorageApi('appendEvent', key, eventData);
+        _cacheDelete(key);
+        return result;
       }
     };
   }
@@ -738,6 +886,12 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   const QUALITY_MANIFEST_KEY = 'quality_ud_full_v4_manifest';
   const QUALITY_CHUNK_PREFIX = 'quality_ud_full_v4_chunk_';
   const QUALITY_CHUNK_SIZE = 1800;
+  const QUALITY_RESULTS_MANIFEST_KEY = 'quality_test_results_v1_manifest';
+  const QUALITY_RESULTS_CHUNK_PREFIX = 'quality_test_results_v1_chunk_';
+  const QUALITY_RESULTS_CHUNK_SIZE = 1200;
+  let qualityTestResults = [];
+  let qualityTestResultsByBatch = {};
+
   const QUALITY_HEADER_MAP = {
     'date of lot creation':'date','process order delivered date':'lot_date',
     'inspection lot ud date':'ud_date','actual finish date':'date','תאריך':'date',
@@ -1012,9 +1166,10 @@ html, body { margin:0; padding:0; background:#0A0D12; }
         if(manifestRes?.value){
           const manifest = JSON.parse(manifestRes.value);
           const keys = Array.isArray(manifest.keys) ? manifest.keys : [];
-          const chunkResponses = await mapWithConcurrency(keys, 4, k=>_dashStorage.get(k));
+          const chunkPairs = await _dashStorage.getMany(keys);
           const rows = [];
-          chunkResponses.forEach(res=>{
+          chunkPairs.forEach(pair=>{
+            const res = pair && pair.result;
             if(!res?.value) return;
             const part = JSON.parse(res.value);
             if(Array.isArray(part)) rows.push(...part);
@@ -1056,6 +1211,202 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       }
     }
     buildQualitySummary();
+  }
+
+
+  function normalizeBatch(v){ return String(v == null ? '' : v).trim().replace(/^0+/, ''); }
+
+  function rebuildQualityTestIndex(){
+    const byBatch = {};
+    (qualityTestResults||[]).forEach(r=>{
+      const bk = normalizeBatch(r.batch);
+      if(!bk) return;
+      if(!byBatch[bk]) byBatch[bk] = [];
+      byBatch[bk].push(r);
+    });
+    Object.values(byBatch).forEach(arr=>arr.sort((a,b)=>String(a.testName||'').localeCompare(String(b.testName||''),'he')));
+    qualityTestResultsByBatch = byBatch;
+  }
+
+  async function persistQualityTestResults(){
+    try{
+      const rows = qualityTestResults || [];
+      const chunks=[];
+      for(let i=0;i<rows.length;i+=QUALITY_RESULTS_CHUNK_SIZE) chunks.push(rows.slice(i,i+QUALITY_RESULTS_CHUNK_SIZE));
+      const prevRes = await _dashStorage.get(QUALITY_RESULTS_MANIFEST_KEY).catch(()=>null);
+      let prev=null; try{ prev=prevRes?.value?JSON.parse(prevRes.value):null; }catch(e){}
+      await mapWithConcurrency(chunks,3,(chunk,i)=>_dashStorage.set(QUALITY_RESULTS_CHUNK_PREFIX+i,JSON.stringify(chunk)));
+      const manifest={version:1,savedAt:new Date().toISOString(),totalRows:rows.length,chunkCount:chunks.length,keys:chunks.map((_,i)=>QUALITY_RESULTS_CHUNK_PREFIX+i)};
+      await _dashStorage.set(QUALITY_RESULTS_MANIFEST_KEY,JSON.stringify(manifest));
+      if(prev&&Array.isArray(prev.keys)){
+        const keep=new Set(manifest.keys);
+        await mapWithConcurrency(prev.keys.filter(k=>!keep.has(k)),3,k=>_dashStorage.delete(k).catch(()=>null));
+      }
+      rebuildQualityTestIndex();
+      return true;
+    }catch(e){ console.error('persistQualityTestResults:',e); showToast('שגיאה בשמירת תוצאות הבדיקות: '+(e.message||e),true); return false; }
+  }
+
+  async function loadQualityTestResults(){
+    qualityTestResults=[];
+    try{
+      const mres=await _dashStorage.get(QUALITY_RESULTS_MANIFEST_KEY);
+      if(mres?.value){
+        const m=JSON.parse(mres.value), pairs=await _dashStorage.getMany(Array.isArray(m.keys)?m.keys:[]);
+        pairs.forEach(pair=>{ try{ const part=JSON.parse(pair?.result?.value||'[]'); if(Array.isArray(part)) qualityTestResults.push(...part); }catch(e){} });
+      }
+    }catch(e){ console.error('loadQualityTestResults:',e); }
+    rebuildQualityTestIndex();
+  }
+
+  function firstWorksheetGrid(wb, range){
+    const name=wb.SheetNames[0], ws=wb.Sheets[name];
+    return XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:true,blankrows:false,range:range});
+  }
+
+  function detectQualityWorkbookType(wb){
+    for(const sheetName of wb.SheetNames){
+      const ws=wb.Sheets[sheetName];
+      const decoded=XLSX.utils.decode_range(ws['!ref']||'A1:A1');
+      const headerRange={s:{r:decoded.s.r,c:decoded.s.c},e:{r:decoded.s.r,c:decoded.e.c}};
+      const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:true,blankrows:false,range:headerRange});
+      const h=(rows[0]||[]).map(v=>normalizeQualityHeader(v));
+      if(h.includes('ud code') && (h.includes('batch number')||h.includes('batch'))) return 'summary';
+      if(h.includes('operation short text') && h.includes('batch number') && h.length>30) return 'results';
+    }
+    return 'unknown';
+  }
+
+  function parseTestHeader(raw){
+    const text=String(raw||'').trim();
+    if(!text) return null;
+    const lines=text.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+    const first=lines[0]||'';
+    const codeMatch=first.match(/\((\d+)\)\s*$/);
+    const testCode=codeMatch?codeMatch[1]:'';
+    const testName=(codeMatch?first.slice(0,codeMatch.index):first).trim();
+    const rangeText=lines.slice(1).join(' ').trim();
+    let min=null,max=null;
+    const rangeMatch=rangeText.match(/^\s*(-?\d+(?:[.,]\d+)?)\s*-\s*(-?\d+(?:[.,]\d+)?)\s*$/);
+    if(rangeMatch){ min=Number(rangeMatch[1].replace(',','.')); max=Number(rangeMatch[2].replace(',','.')); }
+    return {testName,testCode,rangeText,min,max};
+  }
+
+  function parseNumericResult(value){
+    if(typeof value==='number' && isFinite(value)) return value;
+    const s=String(value==null?'':value).trim().replace(',','.');
+    if(/^[-+]?\d+(?:\.\d+)?$/.test(s)){ const n=Number(s); return isFinite(n)?n:null; }
+    return null;
+  }
+
+  function isMissingTestValue(v){
+    const s=String(v==null?'':v).trim().toUpperCase();
+    return !s || s==='-' || s==='N/A' || s==='NA' || s==='N.A.' || s==='NOT APPLICABLE';
+  }
+
+  function processQualityResultsWorkbook(wb){
+    const results=[];
+    for(const sheetName of wb.SheetNames){
+      const ws=wb.Sheets[sheetName];
+      const range=XLSX.utils.decode_range(ws['!ref']||'A1:A1');
+      const headers=[];
+      for(let c=range.s.c;c<=range.e.c;c++) headers[c]=ws[XLSX.utils.encode_cell({r:range.s.r,c})]?.v ?? '';
+      const norm=headers.map(normalizeQualityHeader);
+      const batchCol=norm.indexOf('batch number'), lotCol=norm.indexOf('inspection lot #'), materialCol=norm.indexOf('material'), operationCol=norm.indexOf('operation short text');
+      if(batchCol<0) continue;
+      const testCols=[];
+      for(let c=0;c<headers.length;c++){
+        if(c===batchCol||c===lotCol||c===materialCol||c===operationCol) continue;
+        const meta=parseTestHeader(headers[c]);
+        if(meta && meta.testName && (meta.testCode||meta.rangeText)) testCols.push({c,...meta});
+      }
+      for(let r=range.s.r+1;r<=range.e.r;r++){
+        const batch=normalizeBatch(ws[XLSX.utils.encode_cell({r,c:batchCol})]?.v);
+        if(!batch) continue;
+        const inspectionLot=lotCol>=0?String(ws[XLSX.utils.encode_cell({r,c:lotCol})]?.v??'').trim():'';
+        const material=materialCol>=0?String(ws[XLSX.utils.encode_cell({r,c:materialCol})]?.v??'').trim():'';
+        const operation=operationCol>=0?String(ws[XLSX.utils.encode_cell({r,c:operationCol})]?.v??'').trim():'';
+        for(const tc of testCols){
+          const cell=ws[XLSX.utils.encode_cell({r,c:tc.c})];
+          if(!cell || isMissingTestValue(cell.v)) continue;
+          const raw=cell.v, numeric=parseNumericResult(raw);
+          let isDeviation=false, status='תוצאה טקסטואלית';
+          if(numeric!==null && tc.min!==null && tc.max!==null){
+            isDeviation=numeric<tc.min || numeric>tc.max;
+            status=isDeviation?(numeric<tc.min?'מתחת לגבול':'מעל הגבול'):'בתוך הטווח';
+          }else if(numeric!==null && tc.min===null){
+            // No machine-readable limits: retain the value so approved deviations are not lost.
+            isDeviation=true; status='לבדיקה';
+          }else{
+            isDeviation=true;
+          }
+          // The drill-down is specifically for exceptions; normal numeric results are not stored.
+          if(!isDeviation) continue;
+          results.push({batch,inspectionLot,material,operation,testName:tc.testName,testCode:tc.testCode,min:tc.min,max:tc.max,rangeText:tc.rangeText,result:String(raw),status});
+        }
+      }
+    }
+    return results;
+  }
+
+  function processQualitySummaryWorkbook(wb){
+    let selected=null;
+    for(const sheetName of wb.SheetNames){
+      const sheet=wb.Sheets[sheetName];
+      const grid=XLSX.utils.sheet_to_json(sheet,{header:1,defval:'',raw:true,blankrows:false});
+      const found=findQualityHeaderRow(grid);
+      if(found&&(!selected||found.score>selected.found.score)) selected={sheetName,grid,found};
+      if(found&&found.score>=3&&found.map.batch!==undefined&&found.map.ud_code!==undefined) break;
+    }
+    if(!selected) return [];
+    return processQualityRows(selected.grid[selected.found.index],selected.grid.slice(selected.found.index+1));
+  }
+
+  async function handleQualityFiles(fileList){
+    try{
+      const files=Array.from(fileList||[]);
+      if(files.length!==2){ showToast('יש לבחור יחד בדיוק שני קובצי איכות: קובץ סיכום וקובץ תוצאות בדיקה',true); return; }
+      if(typeof XLSX==='undefined'){ showToast('ספריית Excel לא נטענה — רעננו את הדף ונסו שוב',true); return; }
+      showToast('קורא ומזהה את שני קובצי האיכות...');
+      let summaryRows=null, resultRows=null, summaryName='', resultsName='';
+      for(const file of files){
+        const wb=XLSX.read(await file.arrayBuffer(),{type:'array',cellDates:false});
+        const type=detectQualityWorkbookType(wb);
+        if(type==='summary'){ summaryRows=processQualitySummaryWorkbook(wb); summaryName=file.name; }
+        else if(type==='results'){ resultRows=processQualityResultsWorkbook(wb); resultsName=file.name; }
+        else throw new Error('לא ניתן לזהות את סוג הקובץ: '+file.name);
+      }
+      if(!summaryRows||!resultRows) throw new Error('יש לבחור קובץ סיכום איכות אחד וקובץ תוצאות בדיקה אחד');
+      if(!summaryRows.length) throw new Error('לא נמצאו מנות בקובץ סיכום האיכות');
+      qualityEntries=summaryRows; buildQualitySummary();
+      qualityTestResults=resultRows; rebuildQualityTestIndex();
+      const ok1=await persistQuality();
+      const ok2=await persistQualityTestResults();
+      if(ok1&&ok2){
+        showToast('האיכות נטענה: '+summaryRows.length+' מנות · '+resultRows.length+' תוצאות חריגה | '+summaryName+' + '+resultsName);
+        renderAll();
+      }
+    }catch(e){ console.error(e); showToast('שגיאה בטעינת קובצי האיכות: '+(e.message||e),true); }
+  }
+
+  function openQualityResultsModal(batch){
+    const bk=normalizeBatch(batch), rows=qualityTestResultsByBatch[bk]||[];
+    if(!rows.length){ showToast('לא נמצאו תוצאות חריגה למנה '+(batch||''),true); return; }
+    let overlay=root.querySelector('#qualityResultsOverlay');
+    if(!overlay){
+      overlay=document.createElement('div'); overlay.id='qualityResultsOverlay'; overlay.className='quality-results-overlay';
+      root.appendChild(overlay);
+    }
+    const q=qualityBestByKey[bk]||{};
+    let html='<div class="quality-results-modal"><div class="quality-results-head"><div><div class="quality-results-title">תוצאות חריגה — Batch '+escapeHtml(batch||bk)+'</div><div class="quality-results-sub">'+escapeHtml(q.materialName||rows[0].material||'')+' · '+rows.length+' חריגות · לחיצה כפולה על שורת המנה</div></div><button class="quality-results-close" id="qualityResultsClose">סגור</button></div><div class="quality-results-body"><div class="table-scroll"><table class="quality-results-table" dir="rtl"><colgroup><col style="width:260px"><col style="width:110px"><col style="width:130px"><col style="width:110px"><col style="width:110px"><col style="width:140px"><col style="width:160px"></colgroup><thead><tr><th>מאפיין בדיקה</th><th>קוד</th><th>טווח מאושר</th><th>גבול תחתון</th><th>גבול עליון</th><th>תוצאה בפועל</th><th>מצב</th></tr></thead><tbody>';
+    rows.forEach(r=>{
+      const cls=r.status==='תוצאה טקסטואלית'?'quality-result-text':'quality-result-bad';
+      html+='<tr><td class="test-name">'+escapeHtml(r.testName||'—')+'</td><td class="mono nowrap">'+escapeHtml(r.testCode||'—')+'</td><td class="mono nowrap">'+escapeHtml(r.rangeText||'—')+'</td><td class="mono nowrap">'+escapeHtml(r.min==null?'—':String(r.min))+'</td><td class="mono nowrap">'+escapeHtml(r.max==null?'—':String(r.max))+'</td><td class="mono nowrap '+cls+'">'+escapeHtml(r.result||'—')+'</td><td class="'+cls+'">'+escapeHtml(r.status||'חריגה')+'</td></tr>';
+    });
+    html+='</tbody></table></div></div></div>';
+    overlay.innerHTML=html; overlay.classList.add('open');
+    overlay.querySelector('#qualityResultsClose').onclick=()=>overlay.classList.remove('open');
+    overlay.onclick=e=>{if(e.target===overlay) overlay.classList.remove('open');};
   }
 
   function normalizeQualityHeader(h){
@@ -1408,9 +1759,9 @@ html, body { margin:0; padding:0; background:#0A0D12; }
         '<div class="panel-title">'+escapeHtml(qualityCostMode)+' — '+drillRows.length+' מנות</div>'+
         '<button class="panel-toggle-btn" id="closeQualityDetails">סגור</button></div>'+
         '<div class="table-scroll"><table dir="rtl" class="detail-table quality-detail-table"><colgroup>'+
-        '<col style="width:90px"><col style="width:110px"><col style="width:125px"><col style="width:280px"><col style="width:190px"><col style="width:180px"><col style="width:125px"><col style="width:130px">'+
+        '<col style="width:90px"><col style="width:110px"><col style="width:125px"><col style="width:280px"><col style="width:190px"><col style="width:180px"><col style="width:125px"><col style="width:130px"><col style="width:125px">'+
         '</colgroup><thead><tr>'+
-        '<th>מתקן</th><th>Batch</th><th>מק"ט</th><th>שם חומר</th><th>UD Code</th><th>QA Status</th><th>פקודת עבודה</th><th>Order Type</th>'+
+        '<th>מתקן</th><th>Batch</th><th>מק"ט</th><th>שם חומר</th><th>UD Code</th><th>QA Status</th><th>פקודת עבודה</th><th>Order Type</th><th>חריגות בדיקה</th>'+
         '</tr></thead><tbody>';
       drillRows.slice(0,300).forEach(q=>{
         const batchNorm = String(q.batch||'').replace(/^0+/,'').trim();
@@ -1423,7 +1774,8 @@ html, body { margin:0; padding:0; background:#0A0D12; }
         };
         const info = udCodeInfo(row.udCode);
         const color = info ? info.color : 'var(--text-muted)';
-        html += '<tr>'+
+        const testCount=(qualityTestResultsByBatch[batchNorm]||[]).length;
+        html += '<tr class="quality-test-row" data-quality-batch="'+escapeHtml(row.batch||batchNorm)+'" title="לחיצה כפולה להצגת כל תוצאות החריגה">'+
           '<td class="nowrap">'+escapeHtml(String(row.facility||'—'))+'</td>'+
           '<td class="mono nowrap">'+escapeHtml(row.batch||'—')+'</td>'+
           '<td class="mono nowrap">'+escapeHtml(String(row.materialCode||'—').replace(/\.0$/,''))+'</td>'+
@@ -1432,9 +1784,10 @@ html, body { margin:0; padding:0; background:#0A0D12; }
           '<td class="text-full" title="'+escapeHtml(row.qaApproval||'—')+'">'+escapeHtml(row.qaApproval||'—')+'</td>'+
           '<td class="mono nowrap">'+escapeHtml(row.workOrder||'—')+'</td>'+
           '<td class="mono nowrap">'+escapeHtml(row.orderType||'—')+'</td>'+
+          '<td class="nowrap"><span class="quality-test-count '+(testCount?'':'none')+'">'+(testCount||'—')+'</span></td>'+
           '</tr>';
       });
-      if(drillRows.length>300) html += '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);">מוצגות 300 מתוך '+drillRows.length+'</td></tr>';
+      if(drillRows.length>300) html += '<tr><td colspan="9" style="text-align:center;color:var(--text-muted);">מוצגות 300 מתוך '+drillRows.length+'</td></tr>';
       html += '</tbody></table></div>';
     }
 
@@ -1766,10 +2119,9 @@ html, body { margin:0; padding:0; background:#0A0D12; }
         const idxRes = await _dashStorage.get(ENTRIES_INDEX_KEY);
         const months = idxRes && idxRes.value ? JSON.parse(idxRes.value) : [];
         if(Array.isArray(months) && months.length){
-          const results = await Promise.all(months.map(m =>
-            _dashStorage.get(ENTRIES_KEY_PREFIX + m).catch(()=>null)
-          ));
-          results.forEach(r=>{
+          const pairs = await _dashStorage.getMany(months.map(m => ENTRIES_KEY_PREFIX + m));
+          pairs.forEach(pair=>{
+            const r = pair && pair.result;
             if(r && r.value){ try { entries = entries.concat(JSON.parse(r.value)); } catch(e){} }
           });
         }else{
@@ -2828,31 +3180,8 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     // Day detail placeholder (filled on bar click)
     html += '<div id="dayDetailSection"></div>';
 
-    // Shift breakdown
-    html += '<div class="panel" style="margin-bottom:16px;"><div class="panel-head"><div class="panel-title">פירוט לפי משמרת</div>'+
-      '<div class="kpi-sub">בוקר 07:00-15:00 · ערב 15:00-23:00 · לילה 23:00-07:00</div></div>'+
-      '<div class="shift-grid">';
-    ['בוקר','ערב','לילה'].forEach(sh=>{
-      const v = shiftTotals[sh] || 0;
-      const cnt = shiftCounts[sh] || 0;
-      const w = Math.round(v / shiftMax * 100);
-      const shPct = total > 0 ? Math.round(v/total*100) : 0;
-      html += '<div class="kpi-card"><div class="kpi-label">משמרת '+escapeHtml(sh)+'</div>'+
-        '<div class="kpi-num mono" style="font-size:22px; direction:ltr; text-align:right;">'+fmt(v)+'</div>'+
-        '<div style="height:8px; background:var(--panel-2); border-radius:999px; margin:8px 0; overflow:hidden;"><div style="height:100%; width:'+w+'%; background:'+color+'; border-radius:999px;"></div></div>'+
-        '<div class="kpi-sub">'+shPct+'% מסך הכמות · '+cnt+' רשומות</div>'+
-      '</div>';
-    });
-    // אם יש רשומות ללא מידע משמרת — מציגים הודעה ומנחים לייבוא מחדש
-    if(unknownShiftCount > 0){
-      const unknownPct = total > 0 ? Math.round(unknownShiftTotal/total*100) : 0;
-      html += '<div class="kpi-card" style="margin-top:8px; border-color:var(--yellow); background:rgba(232,197,71,0.07);">'+
-        '<div class="kpi-label" style="color:var(--yellow);">⚠️ '+unknownShiftCount+' רשומות ללא נתוני משמרת ('+unknownPct+'% מהכמות)</div>'+
-        '<div class="kpi-sub" style="margin-top:6px;">רשומות אלו יובאו לפני שנוסף זיהוי משמרת אוטומטי. '+
-        '<strong>ייבא מחדש את קובץ ה-SAP</strong> כדי לקבל חלוקה מלאה לפי משמרות — עמודת "Actual Finish Time" תשמש לזיהוי אוטומטי של המשמרת.</div>'+
-      '</div>';
-    }
-    html += '</div></div>';
+    // Interactive day + multi-shift detail (rendered after overlay opens)
+    html += '<div id="shiftDayInteractive" class="shift-day-panel"></div>';
 
     // Best/worst days
     if(bestDay || worstDay){
@@ -2870,11 +3199,72 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 
     overlay.querySelector('#drilldownBack').onclick = ()=>{ overlay.classList.remove('open'); };
 
-    // Wire bar clicks
+    const shiftPanel = overlay.querySelector('#shiftDayInteractive');
+    const shiftPalette = { 'בוקר':'var(--green)', 'ערב':'var(--amber)', 'לילה':'#9B7FE8' };
+    const shiftHours = { 'בוקר':'07:00–15:00', 'ערב':'15:00–23:00', 'לילה':'23:00–07:00' };
+    let selectedDate = dailyRows.length ? dailyRows[dailyRows.length-1].date : '';
+    const selectedShifts = new Set(['בוקר','ערב','לילה']);
+
+    function finishDisplay(e){
+      const raw = (e.actualFinishTime===undefined || e.actualFinishTime===null) ? '' : String(e.actualFinishTime).trim();
+      if(raw){
+        const timeMatch = raw.match(/(\d{1,2}:\d{2}(?::\d{2})?)/);
+        if(timeMatch) return (e.date||selectedDate)+' '+timeMatch[1].slice(0,5);
+      }
+      return (e.date||selectedDate) + ' · ' + (e.shift||'—');
+    }
+    function shiftClass(sh){ return sh==='בוקר'?'morning':sh==='ערב'?'evening':sh==='לילה'?'night':''; }
+    function renderShiftDayPanel(){
+      if(!shiftPanel) return;
+      const dayRows = facRows.filter(e=>String(e.date||'')===String(selectedDate));
+      const totals = {'בוקר':0,'ערב':0,'לילה':0};
+      dayRows.forEach(e=>{ const sh=SHIFTS.includes(e.shift)?e.shift:null; if(sh) totals[sh]+=Number(e[metric])||0; });
+      const maxV = Math.max(1, totals['בוקר'], totals['ערב'], totals['לילה']);
+      const effectiveSelected = selectedShifts.size ? selectedShifts : new Set(['בוקר','ערב','לילה']);
+      const visibleRows = dayRows.filter(e=>effectiveSelected.has(e.shift));
+      const visibleTotal = visibleRows.reduce((a,e)=>a+(Number(e[metric])||0),0);
+      let out = '<div class="panel" style="margin-bottom:16px;">'+
+        '<div class="panel-head"><div><div class="panel-title">כמות לפי יום ומשמרת — '+escapeHtml(selectedDate||'ללא תאריך')+'</div><div class="kpi-sub">לחץ על משמרת לבחירה או לביטול. ניתן לבחור כמה משמרות במקביל.</div></div></div>'+
+        '<div class="shift-bars">';
+      ['בוקר','ערב','לילה'].forEach(sh=>{
+        const h=Math.max(3,Math.round((totals[sh]/maxV)*125));
+        out += '<div class="shift-bar-col"><div class="shift-bar-value">'+fmt(totals[sh])+'</div><div class="shift-bar" style="height:'+h+'px;background:'+shiftPalette[sh]+'"></div><div class="shift-bar-label" style="color:'+shiftPalette[sh]+'">'+sh+'</div><div class="kpi-sub">'+shiftHours[sh]+'</div></div>';
+      });
+      out += '</div><div class="shift-choice-grid">';
+      ['בוקר','ערב','לילה'].forEach(sh=>{
+        const sel=selectedShifts.has(sh);
+        out += '<div class="shift-choice '+(sel?'selected':'')+'" data-shift="'+sh+'"><div class="shift-name" style="color:'+shiftPalette[sh]+'">משמרת '+sh+(sel?' ✓':'')+'</div><div class="shift-hours">'+shiftHours[sh]+'</div><div class="shift-value">'+fmt(totals[sh])+'</div><div class="kpi-sub">'+metricLabel+'</div></div>';
+      });
+      out += '</div><div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap"><button class="panel-toggle-btn" id="clearShiftSelection">נקה בחירה</button><div class="kpi-sub">נבחרו '+selectedShifts.size+' משמרות · '+visibleRows.length+' רשומות · סה״כ '+fmt(visibleTotal)+'</div></div></div>';
+
+      out += '<div class="panel"><div class="panel-head"><div><div class="panel-title">מנות שנוצרו בתאריך '+escapeHtml(selectedDate||'—')+'</div><div class="kpi-sub">הטבלה מסוננת לפי המתקן והמשמרות שנבחרו</div></div><button class="panel-toggle-btn" id="exportShiftRows">ייצוא לאקסל</button></div>';
+      if(!visibleRows.length){
+        out += '<div class="table-empty">אין רשומות למשמרות שנבחרו בתאריך זה</div>';
+      } else {
+        out += '<div class="table-scroll"><table class="shift-detail-table"><thead><tr><th>תאריך ושעת יצירה</th><th>משמרת</th><th>מתקן</th><th>פקודת עבודה</th><th>Batch</th><th>מק״ט</th><th>שם חומר</th><th>כמות</th></tr></thead><tbody>';
+        visibleRows.forEach(e=>{
+          out += '<tr><td class="mono">'+escapeHtml(finishDisplay(e))+'</td><td><span class="shift-pill '+shiftClass(e.shift)+'">'+escapeHtml(e.shift||'—')+'</span></td><td class="mono">'+escapeHtml(e.facility||'—')+'</td><td class="mono">'+escapeHtml(e.workOrder||e.order||'—')+'</td><td class="mono">'+escapeHtml(e.batch||'—')+'</td><td class="mono">'+escapeHtml(e.materialCode||e.material||'—')+'</td><td title="'+escapeHtml(e.materialName||'—')+'">'+escapeHtml(e.materialName||'—')+'</td><td class="mono">'+fmt(Number(e[metric])||0)+'</td></tr>';
+        });
+        out += '</tbody></table></div>';
+      }
+      out += '</div>';
+      shiftPanel.innerHTML=out;
+      shiftPanel.querySelectorAll('.shift-choice').forEach(card=>{ card.onclick=()=>{ const sh=card.dataset.shift; if(selectedShifts.has(sh)) selectedShifts.delete(sh); else selectedShifts.add(sh); renderShiftDayPanel(); }; });
+      const clearBtn=shiftPanel.querySelector('#clearShiftSelection'); if(clearBtn) clearBtn.onclick=()=>{ selectedShifts.clear(); renderShiftDayPanel(); };
+      const exportBtn=shiftPanel.querySelector('#exportShiftRows'); if(exportBtn) exportBtn.onclick=()=>{
+        if(!visibleRows.length){ toast('אין נתונים לייצוא','warn'); return; }
+        if(typeof XLSX==='undefined'){ toast('ספריית Excel אינה זמינה','error'); return; }
+        const data=visibleRows.map(e=>({'תאריך ושעת יצירה':finishDisplay(e),'משמרת':e.shift||'','מתקן':e.facility||'','פקודת עבודה':e.workOrder||e.order||'','Batch':e.batch||'','מק״ט':e.materialCode||e.material||'','שם חומר':e.materialName||'','כמות':Number(e[metric])||0}));
+        const wb=XLSX.utils.book_new(), ws=XLSX.utils.json_to_sheet(data); XLSX.utils.book_append_sheet(wb,ws,'פירוט משמרות'); XLSX.writeFile(wb,'facility_'+facility+'_'+selectedDate+'_shifts.xlsx');
+      };
+    }
+    renderShiftDayPanel();
+
+    // Wire bar clicks: choose the day and refresh shift details
     overlay.querySelectorAll('.drilldown-bar').forEach(bar=>{
       bar.onclick = ()=>{
         const date = bar.dataset.date;
-        if(date) renderDayDetail(date, facRows, overlay);
+        if(date){ selectedDate=date; renderShiftDayPanel(); }
       };
     });
 
@@ -2882,9 +3272,10 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     overlay.querySelectorAll('[data-goto-date]').forEach(card=>{
       card.onclick = ()=>{
         const date = card.dataset.gotoDate;
-        if(date) renderDayDetail(date, facRows, overlay);
+        if(date){ selectedDate=date; renderShiftDayPanel(); }
       };
     });
+
   }
 
   function renderFacilityTargetGauges(view){
@@ -2929,37 +3320,38 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     return 'both';
   }
 
+  function targetCompareCard(title, icon, actual, target, note){
+    const pct = target>0 ? (actual/target*100) : (actual>0 ? 100 : 0);
+    const cls = gaugeLabel(pct);
+    const status = target<=0 ? 'ללא יעד מוגדר' : (pct>=100 ? 'עומד ביעד' : pct>=75 ? 'קרוב ליעד' : 'מתחת ליעד');
+    const diff = actual-target;
+    const delta = target<=0 ? 'יש להגדיר יעד' : (diff>0 ? '▲ '+fmt(diff)+' מעל היעד' : diff<0 ? '▼ חסרים '+fmt(Math.abs(diff)) : '● בדיוק ביעד');
+    const width = Math.max(0, Math.min(100, pct));
+    return '<div class="target-compare-card status-'+cls+'">'+
+      '<div class="target-compare-head"><div class="target-compare-title">'+icon+' '+escapeHtml(title)+'</div><div class="target-status-badge">'+status+'</div></div>'+
+      '<div class="target-values">'+
+        '<div><div class="target-value-label">יעד</div><div class="target-value-number">'+fmt(target)+'</div></div>'+
+        '<div class="target-divider"></div>'+
+        '<div><div class="target-value-label">כמות בפועל</div><div class="target-value-number actual">'+fmt(actual)+'</div></div>'+
+      '</div>'+
+      '<div class="target-progress"><span style="width:'+width+'%"></span></div>'+
+      '<div class="target-result-row"><div class="target-percent">'+Math.round(pct)+'%</div><div class="target-delta">'+delta+'</div></div>'+
+      (note ? '<div class="target-note">'+escapeHtml(note)+'</div>' : '')+
+    '</div>';
+  }
+
   function renderKPIs(view){
     const totalProd = view.filtered.reduce((s,e)=>s+e.production,0);
     const totalPack = view.filtered.reduce((s,e)=>s+e.packaging,0);
     const targetProd = view.filtered.reduce((s,e)=>s+getProductionTarget(e),0);
     const targetPack = getEffectivePackagingTarget(view);
-    const pctProd = targetProd>0 ? (totalProd/targetProd*100) : (totalProd>0?100:0);
-    const pctPack = targetPack>0 ? (totalPack/targetPack*100) : (totalPack>0?100:0);
 
     const mode = facilityViewMode();
     const kpi = root.querySelector('#kpiGrid');
     kpi.classList.toggle('mode-2col', mode!=='both');
 
-    const productionCards =
-      '<div class="kpi-card num production">'+
-        '<div class="kpi-label">סה״כ ייצור (יח׳)</div>'+
-        '<span class="kpi-num">'+fmt(totalProd)+'</span>'+
-        '<div class="kpi-sub">סיכום ייצור בטווח הנבחר</div>'+
-      '</div>';
-    const packagingCards =
-      '<div class="kpi-card num packaging">'+
-        '<div class="kpi-label">סה״כ אריזה (יח׳)</div>'+
-        '<span class="kpi-num">'+fmt(totalPack)+'</span>'+
-        '<div class="kpi-sub">'+(targetPack>0 ? 'מתוך יעד <span class="mono">'+fmt(targetPack)+'</span>' : 'לא הוגדר יעד לטווח זה')+'</div>'+
-        '<div class="kpi-sub">'+escapeHtml(packagingLineTargetNote(view))+'</div>'+
-      '</div>'+
-      '<div class="kpi-card gauge-card">'+
-        buildGaugeSVG(pctPack, 'var(--teal)')+
-        '<div class="gauge-name">עמידה ביעד אריזה</div>'+
-        '<div class="gauge-sub mono">'+fmt(totalPack)+' / '+fmt(targetPack)+'</div>'+
-        (targetPack>0 ? '<div class="gauge-delta" style="color:'+gaugeColor(pctPack)+';">'+deltaLabel(totalPack,targetPack)+'</div>' : '')+
-      '</div>';
+    const productionCards = targetCompareCard('ייצור — יעד מול ביצוע','🏭',totalProd,targetProd,'סיכום הייצור בטווח ובמתקנים שנבחרו');
+    const packagingCards = targetCompareCard('אריזה — יעד מול ביצוע','📦',totalPack,targetPack,packagingLineTargetNote(view));
 
     if(mode === 'packaging') kpi.innerHTML = packagingCards;
     else if(mode === 'production') kpi.innerHTML = productionCards;
@@ -3993,7 +4385,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       // Title
       ctx.textAlign='right'; ctx.fillStyle='#F1F5F9';
       ctx.font='bold 32px Arial';
-      ctx.fillText('לוח בקרה — ייצור ואריזה', W-PAD, cy+20);
+      ctx.fillText('IML Production Dashboard', W-PAD, cy+20);
       ctx.font='16px Arial'; ctx.fillStyle='#64748B';
       ctx.fillText(facilitySummaryText()+' · '+escapeHtml(view.rangeLabel||''), W-PAD, cy+50);
       ctx.fillText('הופק: '+new Date().toLocaleString('he-IL'), W-PAD, cy+74);
@@ -4079,7 +4471,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       ctx.beginPath(); ctx.moveTo(PAD,cy); ctx.lineTo(W-PAD,cy); ctx.stroke();
       cy += 20;
       ctx.fillStyle='#64748B'; ctx.font='13px Arial'; ctx.textAlign='center';
-      ctx.fillText('לוח בקרה ייצור ואריזה · '+new Date().toLocaleString('he-IL'), W/2, cy+12);
+      ctx.fillText('IML Production Dashboard · '+new Date().toLocaleString('he-IL'), W/2, cy+12);
 
       /* ── Share overlay ── */
       canvas.toBlob(async (blob)=>{
@@ -5070,8 +5462,8 @@ function renderAll(){
     '<div class="wrap">'+
       '<div class="topbar">'+
         '<div class="brand">'+
-          '<div class="brand-mark">⚙</div>'+
-          '<div><h1>לוח בקרה — ייצור ואריזה <span class="app-version-badge">V4.5</span></h1><p><span id="entryCount">טוען נתונים…</span> <span id="storageStatusBadge" class="storage-status"></span></p><p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;"><span id="dataStatusLine">בודק נתונים…</span></p></div>'+
+          '<div class="brand-mark">IML</div>'+
+          '<div><h1>IML Production Dashboard <span class="app-version-badge">V4.6.2</span></h1><p><span id="entryCount">טוען נתונים…</span> <span id="storageStatusBadge" class="storage-status"></span></p><p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;"><span id="dataStatusLine">בודק נתונים…</span></p></div>'+
         '</div>'+
         '<div class="topbar-actions"><span id="roleBadge" class="role-badge viewer">👁 צפייה בלבד</span><button class="tab-btn" id="adminLoginBtn" style="background:rgba(255,255,255,0.06);color:var(--text);font-size:12px;padding:6px 14px;">🔐 כניסת מנהל</button><button class="tab-btn" id="refreshSharedBtn" style="background:rgba(20,184,166,0.12);color:var(--teal);font-size:12px;padding:6px 14px;">🔄 רענן נתונים</button><button class="tab-btn" id="addEventTopBtn" style="background:rgba(139,183,255,0.12);color:#8BB7FF;font-size:12px;padding:6px 14px;">+ הוסף אירוע</button><button class="tab-btn" id="advancedDashboardBtn" style="background:var(--teal-soft);color:var(--green);font-size:12px;padding:6px 14px;">📊 דשבורד חדש</button><button class="tab-btn" id="excelAnalyzedExportBtn" style="background:rgba(124,217,146,0.12);color:#7CD992;font-size:12px;padding:6px 14px;">📥 ייצוא ניתוח לאקסל</button><label for="qualityFileInput" class="tab-btn admin-only" style="background:rgba(239,68,68,0.12);color:var(--red);font-size:12px;padding:6px 14px;cursor:pointer;">🧪 טעינת איכות</label><button class="tab-btn" id="whatsappExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📲 WhatsApp טקסט</button><button class="tab-btn" id="whatsappImageExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📸 צילום דשבורד</button><button class="tab-btn admin-only" id="targetsProdBtn" style="background:var(--amber-soft);color:var(--amber);font-size:12px;padding:6px 14px;">⚙ יעדי ייצור</button><button class="tab-btn admin-only" id="targetsBtn" style="background:var(--teal-soft);color:var(--teal);font-size:12px;padding:6px 14px;">⚙ יעדי אריזה</button><button class="tab-btn admin-only" id="resetBtn" style="background:rgba(255,255,255,0.05);color:var(--text-muted);font-size:12px;padding:6px 14px;">איפוס</button></div>'+
       '</div>'+
@@ -5317,9 +5709,12 @@ function renderAll(){
     const btn = root.querySelector('#refreshSharedBtn');
     if(btn){ btn.disabled=true; btn.textContent='טוען…'; }
     try{
+      _cacheClear();
+      _forceFreshStorageReads = true;
       await loadEntries();
       await Promise.all([
         loadQuality().catch(()=>{}),
+        loadQualityTestResults().catch(()=>{}),
         loadTargets().catch(()=>{}),
         loadProductionTargets().catch(()=>{}),
         loadPeriodPackagingTargets().catch(()=>{}),
@@ -5331,6 +5726,7 @@ function renderAll(){
     }catch(e){
       showToast('לא ניתן לרענן נתונים מהשרת: '+(e.message||e), true);
     }finally{
+      _forceFreshStorageReads = false;
       if(btn){ btn.disabled=false; btn.textContent='🔄 רענן נתונים'; }
     }
   }
@@ -5387,8 +5783,8 @@ root.querySelector('#printBtn').onclick = ()=> window.print();
   document.addEventListener('change', function(e){
     if(e.target && e.target.id === 'qualityFileInput'){
       if(!requireAdmin()){ e.target.value=''; return; }
-      const file = e.target.files && e.target.files[0];
-      if(file) handleQualityFile(file);
+      const files = e.target.files;
+      if(files && files.length) handleQualityFiles(files);
       e.target.value = '';
     }
   });
@@ -5406,11 +5802,17 @@ root.querySelector('#printBtn').onclick = ()=> window.print();
     }
   });
 
+
+  root.addEventListener('dblclick', function(e){
+    const tr=e.target&&e.target.closest?e.target.closest('tr[data-quality-batch]'):null;
+    if(tr) openQualityResultsModal(tr.dataset.qualityBatch||'');
+  });
+
   /* ---------------- init ---------------- */
   (async function init(){
     const statusLine = ()=>{
       const el = root.querySelector('#dataStatusLine');
-      if(el) el.textContent = 'ייצור: '+entries.length+' | איכות: '+qualityEntries.length+' שורות | '+(_netlifyAvailable?'🟢 Netlify':'🟡 מקומי');
+      if(el) el.textContent = 'ייצור: '+entries.length+' | איכות: '+qualityEntries.length+' מנות · '+qualityTestResults.length+' חריגות | '+(_netlifyAvailable?'🟢 Netlify':'🟡 מקומי');
     };
 
     await loadEntries(); statusLine();
@@ -5420,7 +5822,7 @@ root.querySelector('#printBtn').onclick = ()=> window.print();
     try { await Promise.race([ loadPeriodPackagingTargets(), new Promise(r=>setTimeout(r,2000)) ]); } catch(e){}
     try { await Promise.race([ loadEventsEntries(), new Promise(r=>setTimeout(r,2000)) ]); } catch(e){}
     // Load quality silently in background
-    loadQuality().then(statusLine).catch(()=>{});
+    Promise.all([loadQuality(), loadQualityTestResults()]).then(statusLine).catch(()=>{});
     renderAll();
     applyRoleUI();
   
@@ -5441,6 +5843,11 @@ root.querySelector('#printBtn').onclick = ()=> window.print();
 })();
 
   // V4.4-quality-period-facility-filter
+</script>
+<script>
+if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+  window.addEventListener('load', () => navigator.serviceWorker.register('./service-worker.js').catch(console.warn));
+}
 </script>
 </body>
 </html>

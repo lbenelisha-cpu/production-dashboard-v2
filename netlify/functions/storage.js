@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 
-const FUNCTION_VERSION = '4.5.0';
+const FUNCTION_VERSION = '4.6.0';
 const TOKEN_TTL_MS = 8 * 60 * 60 * 1000;
 const STORE_NAME = 'production-dashboard';
 
@@ -84,11 +84,14 @@ exports.handler = async (event) => {
   }
 
   const { action, key, value, token } = body;
-  if (!['get', 'set', 'delete', 'status', 'appendEvent'].includes(action)) {
+  if (!['get', 'getMany', 'set', 'delete', 'status', 'appendEvent'].includes(action)) {
     return response(400, { error: 'UNKNOWN_ACTION', version: FUNCTION_VERSION });
   }
-  if (action !== 'status' && (!key || typeof key !== 'string')) {
+  if (!['status','getMany'].includes(action) && (!key || typeof key !== 'string')) {
     return response(400, { error: 'MISSING_KEY', version: FUNCTION_VERSION });
+  }
+  if (action === 'getMany' && (!Array.isArray(value) || value.length === 0 || value.length > 100 || value.some(k => typeof k !== 'string' || !k))) {
+    return response(400, { error: 'INVALID_KEYS', version: FUNCTION_VERSION });
   }
   if ((action === 'set' || action === 'delete') && !validToken(token)) {
     return response(401, { error: 'ADMIN_AUTHORIZATION_REQUIRED', version: FUNCTION_VERSION });
@@ -104,6 +107,14 @@ exports.handler = async (event) => {
     if (action === 'get') {
       const storedValue = await store.get(key, { type: 'text', consistency: 'strong' });
       return response(200, { value: storedValue, backend: 'netlify-blobs-sdk', version: FUNCTION_VERSION });
+    }
+
+    if (action === 'getMany') {
+      const keys = Array.from(new Set(value));
+      const values = {};
+      const rows = await Promise.all(keys.map(async k => [k, await store.get(k, { type: 'text', consistency: 'strong' })]));
+      rows.forEach(([k, v]) => { values[k] = v; });
+      return response(200, { values, count: keys.length, backend: 'netlify-blobs-sdk', version: FUNCTION_VERSION });
     }
 
     if (action === 'set') {
