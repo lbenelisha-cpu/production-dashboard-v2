@@ -1,9 +1,12 @@
 {
   "name": "production-dashboard-netlify",
-  "version": "4.6.2",
+  "version": "4.6.3",
   "private": true,
   "description": "Production dashboard with shared Netlify Blobs storage",
   "dependencies": {
     "@netlify/blobs": "10.7.9"
+  },
+  "engines": {
+    "node": ">=20 <23"
   }
 }

@@ -1,8 +1,10 @@
 const crypto = require('crypto');
 
-const FUNCTION_VERSION = '4.6.0';
+const FUNCTION_VERSION = '4.6.3';
 const TOKEN_TTL_MS = 8 * 60 * 60 * 1000;
 const STORE_NAME = 'production-dashboard';
+const MAX_GET_MANY_KEYS = 30;
+const READ_CONCURRENCY = 4;
 
 function secret() {
   return process.env.ADMIN_TOKEN_SECRET || process.env.ADMIN_CODE || '';
@@ -49,15 +51,32 @@ function response(statusCode, payload) {
 
 async function openStore() {
   const { getStore } = await import('@netlify/blobs');
-  const siteID = String(process.env.NETLIFY_SITE_ID || process.env.SITE_ID || '').trim();
-  const token = String(process.env.NETLIFY_TOKEN || process.env.NETLIFY_ACCESS_TOKEN || '').trim();
 
-  if (siteID && token) {
-    return getStore(STORE_NAME, { siteID, token });
+  // Prefer Netlify's automatically injected runtime credentials. This avoids
+  // stale NETLIFY_TOKEN / SITE_ID environment variables overriding the valid
+  // function runtime context and producing gateway errors after a deploy.
+  try {
+    return getStore(STORE_NAME);
+  } catch (runtimeError) {
+    const siteID = String(process.env.NETLIFY_SITE_ID || process.env.SITE_ID || '').trim();
+    const token = String(process.env.NETLIFY_TOKEN || process.env.NETLIFY_ACCESS_TOKEN || '').trim();
+    if (siteID && token) return getStore(STORE_NAME, { siteID, token });
+    throw runtimeError;
   }
+}
 
-  // In a correctly configured Netlify Function, the SDK can use runtime context.
-  return getStore(STORE_NAME);
+async function mapWithConcurrency(items, limit, worker) {
+  const output = new Array(items.length);
+  let cursor = 0;
+  async function run() {
+    while (true) {
+      const index = cursor++;
+      if (index >= items.length) return;
+      output[index] = await worker(items[index], index);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, run));
+  return output;
 }
 
 exports.handler = async (event) => {
@@ -87,33 +106,36 @@ exports.handler = async (event) => {
   if (!['get', 'getMany', 'set', 'delete', 'status', 'appendEvent'].includes(action)) {
     return response(400, { error: 'UNKNOWN_ACTION', version: FUNCTION_VERSION });
   }
-  if (!['status','getMany'].includes(action) && (!key || typeof key !== 'string')) {
+  if (!['status', 'getMany'].includes(action) && (!key || typeof key !== 'string')) {
     return response(400, { error: 'MISSING_KEY', version: FUNCTION_VERSION });
   }
-  if (action === 'getMany' && (!Array.isArray(value) || value.length === 0 || value.length > 100 || value.some(k => typeof k !== 'string' || !k))) {
-    return response(400, { error: 'INVALID_KEYS', version: FUNCTION_VERSION });
+  if (action === 'getMany' && (!Array.isArray(value) || value.length === 0 || value.length > MAX_GET_MANY_KEYS || value.some(k => typeof k !== 'string' || !k))) {
+    return response(400, { error: 'INVALID_KEYS', maxKeys: MAX_GET_MANY_KEYS, version: FUNCTION_VERSION });
   }
   if ((action === 'set' || action === 'delete') && !validToken(token)) {
     return response(401, { error: 'ADMIN_AUTHORIZATION_REQUIRED', version: FUNCTION_VERSION });
   }
 
+  // A lightweight health check must not depend on Blobs being reachable.
+  if (action === 'status') {
+    return response(200, { ok: true, backend: 'netlify-function', store: STORE_NAME, version: FUNCTION_VERSION });
+  }
+
   try {
     const store = await openStore();
 
-    if (action === 'status') {
-      return response(200, { ok: true, backend: 'netlify-blobs-sdk', store: STORE_NAME, version: FUNCTION_VERSION });
-    }
-
     if (action === 'get') {
-      const storedValue = await store.get(key, { type: 'text', consistency: 'strong' });
+      const storedValue = await store.get(key, { type: 'text' });
       return response(200, { value: storedValue, backend: 'netlify-blobs-sdk', version: FUNCTION_VERSION });
     }
 
     if (action === 'getMany') {
       const keys = Array.from(new Set(value));
-      const values = {};
-      const rows = await Promise.all(keys.map(async k => [k, await store.get(k, { type: 'text', consistency: 'strong' })]));
-      rows.forEach(([k, v]) => { values[k] = v; });
+      const rows = await mapWithConcurrency(keys, READ_CONCURRENCY, async k => {
+        const storedValue = await store.get(k, { type: 'text' });
+        return [k, storedValue];
+      });
+      const values = Object.fromEntries(rows);
       return response(200, { values, count: keys.length, backend: 'netlify-blobs-sdk', version: FUNCTION_VERSION });
     }
 
