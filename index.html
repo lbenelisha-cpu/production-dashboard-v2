@@ -1503,13 +1503,26 @@ html, body { margin:0; padding:0; background:#0A0D12; }
         sourceNames.push(file.name);
       }
 
-      // A single workbook is supported when it contains both the summary sheet
-      // and the test-results sheet. Two separate workbooks remain supported.
+      // Supports three workflows:
+      // 1) one combined workbook; 2) two files selected together;
+      // 3) loading the summary file and the detailed-results file separately.
+      // In workflow 3, preserve the quality data that is already loaded in the app.
+      const loadedSummaryNow=summaryRows.length>0;
+      const loadedResultsNow=resultRows.length>0;
+      if(!loadedSummaryNow && !loadedResultsNow){
+        throw new Error('לא זוהה קובץ איכות מתאים. יש לבחור קובץ סיכום איכות או קובץ תוצאות בדיקה');
+      }
+      if(!loadedSummaryNow){
+        summaryRows=Array.isArray(qualityEntries)?qualityEntries.slice():[];
+      }
+      if(!loadedResultsNow){
+        resultRows=Array.isArray(qualityTestResults)?qualityTestResults.slice():[];
+      }
       if(!summaryRows.length){
-        throw new Error('לא נמצא גיליון סיכום איכות הכולל Batch ו-UD/QA Status');
+        throw new Error('קובץ תוצאות הבדיקה זוהה, אך עדיין לא נטען קובץ סיכום האיכות. יש לטעון תחילה את קובץ סיכום האיכות');
       }
       if(!resultRows.length){
-        throw new Error('לא נמצא גיליון תוצאות בדיקה. בקובץ מאוחד נדרשים שני גיליונות: סיכום איכות ותוצאות בדיקה');
+        throw new Error('קובץ סיכום האיכות זוהה, אך עדיין לא נטען קובץ תוצאות הבדיקה החדש');
       }
 
       // Remove accidental duplicates when the same sheet/data was included twice.
@@ -1529,7 +1542,10 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       const ok1=await persistQuality();
       const ok2=await persistQualityTestResults();
       if(ok1&&ok2){
-        const mode=files.length===1?'קובץ מאוחד':'שני קבצים';
+        let mode='שני קבצים';
+        if(files.length===1 && loadedSummaryNow && loadedResultsNow) mode='קובץ מאוחד';
+        else if(files.length===1 && loadedResultsNow) mode='קובץ תוצאות בדיקה נוסף';
+        else if(files.length===1 && loadedSummaryNow) mode='קובץ סיכום איכות נוסף';
         showToast('האיכות נטענה ('+mode+'): '+summaryRows.length+' מנות · '+resultRows.length+' תוצאות חריגה | '+sourceNames.join(' + '));
         renderAll();
       }
@@ -5635,7 +5651,7 @@ function renderAll(){
       '<div class="topbar">'+
         '<div class="brand">'+
           '<div class="brand-mark">IML</div>'+
-          '<div><h1>IML Production Dashboard <span class="app-version-badge">V4.6.6</span></h1><p><span id="entryCount">טוען נתונים…</span> <span id="storageStatusBadge" class="storage-status"></span></p><p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;"><span id="dataStatusLine">בודק נתונים…</span></p></div>'+
+          '<div><h1>IML Production Dashboard <span class="app-version-badge">V4.6.7</span></h1><p><span id="entryCount">טוען נתונים…</span> <span id="storageStatusBadge" class="storage-status"></span></p><p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;"><span id="dataStatusLine">בודק נתונים…</span></p></div>'+
         '</div>'+
         '<div class="topbar-actions"><span id="roleBadge" class="role-badge viewer">👁 צפייה בלבד</span><button class="tab-btn" id="adminLoginBtn" style="background:rgba(255,255,255,0.06);color:var(--text);font-size:12px;padding:6px 14px;">🔐 כניסת מנהל</button><button class="tab-btn" id="refreshSharedBtn" style="background:rgba(20,184,166,0.12);color:var(--teal);font-size:12px;padding:6px 14px;">🔄 רענן נתונים</button><button class="tab-btn" id="addEventTopBtn" style="background:rgba(139,183,255,0.12);color:#8BB7FF;font-size:12px;padding:6px 14px;">+ הוסף אירוע</button><button class="tab-btn" id="advancedDashboardBtn" style="background:var(--teal-soft);color:var(--green);font-size:12px;padding:6px 14px;">📊 דשבורד חדש</button><button class="tab-btn" id="excelAnalyzedExportBtn" style="background:rgba(124,217,146,0.12);color:#7CD992;font-size:12px;padding:6px 14px;">📥 ייצוא ניתוח לאקסל</button><label for="qualityFileInput" class="tab-btn admin-only" style="background:rgba(239,68,68,0.12);color:var(--red);font-size:12px;padding:6px 14px;cursor:pointer;">🧪 טעינת איכות (קובץ אחד או שניים)</label><button class="tab-btn" id="whatsappExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📲 WhatsApp טקסט</button><button class="tab-btn" id="whatsappImageExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📸 צילום דשבורד</button><button class="tab-btn admin-only" id="targetsProdBtn" style="background:var(--amber-soft);color:var(--amber);font-size:12px;padding:6px 14px;">⚙ יעדי ייצור</button><button class="tab-btn admin-only" id="targetsBtn" style="background:var(--teal-soft);color:var(--teal);font-size:12px;padding:6px 14px;">⚙ יעדי אריזה</button><button class="tab-btn admin-only" id="resetBtn" style="background:rgba(255,255,255,0.05);color:var(--text-muted);font-size:12px;padding:6px 14px;">איפוס</button></div>'+
       '</div>'+
