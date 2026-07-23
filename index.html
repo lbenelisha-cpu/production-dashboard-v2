@@ -714,6 +714,9 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 #prod-dash-root .quality-batch-summary .value.emph { color:var(--teal);font-size:17px; }
 @media(max-width:800px){#prod-dash-root .quality-batch-summary{grid-template-columns:repeat(2,minmax(120px,1fr));}}
 
+
+    .quality-results-table tr.quality-row-deviation td{background:rgba(239,68,68,.10);border-top-color:rgba(239,68,68,.35);border-bottom-color:rgba(239,68,68,.35)}
+    .quality-results-table tr.quality-row-deviation td:first-child{box-shadow:inset -4px 0 0 #ef4444}
 </style>
 </head>
 <body>
@@ -969,11 +972,11 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     'storage location':'facility','facility':'facility','site':'facility','מתקן':'facility',
     'production plant id':'plant',
     'production line':'line','line':'line','resource':'line','work center':'line','קו':'line',
-    'operation short text':'test_name','master insp characteristic':'test_name','master inspection characteristic':'test_name',
+    'operation short text':'test_name','master insp characteristic':'test_name','master inspection characteristic':'test_name','master insp charactristic':'test_name',
     'arithmetic mean of valid measured values':'measured_value','measured value':'measured_value','inspection result value':'measured_value',
     'lower specif limit':'lower_limit','lower specification limit':'lower_limit','lower spec limit':'lower_limit',
     'upper specif limit':'upper_limit','upper specification limit':'upper_limit','upper spec limit':'upper_limit',
-    'characteristic remarks':'characteristic_remarks','qualitative':'qualitative','sample #':'sample',
+    'characteristic remarks':'characteristic_remarks','charactristic remarks':'characteristic_remarks','unit of measurement':'unit','qualitative':'qualitative','sample #':'sample',
     'process order storage location':'facility','operation short text':'test_name','ud remarks':'remarks','batch remarks':'remarks'
   };
 
@@ -1395,21 +1398,27 @@ html, body { margin:0; padding:0; background:#0A0D12; }
           const testName=String(get(row,'test_name')||'').trim();
           const rawResult=get(row,'measured_value');
           const qualitative=String(get(row,'qualitative')||'').trim();
-          const resultValue=!isMissingTestValue(rawResult)?rawResult:qualitative;
-          if(!testName || isMissingTestValue(resultValue)) continue;
+          const resultValue=!isMissingTestValue(rawResult)?rawResult:(!isMissingTestValue(qualitative)?qualitative:'');
           const min=parseNumericResult(get(row,'lower_limit'));
           const max=parseNumericResult(get(row,'upper_limit'));
-          const numeric=parseNumericResult(resultValue);
           const resultStatus=String(get(row,'result_status')||'').trim();
-          let isDeviation=false, status='';
+          // Keep every meaningful characteristic, even when the export does not contain an actual measured value.
+          // In that case the modal shows — under “ערך בפועל” rather than hiding the entire test.
+          if(!testName || testName==='-' || (isMissingTestValue(resultValue) && min===null && max===null && !resultStatus)) continue;
+          const numeric=parseNumericResult(resultValue);
+          let isDeviation=false, status='תקין';
           if(numeric!==null && (min!==null || max!==null)){
             if(min!==null && numeric<min){isDeviation=true;status='מתחת לגבול';}
             else if(max!==null && numeric>max){isDeviation=true;status='מעל הגבול';}
             else if(badStatus(resultStatus)){isDeviation=true;status=resultStatus||'חריגה';}
+            else status='בתוך הטווח';
           }else if(badStatus(resultStatus)){
             isDeviation=true; status=resultStatus||'חריגה';
+          }else if(resultStatus){
+            status=resultStatus;
+          }else{
+            status='ללא גבולות';
           }
-          if(!isDeviation) continue;
           const rangeText=(min!==null||max!==null)?((min!==null?min:'—')+' - '+(max!==null?max:'—')):'';
           results.push({
             batch,
@@ -1423,6 +1432,8 @@ html, body { margin:0; padding:0; background:#0A0D12; }
             testCode:'',
             min,max,rangeText,
             result:String(resultValue),
+            unit:String(get(row,'unit')||'').trim(),
+            isDeviation,
             status,
             resultStatus,
             qaApproval:String(get(row,'qa_approval')||'').trim(),
@@ -1462,8 +1473,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
             status=isDeviation?(numeric<tc.min?'מתחת לגבול':'מעל הגבול'):'בתוך הטווח';
           }else if(numeric!==null && tc.min===null){ isDeviation=true; status='לבדיקה'; }
           else { isDeviation=true; }
-          if(!isDeviation) continue;
-          results.push({batch,inspectionLot,material,operation,testName:tc.testName,testCode:tc.testCode,min:tc.min,max:tc.max,rangeText:tc.rangeText,result:String(raw),status});
+          results.push({batch,inspectionLot,material,operation,testName:tc.testName,testCode:tc.testCode,min:tc.min,max:tc.max,rangeText:tc.rangeText,result:String(raw),unit:'',isDeviation,status});
         }
       }
     }
@@ -1541,48 +1551,62 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 
       renderAll();
       if(summaryRows.length && resultRows.length){
-        showToast('האיכות נטענה: '+summaryRows.length+' מנות · '+resultRows.length+' תוצאות חריגה | '+sourceNames.join(' + '));
+        showToast('האיכות נטענה: '+summaryRows.length+' מנות · '+resultRows.length+' תוצאות בדיקה | '+sourceNames.join(' + '));
       }else if(summaryRows.length){
         showToast('קובץ סיכום האיכות נטען: '+summaryRows.length+' מנות. כעת ניתן לטעון את קובץ תוצאות הבדיקה החדש.');
       }else{
         const linked=Object.keys(qualityBestByKey||{}).length;
-        showToast('קובץ תוצאות הבדיקה נטען: '+resultRows.length+' תוצאות חריגה'+(linked?' · קושר למנות סיכום האיכות':' · יש לטעון גם את קובץ סיכום האיכות'));
+        showToast('קובץ תוצאות הבדיקה נטען: '+resultRows.length+' תוצאות בדיקה'+(linked?' · קושר למנות סיכום האיכות':' · יש לטעון גם את קובץ סיכום האיכות'));
       }
     }catch(e){ console.error(e); showToast('שגיאה בטעינת האיכות: '+(e.message||e),true); }
   }
 
   function openQualityResultsModal(batch){
-    const bk=normalizeBatch(batch), rows=qualityTestResultsByBatch[bk]||[];
-    const q=qualityBestByKey[bk]||{};
+    const bk=normalizeBatch(batch), q=qualityBestByKey[bk]||{};
+    const allBatchRows=qualityTestResultsByBatch[bk]||[];
+    const qMaterial=String(q.materialCode||'').replace(/\.0$/,'').trim();
+    const qLot=String(q.inspectionLot||'').trim();
+    // Prefer the exact material; use Inspection Lot only when it matches. SAP exports can contain a different lot
+    // for the same material/batch, so material+batch is the safe fallback.
+    let rows=qMaterial ? allBatchRows.filter(r=>String(r.materialCode||'').replace(/\.0$/,'').trim()===qMaterial) : allBatchRows.slice();
+    if(!rows.length) rows=allBatchRows.slice();
+    const exactLot=qLot ? rows.filter(r=>String(r.inspectionLot||'').trim()===qLot) : [];
+    if(exactLot.length) rows=exactLot;
     if(!rows.length){
       const extra=q.udCode||q.qaApproval||q.rejectedCharacteristics;
-      showToast(extra ? 'המנה מסומנת בסטטוס איכות, אך לא נמצאו ערכי בדיקה חורגים בקובץ התוצאות החדש' : 'לא נמצאו תוצאות חריגה למנה '+(batch||''),true);
+      showToast(extra ? 'המנה מסומנת בסטטוס איכות, אך לא נמצאו תוצאות בדיקה תואמות בקובץ התוצאות החדש' : 'לא נמצאו תוצאות בדיקה למנה '+(batch||''),true);
       return;
     }
     let overlay=root.querySelector('#qualityResultsOverlay');
     if(!overlay){ overlay=document.createElement('div'); overlay.id='qualityResultsOverlay'; overlay.className='quality-results-overlay'; root.appendChild(overlay); }
     const first=rows[0]||{};
-    const qty=q.deliveredQuantity||'';
+    const qty=q.deliveredQuantity||first.deliveredQuantity||'';
     const material=q.materialName||first.material||'';
     const lot=q.inspectionLot||first.inspectionLot||'';
+    const resultLot=first.inspectionLot||'';
     const wo=q.workOrder||first.operation||'';
     const facility=q.facility||first.facility||'';
     const line=q.line||'';
     const ud=q.udCode||first.udCode||'';
     const qa=q.qaApproval||first.qaApproval||'';
-    let html='<div class="quality-results-modal"><div class="quality-results-head"><div><div class="quality-results-title">ערכים חורגים — Batch '+escapeHtml(batch||bk)+'</div><div class="quality-results-sub">'+escapeHtml(material)+' · '+rows.length+' ערכים חורגים</div></div><button class="quality-results-close" id="qualityResultsClose">סגור</button></div>'+
+    const deviations=rows.filter(r=>r.isDeviation||badStatus(r.resultStatus)).length;
+    let html='<div class="quality-results-modal"><div class="quality-results-head"><div><div class="quality-results-title">כל תוצאות הבדיקה — Batch '+escapeHtml(batch||bk)+'</div><div class="quality-results-sub">'+escapeHtml(material)+' · '+rows.length+' בדיקות · '+deviations+' חריגות</div></div><button class="quality-results-close" id="qualityResultsClose">סגור</button></div>'+ 
       '<div class="quality-batch-summary">'+
       '<div class="item"><div class="label">גודל מנה</div><div class="value emph">'+escapeHtml(qty||'—')+'</div></div>'+
-      '<div class="item"><div class="label">Inspection Lot</div><div class="value">'+escapeHtml(lot||'—')+'</div></div>'+
+      '<div class="item"><div class="label">Inspection Lot בסיכום</div><div class="value">'+escapeHtml(lot||'—')+'</div></div>'+
+      '<div class="item"><div class="label">Inspection Lot בתוצאות</div><div class="value">'+escapeHtml(resultLot||'—')+'</div></div>'+
       '<div class="item"><div class="label">פקודת עבודה</div><div class="value">'+escapeHtml(wo||'—')+'</div></div>'+
       '<div class="item"><div class="label">מתקן / קו</div><div class="value">'+escapeHtml([facility,line].filter(Boolean).join(' / ')||'—')+'</div></div>'+
       '<div class="item"><div class="label">מק״ט</div><div class="value">'+escapeHtml(q.materialCode||first.materialCode||'—')+'</div></div>'+
       '<div class="item"><div class="label">UD Code</div><div class="value quality-result-bad">'+escapeHtml(ud||'—')+'</div></div>'+
       '<div class="item"><div class="label">QA Status</div><div class="value">'+escapeHtml(qa||'—')+'</div></div>'+
       '<div class="item"><div class="label">תאריך</div><div class="value">'+escapeHtml(q.date||'—')+'</div></div></div>'+
-      '<div class="quality-results-body"><div class="table-scroll"><table class="quality-results-table" dir="rtl"><colgroup><col style="width:245px"><col style="width:115px"><col style="width:115px"><col style="width:115px"><col style="width:135px"><col style="width:145px"><col style="width:230px"></colgroup><thead><tr><th>מאפיין בדיקה</th><th>גבול תחתון</th><th>גבול עליון</th><th>תוצאה בפועל</th><th>מצב</th><th>Result Status</th><th>הערה</th></tr></thead><tbody>';
+      '<div class="quality-results-body"><div class="table-scroll"><table class="quality-results-table" dir="rtl"><colgroup><col style="width:245px"><col style="width:110px"><col style="width:125px"><col style="width:110px"><col style="width:85px"><col style="width:135px"><col style="width:145px"><col style="width:220px"></colgroup><thead><tr><th>מאפיין בדיקה</th><th>גבול תחתון</th><th>ערך בפועל</th><th>גבול עליון</th><th>יחידה</th><th>מצב</th><th>Result Status</th><th>הערה</th></tr></thead><tbody>';
     rows.forEach(r=>{
-      html+='<tr><td class="test-name">'+escapeHtml(r.testName||'—')+'</td><td class="mono nowrap">'+escapeHtml(r.min==null?'—':String(r.min))+'</td><td class="mono nowrap">'+escapeHtml(r.max==null?'—':String(r.max))+'</td><td class="mono nowrap quality-result-bad">'+escapeHtml(r.result||'—')+'</td><td class="quality-result-bad">'+escapeHtml(r.status||'חריגה')+'</td><td>'+escapeHtml(r.resultStatus||'—')+'</td><td class="test-name">'+escapeHtml(r.remarks||'—')+'</td></tr>';
+      const bad=!!(r.isDeviation||badStatus(r.resultStatus));
+      const trClass=bad?' class="quality-row-deviation"':'';
+      const valClass=bad?'mono nowrap quality-result-bad':'mono nowrap';
+      html+='<tr'+trClass+'><td class="test-name">'+escapeHtml(r.testName||'—')+'</td><td class="mono nowrap">'+escapeHtml(r.min==null?'—':String(r.min))+'</td><td class="'+valClass+'">'+escapeHtml(r.result||'—')+'</td><td class="mono nowrap">'+escapeHtml(r.max==null?'—':String(r.max))+'</td><td class="nowrap">'+escapeHtml(r.unit||'—')+'</td><td class="'+(bad?'quality-result-bad':'')+'">'+escapeHtml(r.status||'—')+'</td><td>'+escapeHtml(r.resultStatus||'—')+'</td><td class="test-name">'+escapeHtml(r.remarks||'—')+'</td></tr>';
     });
     html+='</tbody></table></div></div></div>';
     overlay.innerHTML=html; overlay.classList.add('open');
@@ -5650,7 +5674,7 @@ function renderAll(){
       '<div class="topbar">'+
         '<div class="brand">'+
           '<div class="brand-mark">IML</div>'+
-          '<div><h1>IML Production Dashboard <span class="app-version-badge">V4.6.8</span></h1><p><span id="entryCount">טוען נתונים…</span> <span id="storageStatusBadge" class="storage-status"></span></p><p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;"><span id="dataStatusLine">בודק נתונים…</span></p></div>'+
+          '<div><h1>IML Production Dashboard <span class="app-version-badge">V4.6.9</span></h1><p><span id="entryCount">טוען נתונים…</span> <span id="storageStatusBadge" class="storage-status"></span></p><p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;"><span id="dataStatusLine">בודק נתונים…</span></p></div>'+
         '</div>'+
         '<div class="topbar-actions"><span id="roleBadge" class="role-badge viewer">👁 צפייה בלבד</span><button class="tab-btn" id="adminLoginBtn" style="background:rgba(255,255,255,0.06);color:var(--text);font-size:12px;padding:6px 14px;">🔐 כניסת מנהל</button><button class="tab-btn" id="refreshSharedBtn" style="background:rgba(20,184,166,0.12);color:var(--teal);font-size:12px;padding:6px 14px;">🔄 רענן נתונים</button><button class="tab-btn" id="addEventTopBtn" style="background:rgba(139,183,255,0.12);color:#8BB7FF;font-size:12px;padding:6px 14px;">+ הוסף אירוע</button><button class="tab-btn" id="advancedDashboardBtn" style="background:var(--teal-soft);color:var(--green);font-size:12px;padding:6px 14px;">📊 דשבורד חדש</button><button class="tab-btn" id="excelAnalyzedExportBtn" style="background:rgba(124,217,146,0.12);color:#7CD992;font-size:12px;padding:6px 14px;">📥 ייצוא ניתוח לאקסל</button><label for="qualityFileInput" class="tab-btn admin-only" style="background:rgba(239,68,68,0.12);color:var(--red);font-size:12px;padding:6px 14px;cursor:pointer;">🧪 טעינת איכות (קובץ אחד או שניים)</label><button class="tab-btn" id="whatsappExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📲 WhatsApp טקסט</button><button class="tab-btn" id="whatsappImageExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📸 צילום דשבורד</button><button class="tab-btn admin-only" id="targetsProdBtn" style="background:var(--amber-soft);color:var(--amber);font-size:12px;padding:6px 14px;">⚙ יעדי ייצור</button><button class="tab-btn admin-only" id="targetsBtn" style="background:var(--teal-soft);color:var(--teal);font-size:12px;padding:6px 14px;">⚙ יעדי אריזה</button><button class="tab-btn admin-only" id="resetBtn" style="background:rgba(255,255,255,0.05);color:var(--text-muted);font-size:12px;padding:6px 14px;">איפוס</button></div>'+
       '</div>'+
@@ -6035,7 +6059,7 @@ root.querySelector('#printBtn').onclick = ()=> window.print();
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   window.addEventListener('load', async () => {
     try {
-      const reg = await navigator.serviceWorker.register('./service-worker.js?v=4.6.8', { updateViaCache: 'none' });
+      const reg = await navigator.serviceWorker.register('./service-worker.js?v=4.6.9', { updateViaCache: 'none' });
       await reg.update();
       let reloading = false;
       navigator.serviceWorker.addEventListener('controllerchange', () => {
