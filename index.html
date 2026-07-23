@@ -9,9 +9,9 @@
 <meta name="theme-color" content="#030812">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" type="image/png" href="icons/favicon.png">
-<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest?v=4.6.4">
+<link rel="icon" type="image/png" href="icons/iml-favicon-v4.png?v=4.6.4">
+<link rel="apple-touch-icon" href="icons/iml-apple-touch-icon-v4.png?v=4.6.4">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" onerror="window._xlsxLoadError=true"></script>
@@ -164,16 +164,16 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 #prod-dash-root .target-compare-head{display:flex; justify-content:space-between; gap:12px; align-items:center; margin-bottom:14px}
 #prod-dash-root .target-compare-title{font-size:15px; font-weight:900; color:var(--status-color)}
 #prod-dash-root .target-status-badge{font-size:11px; font-weight:900; color:var(--status-color); border:1px solid color-mix(in srgb,var(--status-color) 60%,transparent); background:color-mix(in srgb,var(--status-color) 12%,transparent); padding:5px 9px; border-radius:999px; white-space:nowrap}
-#prod-dash-root .target-values{display:grid; grid-template-columns:1fr 1px 1fr; gap:14px; align-items:center; text-align:center}
+#prod-dash-root .target-values{display:grid; grid-template-columns:minmax(0,1fr) 1px minmax(0,1fr); gap:14px; align-items:center; text-align:center}
 #prod-dash-root .target-divider{width:1px; height:52px; background:var(--border)}
 #prod-dash-root .target-value-label{font-size:11px; color:var(--text-muted); font-weight:800; margin-bottom:5px}
-#prod-dash-root .target-value-number{font-family:'JetBrains Mono',monospace; font-size:27px; font-weight:900; line-height:1; color:var(--text)}
+#prod-dash-root .target-value-number{font-family:'JetBrains Mono',monospace; font-size:clamp(22px,2.25vw,30px); font-weight:900; line-height:1.08; color:var(--text); min-width:0; white-space:nowrap; letter-spacing:-1px}
 #prod-dash-root .target-value-number.actual{color:var(--status-color)}
 #prod-dash-root .target-progress{height:11px; background:var(--panel-2); border-radius:999px; overflow:hidden; margin:17px 0 10px; border:1px solid var(--border)}
 #prod-dash-root .target-progress > span{display:block; height:100%; width:0; max-width:100%; background:linear-gradient(90deg,color-mix(in srgb,var(--status-color) 70%,#fff),var(--status-color)); border-radius:999px; transition:width .65s ease}
-#prod-dash-root .target-result-row{display:flex; justify-content:space-between; gap:10px; align-items:flex-end}
+#prod-dash-root .target-result-row{display:flex; justify-content:space-between; gap:10px; align-items:flex-end; min-width:0}
 #prod-dash-root .target-percent{font-family:'JetBrains Mono',monospace; font-size:25px; font-weight:900; color:var(--status-color)}
-#prod-dash-root .target-delta{font-size:12px; line-height:1.35; font-weight:900; text-align:left; color:var(--status-color)}
+#prod-dash-root .target-delta{font-size:12px; line-height:1.35; font-weight:900; text-align:left; color:var(--status-color); overflow-wrap:anywhere}
 #prod-dash-root .target-note{font-size:10.5px; color:var(--text-muted); margin-top:8px; line-height:1.45}
 @media(max-width:760px){
  #prod-dash-root .target-compare-card{min-height:175px;padding:14px}
@@ -182,9 +182,17 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 }
 
 /* ── KPI Grid ────────────────────────────────────── */
-#prod-dash-root .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 20px; }
-#prod-dash-root .kpi-grid.mode-2col { grid-template-columns: repeat(2, 1fr); max-width: 520px; margin: 0 auto 20px; }
-@media (max-width: 760px) { #prod-dash-root .kpi-grid { grid-template-columns: repeat(2, 1fr); } }
+#prod-dash-root .kpi-grid {
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),440px));
+  justify-content:center; gap:16px; margin-bottom:20px;
+}
+#prod-dash-root .kpi-grid.mode-2col {
+  grid-template-columns:minmax(0,560px);
+  max-width:560px; width:100%; margin:0 auto 20px;
+}
+#prod-dash-root .kpi-grid > * { min-width:0; width:100%; box-sizing:border-box; }
+@media (max-width: 760px) { #prod-dash-root .kpi-grid, #prod-dash-root .kpi-grid.mode-2col { grid-template-columns: 1fr; max-width:100%; } }
 
 #prod-dash-root .insight-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 20px; }
 @media (max-width: 760px) { #prod-dash-root .insight-stats { grid-template-columns: 1fr; } }
@@ -524,8 +532,8 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   }
 
   /* ── KPI grid — 2 columns ── */
-  #prod-dash-root .kpi-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 10px; }
-  #prod-dash-root .kpi-grid.mode-2col { max-width: 100%; }
+  #prod-dash-root .kpi-grid { grid-template-columns: 1fr !important; gap: 10px; }
+  #prod-dash-root .kpi-grid.mode-2col { grid-template-columns:1fr !important; max-width:100%; }
   #prod-dash-root .kpi-num { font-size: 30px; }
   #prod-dash-root .kpi-card { padding: 14px 13px 12px; }
 
@@ -615,7 +623,23 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   #prod-dash-root .print-only { display: block; }
   #prod-dash-root table th:last-child, #prod-dash-root table td:last-child { display: none; }
   #prod-dash-root .panel, #prod-dash-root .kpi-card { border: 1px solid #ccc; box-shadow: none; }
-  #prod-dash-root .wrap { max-width: 100%; }
+  #prod-dash-root .wrap { max-width:100%; padding:0 8mm !important; }
+  #prod-dash-root .kpi-grid, #prod-dash-root .kpi-grid.mode-2col {
+    display:grid !important; grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+    max-width:none !important; width:100% !important; gap:8mm !important; margin:0 0 8mm !important;
+  }
+  #prod-dash-root .kpi-grid.mode-2col { grid-template-columns:minmax(0,1fr) !important; max-width:125mm !important; margin:0 auto 8mm !important; }
+  #prod-dash-root .target-compare-card { min-width:0 !important; min-height:auto !important; padding:6mm !important; overflow:visible !important; break-inside:avoid; page-break-inside:avoid; }
+  #prod-dash-root .target-values { grid-template-columns:minmax(0,1fr) 1px minmax(0,1fr) !important; gap:4mm !important; }
+  #prod-dash-root .target-value-number { font-size:19pt !important; letter-spacing:-.5pt !important; white-space:nowrap !important; }
+  #prod-dash-root .target-percent { font-size:18pt !important; }
+  #prod-dash-root .target-delta { font-size:9pt !important; }
+  #prod-dash-root .summary-grid:has(.gauge-card) { grid-template-columns:repeat(4,minmax(0,1fr)) !important; gap:4mm !important; }
+  #prod-dash-root .gauge-card { min-width:0 !important; padding:4mm !important; break-inside:avoid; page-break-inside:avoid; }
+  #prod-dash-root .gauge-svg { max-width:100% !important; height:auto !important; }
+  #prod-dash-root .gauge-sub { white-space:nowrap !important; font-size:8pt !important; }
+  #prod-dash-root .gauge-name { font-size:10pt !important; }
+  #prod-dash-root .panel { break-inside:auto; page-break-inside:auto; }
 }
 
 
@@ -653,7 +677,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   overflow-wrap: normal !important;
 }
 #prod-dash-root table.shortfall-table { min-width: 1320px !important; table-layout: fixed !important; }
-#prod-dash-root table.quality-detail-table { min-width: 1300px !important; table-layout: fixed !important; }
+#prod-dash-root table.quality-detail-table { min-width: 1450px !important; table-layout: fixed !important; }
 #prod-dash-root table.records-full { min-width: 2100px !important; table-layout: fixed !important; }
 #prod-dash-root table.records-full td.text-full,
 #prod-dash-root table.detail-table td.text-full {
@@ -683,6 +707,12 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 #prod-dash-root table.quality-results-table td.test-name { text-align:right!important;white-space:normal!important; }
 #prod-dash-root .quality-result-bad { color:var(--red);font-weight:900; }
 #prod-dash-root .quality-result-text { color:var(--yellow);font-weight:800; }
+#prod-dash-root .quality-batch-summary { display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:10px;padding:14px 18px;border-bottom:1px solid rgba(148,163,184,.16); }
+#prod-dash-root .quality-batch-summary .item { background:rgba(15,23,42,.72);border:1px solid rgba(148,163,184,.18);border-radius:12px;padding:10px 12px;min-width:0; }
+#prod-dash-root .quality-batch-summary .label { color:var(--text-muted);font-size:11px;font-weight:700;margin-bottom:4px; }
+#prod-dash-root .quality-batch-summary .value { color:var(--text);font-size:14px;font-weight:900;overflow-wrap:anywhere; }
+#prod-dash-root .quality-batch-summary .value.emph { color:var(--teal);font-size:17px; }
+@media(max-width:800px){#prod-dash-root .quality-batch-summary{grid-template-columns:repeat(2,minmax(120px,1fr));}}
 
 </style>
 </head>
@@ -939,7 +969,12 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     'storage location':'facility','facility':'facility','site':'facility','מתקן':'facility',
     'production plant id':'plant',
     'production line':'line','line':'line','resource':'line','work center':'line','קו':'line',
-    'operation short text':'test_name','ud remarks':'remarks','batch remarks':'remarks'
+    'operation short text':'test_name','master insp characteristic':'test_name','master inspection characteristic':'test_name',
+    'arithmetic mean of valid measured values':'measured_value','measured value':'measured_value','inspection result value':'measured_value',
+    'lower specif limit':'lower_limit','lower specification limit':'lower_limit','lower spec limit':'lower_limit',
+    'upper specif limit':'upper_limit','upper specification limit':'upper_limit','upper spec limit':'upper_limit',
+    'characteristic remarks':'characteristic_remarks','qualitative':'qualitative','sample #':'sample',
+    'process order storage location':'facility','operation short text':'test_name','ud remarks':'remarks','batch remarks':'remarks'
   };
 
   function normKeyPart(v){ return String(v || '').trim().toUpperCase(); }
@@ -1299,7 +1334,8 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       const headerRange={s:{r:decoded.s.r,c:decoded.s.c},e:{r:decoded.s.r,c:decoded.e.c}};
       const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:true,blankrows:false,range:headerRange});
       const h=(rows[0]||[]).map(v=>normalizeQualityHeader(v));
-      if(h.includes('ud code') && (h.includes('batch number')||h.includes('batch'))) return 'summary';
+      if(h.includes('ud code') && (h.includes('batch number')||h.includes('batch')) && !h.includes('master insp characteristic')) return 'summary';
+      if((h.includes('master insp characteristic') || h.includes('arithmetic mean of valid measured values')) && h.includes('batch number')) return 'results';
       if(h.includes('operation short text') && h.includes('batch number') && h.length>30) return 'results';
     }
     return 'unknown';
@@ -1334,8 +1370,70 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 
   function processQualityResultsWorkbook(wb){
     const results=[];
+    const badStatus = v => {
+      const t=String(v==null?'':v).trim().toUpperCase();
+      if(!t) return false;
+      return t.includes('REJECT') || t.includes('FAIL') || t.includes('NOT SUCCESS') || t.includes('OUT') || t.includes('חריג') || t.includes('פסול');
+    };
     for(const sheetName of wb.SheetNames){
       const ws=wb.Sheets[sheetName];
+      const grid=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:true,blankrows:false});
+      if(!grid.length) continue;
+      let headerIndex=-1, map=null;
+      for(let i=0;i<Math.min(grid.length,40);i++){
+        const m=mapQualityHeaders(grid[i]||[]);
+        if(m.batch!==undefined && (m.test_name!==undefined || m.measured_value!==undefined) && (m.inspection_lot!==undefined || m.material_code!==undefined)){
+          headerIndex=i; map=m; break;
+        }
+      }
+      if(headerIndex>=0){
+        const get=(row,k)=>map[k]===undefined?'':row[map[k]];
+        for(let i=headerIndex+1;i<grid.length;i++){
+          const row=grid[i]||[];
+          const batch=normalizeBatch(get(row,'batch'));
+          if(!batch) continue;
+          const testName=String(get(row,'test_name')||'').trim();
+          const rawResult=get(row,'measured_value');
+          const qualitative=String(get(row,'qualitative')||'').trim();
+          const resultValue=!isMissingTestValue(rawResult)?rawResult:qualitative;
+          if(!testName || isMissingTestValue(resultValue)) continue;
+          const min=parseNumericResult(get(row,'lower_limit'));
+          const max=parseNumericResult(get(row,'upper_limit'));
+          const numeric=parseNumericResult(resultValue);
+          const resultStatus=String(get(row,'result_status')||'').trim();
+          let isDeviation=false, status='';
+          if(numeric!==null && (min!==null || max!==null)){
+            if(min!==null && numeric<min){isDeviation=true;status='מתחת לגבול';}
+            else if(max!==null && numeric>max){isDeviation=true;status='מעל הגבול';}
+            else if(badStatus(resultStatus)){isDeviation=true;status=resultStatus||'חריגה';}
+          }else if(badStatus(resultStatus)){
+            isDeviation=true; status=resultStatus||'חריגה';
+          }
+          if(!isDeviation) continue;
+          const rangeText=(min!==null||max!==null)?((min!==null?min:'—')+' - '+(max!==null?max:'—')):'';
+          results.push({
+            batch,
+            inspectionLot:String(get(row,'inspection_lot')||'').trim(),
+            sample:String(get(row,'sample')||'').trim(),
+            materialCode:String(get(row,'material_code')||'').replace(/\.0$/,'').trim(),
+            material:String(get(row,'material_name')||'').trim(),
+            operation:String(get(row,'work_order')||'').trim(),
+            facility:normalizeFacilityForQuality(get(row,'facility')),
+            testName,
+            testCode:'',
+            min,max,rangeText,
+            result:String(resultValue),
+            status,
+            resultStatus,
+            qaApproval:String(get(row,'qa_approval')||'').trim(),
+            udCode:String(get(row,'ud_code')||'').trim(),
+            remarks:String(get(row,'characteristic_remarks')||get(row,'remarks')||'').trim()
+          });
+        }
+        continue;
+      }
+
+      // Backward compatibility: old wide pivot export.
       const range=XLSX.utils.decode_range(ws['!ref']||'A1:A1');
       const headers=[];
       for(let c=range.s.c;c<=range.e.c;c++) headers[c]=ws[XLSX.utils.encode_cell({r:range.s.r,c})]?.v ?? '';
@@ -1362,13 +1460,8 @@ html, body { margin:0; padding:0; background:#0A0D12; }
           if(numeric!==null && tc.min!==null && tc.max!==null){
             isDeviation=numeric<tc.min || numeric>tc.max;
             status=isDeviation?(numeric<tc.min?'מתחת לגבול':'מעל הגבול'):'בתוך הטווח';
-          }else if(numeric!==null && tc.min===null){
-            // No machine-readable limits: retain the value so approved deviations are not lost.
-            isDeviation=true; status='לבדיקה';
-          }else{
-            isDeviation=true;
-          }
-          // The drill-down is specifically for exceptions; normal numeric results are not stored.
+          }else if(numeric!==null && tc.min===null){ isDeviation=true; status='לבדיקה'; }
+          else { isDeviation=true; }
           if(!isDeviation) continue;
           results.push({batch,inspectionLot,material,operation,testName:tc.testName,testCode:tc.testCode,min:tc.min,max:tc.max,rangeText:tc.rangeText,result:String(raw),status});
         }
@@ -1393,43 +1486,88 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   async function handleQualityFiles(fileList){
     try{
       const files=Array.from(fileList||[]);
-      if(files.length!==2){ showToast('יש לבחור יחד בדיוק שני קובצי איכות: קובץ סיכום וקובץ תוצאות בדיקה',true); return; }
+      if(files.length<1 || files.length>2){
+        showToast('יש לבחור קובץ Excel מאוחד אחד, או שני קובצי איכות יחד',true);
+        return;
+      }
       if(typeof XLSX==='undefined'){ showToast('ספריית Excel לא נטענה — רעננו את הדף ונסו שוב',true); return; }
-      showToast('קורא ומזהה את שני קובצי האיכות...');
-      let summaryRows=null, resultRows=null, summaryName='', resultsName='';
+      showToast(files.length===1?'קורא את קובץ האיכות המאוחד...':'קורא ומזהה את שני קובצי האיכות...');
+
+      let summaryRows=[], resultRows=[], sourceNames=[];
       for(const file of files){
         const wb=XLSX.read(await file.arrayBuffer(),{type:'array',cellDates:false});
-        const type=detectQualityWorkbookType(wb);
-        if(type==='summary'){ summaryRows=processQualitySummaryWorkbook(wb); summaryName=file.name; }
-        else if(type==='results'){ resultRows=processQualityResultsWorkbook(wb); resultsName=file.name; }
-        else throw new Error('לא ניתן לזהות את סוג הקובץ: '+file.name);
+        const foundSummary=processQualitySummaryWorkbook(wb);
+        const foundResults=processQualityResultsWorkbook(wb);
+        if(foundSummary.length) summaryRows.push(...foundSummary);
+        if(foundResults.length) resultRows.push(...foundResults);
+        sourceNames.push(file.name);
       }
-      if(!summaryRows||!resultRows) throw new Error('יש לבחור קובץ סיכום איכות אחד וקובץ תוצאות בדיקה אחד');
-      if(!summaryRows.length) throw new Error('לא נמצאו מנות בקובץ סיכום האיכות');
+
+      // A single workbook is supported when it contains both the summary sheet
+      // and the test-results sheet. Two separate workbooks remain supported.
+      if(!summaryRows.length){
+        throw new Error('לא נמצא גיליון סיכום איכות הכולל Batch ו-UD/QA Status');
+      }
+      if(!resultRows.length){
+        throw new Error('לא נמצא גיליון תוצאות בדיקה. בקובץ מאוחד נדרשים שני גיליונות: סיכום איכות ותוצאות בדיקה');
+      }
+
+      // Remove accidental duplicates when the same sheet/data was included twice.
+      const summarySeen=new Set();
+      summaryRows=summaryRows.filter(r=>{
+        const k=[normalizeBatch(r.batch),String(r.inspectionLot||''),String(r.udCode||''),String(r.workOrder||'')].join('|');
+        if(summarySeen.has(k)) return false; summarySeen.add(k); return true;
+      });
+      const resultSeen=new Set();
+      resultRows=resultRows.filter(r=>{
+        const k=[normalizeBatch(r.batch),String(r.inspectionLot||''),String(r.testCode||r.testName||''),String(r.result||'')].join('|');
+        if(resultSeen.has(k)) return false; resultSeen.add(k); return true;
+      });
+
       qualityEntries=summaryRows; buildQualitySummary();
       qualityTestResults=resultRows; rebuildQualityTestIndex();
       const ok1=await persistQuality();
       const ok2=await persistQualityTestResults();
       if(ok1&&ok2){
-        showToast('האיכות נטענה: '+summaryRows.length+' מנות · '+resultRows.length+' תוצאות חריגה | '+summaryName+' + '+resultsName);
+        const mode=files.length===1?'קובץ מאוחד':'שני קבצים';
+        showToast('האיכות נטענה ('+mode+'): '+summaryRows.length+' מנות · '+resultRows.length+' תוצאות חריגה | '+sourceNames.join(' + '));
         renderAll();
       }
-    }catch(e){ console.error(e); showToast('שגיאה בטעינת קובצי האיכות: '+(e.message||e),true); }
+    }catch(e){ console.error(e); showToast('שגיאה בטעינת האיכות: '+(e.message||e),true); }
   }
 
   function openQualityResultsModal(batch){
     const bk=normalizeBatch(batch), rows=qualityTestResultsByBatch[bk]||[];
-    if(!rows.length){ showToast('לא נמצאו תוצאות חריגה למנה '+(batch||''),true); return; }
-    let overlay=root.querySelector('#qualityResultsOverlay');
-    if(!overlay){
-      overlay=document.createElement('div'); overlay.id='qualityResultsOverlay'; overlay.className='quality-results-overlay';
-      root.appendChild(overlay);
-    }
     const q=qualityBestByKey[bk]||{};
-    let html='<div class="quality-results-modal"><div class="quality-results-head"><div><div class="quality-results-title">תוצאות חריגה — Batch '+escapeHtml(batch||bk)+'</div><div class="quality-results-sub">'+escapeHtml(q.materialName||rows[0].material||'')+' · '+rows.length+' חריגות · לחיצה כפולה על שורת המנה</div></div><button class="quality-results-close" id="qualityResultsClose">סגור</button></div><div class="quality-results-body"><div class="table-scroll"><table class="quality-results-table" dir="rtl"><colgroup><col style="width:260px"><col style="width:110px"><col style="width:130px"><col style="width:110px"><col style="width:110px"><col style="width:140px"><col style="width:160px"></colgroup><thead><tr><th>מאפיין בדיקה</th><th>קוד</th><th>טווח מאושר</th><th>גבול תחתון</th><th>גבול עליון</th><th>תוצאה בפועל</th><th>מצב</th></tr></thead><tbody>';
+    if(!rows.length){
+      const extra=q.udCode||q.qaApproval||q.rejectedCharacteristics;
+      showToast(extra ? 'המנה מסומנת בסטטוס איכות, אך לא נמצאו ערכי בדיקה חורגים בקובץ התוצאות החדש' : 'לא נמצאו תוצאות חריגה למנה '+(batch||''),true);
+      return;
+    }
+    let overlay=root.querySelector('#qualityResultsOverlay');
+    if(!overlay){ overlay=document.createElement('div'); overlay.id='qualityResultsOverlay'; overlay.className='quality-results-overlay'; root.appendChild(overlay); }
+    const first=rows[0]||{};
+    const qty=q.deliveredQuantity||'';
+    const material=q.materialName||first.material||'';
+    const lot=q.inspectionLot||first.inspectionLot||'';
+    const wo=q.workOrder||first.operation||'';
+    const facility=q.facility||first.facility||'';
+    const line=q.line||'';
+    const ud=q.udCode||first.udCode||'';
+    const qa=q.qaApproval||first.qaApproval||'';
+    let html='<div class="quality-results-modal"><div class="quality-results-head"><div><div class="quality-results-title">ערכים חורגים — Batch '+escapeHtml(batch||bk)+'</div><div class="quality-results-sub">'+escapeHtml(material)+' · '+rows.length+' ערכים חורגים</div></div><button class="quality-results-close" id="qualityResultsClose">סגור</button></div>'+
+      '<div class="quality-batch-summary">'+
+      '<div class="item"><div class="label">גודל מנה</div><div class="value emph">'+escapeHtml(qty||'—')+'</div></div>'+
+      '<div class="item"><div class="label">Inspection Lot</div><div class="value">'+escapeHtml(lot||'—')+'</div></div>'+
+      '<div class="item"><div class="label">פקודת עבודה</div><div class="value">'+escapeHtml(wo||'—')+'</div></div>'+
+      '<div class="item"><div class="label">מתקן / קו</div><div class="value">'+escapeHtml([facility,line].filter(Boolean).join(' / ')||'—')+'</div></div>'+
+      '<div class="item"><div class="label">מק״ט</div><div class="value">'+escapeHtml(q.materialCode||first.materialCode||'—')+'</div></div>'+
+      '<div class="item"><div class="label">UD Code</div><div class="value quality-result-bad">'+escapeHtml(ud||'—')+'</div></div>'+
+      '<div class="item"><div class="label">QA Status</div><div class="value">'+escapeHtml(qa||'—')+'</div></div>'+
+      '<div class="item"><div class="label">תאריך</div><div class="value">'+escapeHtml(q.date||'—')+'</div></div></div>'+
+      '<div class="quality-results-body"><div class="table-scroll"><table class="quality-results-table" dir="rtl"><colgroup><col style="width:245px"><col style="width:115px"><col style="width:115px"><col style="width:115px"><col style="width:135px"><col style="width:145px"><col style="width:230px"></colgroup><thead><tr><th>מאפיין בדיקה</th><th>גבול תחתון</th><th>גבול עליון</th><th>תוצאה בפועל</th><th>מצב</th><th>Result Status</th><th>הערה</th></tr></thead><tbody>';
     rows.forEach(r=>{
-      const cls=r.status==='תוצאה טקסטואלית'?'quality-result-text':'quality-result-bad';
-      html+='<tr><td class="test-name">'+escapeHtml(r.testName||'—')+'</td><td class="mono nowrap">'+escapeHtml(r.testCode||'—')+'</td><td class="mono nowrap">'+escapeHtml(r.rangeText||'—')+'</td><td class="mono nowrap">'+escapeHtml(r.min==null?'—':String(r.min))+'</td><td class="mono nowrap">'+escapeHtml(r.max==null?'—':String(r.max))+'</td><td class="mono nowrap '+cls+'">'+escapeHtml(r.result||'—')+'</td><td class="'+cls+'">'+escapeHtml(r.status||'חריגה')+'</td></tr>';
+      html+='<tr><td class="test-name">'+escapeHtml(r.testName||'—')+'</td><td class="mono nowrap">'+escapeHtml(r.min==null?'—':String(r.min))+'</td><td class="mono nowrap">'+escapeHtml(r.max==null?'—':String(r.max))+'</td><td class="mono nowrap quality-result-bad">'+escapeHtml(r.result||'—')+'</td><td class="quality-result-bad">'+escapeHtml(r.status||'חריגה')+'</td><td>'+escapeHtml(r.resultStatus||'—')+'</td><td class="test-name">'+escapeHtml(r.remarks||'—')+'</td></tr>';
     });
     html+='</tbody></table></div></div></div>';
     overlay.innerHTML=html; overlay.classList.add('open');
@@ -1513,6 +1651,11 @@ html, body { margin:0; padding:0; background:#0A0D12; }
         inspectionLot: getStr(cols,map.inspection_lot,''),
         orderType: getStr(cols,map.order_type,''),
         workOrder: getStr(cols,map.work_order,''),
+        deliveredQuantity: getStr(cols,map.delivered_quantity,''),
+        line: getStr(cols,map.line,''),
+        remarks: getStr(cols,map.remarks,''),
+        rejectedCharacteristics: getStr(cols,map.rejected_characteristics,''),
+        approvedCharacteristics: getStr(cols,map.approved_characteristics,''),
         date
       };
       rows.push(q);
@@ -1787,9 +1930,9 @@ html, body { margin:0; padding:0; background:#0A0D12; }
         '<div class="panel-title">'+escapeHtml(qualityCostMode)+' — '+drillRows.length+' מנות</div>'+
         '<button class="panel-toggle-btn" id="closeQualityDetails">סגור</button></div>'+
         '<div class="table-scroll"><table dir="rtl" class="detail-table quality-detail-table"><colgroup>'+
-        '<col style="width:90px"><col style="width:110px"><col style="width:125px"><col style="width:280px"><col style="width:190px"><col style="width:180px"><col style="width:125px"><col style="width:130px"><col style="width:125px">'+
+        '<col style="width:90px"><col style="width:110px"><col style="width:125px"><col style="width:280px"><col style="width:120px"><col style="width:190px"><col style="width:180px"><col style="width:125px"><col style="width:130px"><col style="width:125px">'+
         '</colgroup><thead><tr>'+
-        '<th>מתקן</th><th>Batch</th><th>מק"ט</th><th>שם חומר</th><th>UD Code</th><th>QA Status</th><th>פקודת עבודה</th><th>Order Type</th><th>חריגות בדיקה</th>'+
+        '<th>מתקן</th><th>Batch</th><th>מק"ט</th><th>שם חומר</th><th>גודל מנה</th><th>UD Code</th><th>QA Status</th><th>פקודת עבודה</th><th>Order Type</th><th>חריגות בדיקה</th>'+
         '</tr></thead><tbody>';
       drillRows.slice(0,300).forEach(q=>{
         const batchNorm = String(q.batch||'').replace(/^0+/,'').trim();
@@ -1797,7 +1940,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
         const row = {
           facility:q.facility||prod.facility||'', batch:q.batch||prod.batch||'',
           materialCode:q.materialCode||prod.materialCode||'', materialName:q.materialName||prod.materialName||'',
-          udCode:q.udCode||'', qaApproval:q.qaApproval||'',
+          deliveredQuantity:q.deliveredQuantity||'', udCode:q.udCode||'', qaApproval:q.qaApproval||'',
           workOrder:q.workOrder||prod.workOrder||'', orderType:q.orderType||prod.orderType||''
         };
         const info = udCodeInfo(row.udCode);
@@ -1808,6 +1951,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
           '<td class="mono nowrap">'+escapeHtml(row.batch||'—')+'</td>'+
           '<td class="mono nowrap">'+escapeHtml(String(row.materialCode||'—').replace(/\.0$/,''))+'</td>'+
           '<td class="text-full" title="'+escapeHtml(row.materialName||'—')+'">'+escapeHtml(row.materialName||'—')+'</td>'+
+          '<td class="mono nowrap">'+escapeHtml(row.deliveredQuantity||'—')+'</td>'+
           '<td class="text-full" style="color:'+color+';font-weight:600;" title="'+escapeHtml(row.udCode||'—')+'">'+escapeHtml(row.udCode||'—')+'</td>'+
           '<td class="text-full" title="'+escapeHtml(row.qaApproval||'—')+'">'+escapeHtml(row.qaApproval||'—')+'</td>'+
           '<td class="mono nowrap">'+escapeHtml(row.workOrder||'—')+'</td>'+
@@ -1815,7 +1959,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
           '<td class="nowrap"><span class="quality-test-count '+(testCount?'':'none')+'">'+(testCount||'—')+'</span></td>'+
           '</tr>';
       });
-      if(drillRows.length>300) html += '<tr><td colspan="9" style="text-align:center;color:var(--text-muted);">מוצגות 300 מתוך '+drillRows.length+'</td></tr>';
+      if(drillRows.length>300) html += '<tr><td colspan="10" style="text-align:center;color:var(--text-muted);">מוצגות 300 מתוך '+drillRows.length+'</td></tr>';
       html += '</tbody></table></div>';
     }
 
@@ -5491,9 +5635,9 @@ function renderAll(){
       '<div class="topbar">'+
         '<div class="brand">'+
           '<div class="brand-mark">IML</div>'+
-          '<div><h1>IML Production Dashboard <span class="app-version-badge">V4.6.3</span></h1><p><span id="entryCount">טוען נתונים…</span> <span id="storageStatusBadge" class="storage-status"></span></p><p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;"><span id="dataStatusLine">בודק נתונים…</span></p></div>'+
+          '<div><h1>IML Production Dashboard <span class="app-version-badge">V4.6.6</span></h1><p><span id="entryCount">טוען נתונים…</span> <span id="storageStatusBadge" class="storage-status"></span></p><p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;"><span id="dataStatusLine">בודק נתונים…</span></p></div>'+
         '</div>'+
-        '<div class="topbar-actions"><span id="roleBadge" class="role-badge viewer">👁 צפייה בלבד</span><button class="tab-btn" id="adminLoginBtn" style="background:rgba(255,255,255,0.06);color:var(--text);font-size:12px;padding:6px 14px;">🔐 כניסת מנהל</button><button class="tab-btn" id="refreshSharedBtn" style="background:rgba(20,184,166,0.12);color:var(--teal);font-size:12px;padding:6px 14px;">🔄 רענן נתונים</button><button class="tab-btn" id="addEventTopBtn" style="background:rgba(139,183,255,0.12);color:#8BB7FF;font-size:12px;padding:6px 14px;">+ הוסף אירוע</button><button class="tab-btn" id="advancedDashboardBtn" style="background:var(--teal-soft);color:var(--green);font-size:12px;padding:6px 14px;">📊 דשבורד חדש</button><button class="tab-btn" id="excelAnalyzedExportBtn" style="background:rgba(124,217,146,0.12);color:#7CD992;font-size:12px;padding:6px 14px;">📥 ייצוא ניתוח לאקסל</button><label for="qualityFileInput" class="tab-btn admin-only" style="background:rgba(239,68,68,0.12);color:var(--red);font-size:12px;padding:6px 14px;cursor:pointer;">🧪 טעינת איכות</label><button class="tab-btn" id="whatsappExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📲 WhatsApp טקסט</button><button class="tab-btn" id="whatsappImageExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📸 צילום דשבורד</button><button class="tab-btn admin-only" id="targetsProdBtn" style="background:var(--amber-soft);color:var(--amber);font-size:12px;padding:6px 14px;">⚙ יעדי ייצור</button><button class="tab-btn admin-only" id="targetsBtn" style="background:var(--teal-soft);color:var(--teal);font-size:12px;padding:6px 14px;">⚙ יעדי אריזה</button><button class="tab-btn admin-only" id="resetBtn" style="background:rgba(255,255,255,0.05);color:var(--text-muted);font-size:12px;padding:6px 14px;">איפוס</button></div>'+
+        '<div class="topbar-actions"><span id="roleBadge" class="role-badge viewer">👁 צפייה בלבד</span><button class="tab-btn" id="adminLoginBtn" style="background:rgba(255,255,255,0.06);color:var(--text);font-size:12px;padding:6px 14px;">🔐 כניסת מנהל</button><button class="tab-btn" id="refreshSharedBtn" style="background:rgba(20,184,166,0.12);color:var(--teal);font-size:12px;padding:6px 14px;">🔄 רענן נתונים</button><button class="tab-btn" id="addEventTopBtn" style="background:rgba(139,183,255,0.12);color:#8BB7FF;font-size:12px;padding:6px 14px;">+ הוסף אירוע</button><button class="tab-btn" id="advancedDashboardBtn" style="background:var(--teal-soft);color:var(--green);font-size:12px;padding:6px 14px;">📊 דשבורד חדש</button><button class="tab-btn" id="excelAnalyzedExportBtn" style="background:rgba(124,217,146,0.12);color:#7CD992;font-size:12px;padding:6px 14px;">📥 ייצוא ניתוח לאקסל</button><label for="qualityFileInput" class="tab-btn admin-only" style="background:rgba(239,68,68,0.12);color:var(--red);font-size:12px;padding:6px 14px;cursor:pointer;">🧪 טעינת איכות (קובץ אחד או שניים)</label><button class="tab-btn" id="whatsappExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📲 WhatsApp טקסט</button><button class="tab-btn" id="whatsappImageExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📸 צילום דשבורד</button><button class="tab-btn admin-only" id="targetsProdBtn" style="background:var(--amber-soft);color:var(--amber);font-size:12px;padding:6px 14px;">⚙ יעדי ייצור</button><button class="tab-btn admin-only" id="targetsBtn" style="background:var(--teal-soft);color:var(--teal);font-size:12px;padding:6px 14px;">⚙ יעדי אריזה</button><button class="tab-btn admin-only" id="resetBtn" style="background:rgba(255,255,255,0.05);color:var(--text-muted);font-size:12px;padding:6px 14px;">איפוס</button></div>'+
       '</div>'+
       '<div class="tabs">'+
         '<button class="tab-btn" data-tab="day">יום אחרון</button>'+
@@ -5874,7 +6018,18 @@ root.querySelector('#printBtn').onclick = ()=> window.print();
 </script>
 <script>
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-  window.addEventListener('load', () => navigator.serviceWorker.register('./service-worker.js').catch(console.warn));
+  window.addEventListener('load', async () => {
+    try {
+      const reg = await navigator.serviceWorker.register('./service-worker.js?v=4.6.4', { updateViaCache: 'none' });
+      await reg.update();
+      let reloading = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if(reloading) return;
+        reloading = true;
+        location.reload();
+      });
+    } catch(e) { console.warn(e); }
+  });
 }
 </script>
 </body>
