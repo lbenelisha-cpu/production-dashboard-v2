@@ -692,6 +692,8 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 
 #prod-dash-root .quality-test-row { cursor:pointer; }
 #prod-dash-root .quality-test-row:hover { background:rgba(20,184,166,.10) !important; }
+#prod-dash-root .batch-quality-link { color:var(--teal); cursor:pointer; text-decoration:underline; text-underline-offset:2px; font-weight:700; }
+#prod-dash-root .batch-quality-link:hover { color:var(--text); background:rgba(20,184,166,.16); border-radius:4px; padding:0 2px; }
 #prod-dash-root .quality-test-count { display:inline-flex;align-items:center;justify-content:center;min-width:28px;padding:3px 8px;border-radius:999px;background:rgba(239,68,68,.14);color:var(--red);font-weight:800; }
 #prod-dash-root .quality-test-count.none { background:rgba(148,163,184,.10);color:var(--text-muted); }
 #prod-dash-root .quality-results-overlay { position:fixed;inset:0;z-index:99999;background:rgba(2,6,23,.82);display:none;align-items:center;justify-content:center;padding:22px; }
@@ -1561,6 +1563,15 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     }catch(e){ console.error(e); showToast('שגיאה בטעינת האיכות: '+(e.message||e),true); }
   }
 
+  // Module-scope helper — shared by the results parser and the results modal.
+  // (Previously defined only inside processQualityResultsWorkbook, which caused a
+  //  ReferenceError "badStatus is not defined" when opening the results modal.)
+  function badStatus(v){
+    const t=String(v==null?'':v).trim().toUpperCase();
+    if(!t) return false;
+    return t.includes('REJECT') || t.includes('FAIL') || t.includes('NOT SUCCESS') || t.includes('OUT') || t.includes('חריג') || t.includes('פסול');
+  }
+
   function openQualityResultsModal(batch){
     const bk=normalizeBatch(batch), q=qualityBestByKey[bk]||{};
     const allBatchRows=qualityTestResultsByBatch[bk]||[];
@@ -1572,9 +1583,9 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     if(!rows.length) rows=allBatchRows.slice();
     const exactLot=qLot ? rows.filter(r=>String(r.inspectionLot||'').trim()===qLot) : [];
     if(exactLot.length) rows=exactLot;
-    if(!rows.length){
-      const extra=q.udCode||q.qaApproval||q.rejectedCharacteristics;
-      showToast(extra ? 'המנה מסומנת בסטטוס איכות, אך לא נמצאו תוצאות בדיקה תואמות בקובץ התוצאות החדש' : 'לא נמצאו תוצאות בדיקה למנה '+(batch||''),true);
+    const hasQualityInfo = !!(q && (q.udCode || q.qaApproval || q.rejectedCharacteristics || q.materialName || q.date));
+    if(!rows.length && !hasQualityInfo){
+      showToast('לא נמצאו תוצאות בדיקה או החלטת שימוש למנה '+(batch||''),true);
       return;
     }
     let overlay=root.querySelector('#qualityResultsOverlay');
@@ -1589,6 +1600,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     const line=q.line||'';
     const ud=q.udCode||first.udCode||'';
     const qa=q.qaApproval||first.qaApproval||'';
+    const udInfo=ud?udCodeInfo(ud):null;
     const deviations=rows.filter(r=>r.isDeviation||badStatus(r.resultStatus)).length;
     let html='<div class="quality-results-modal"><div class="quality-results-head"><div><div class="quality-results-title">כל תוצאות הבדיקה — Batch '+escapeHtml(batch||bk)+'</div><div class="quality-results-sub">'+escapeHtml(material)+' · '+rows.length+' בדיקות · '+deviations+' חריגות</div></div><button class="quality-results-close" id="qualityResultsClose">סגור</button></div>'+ 
       '<div class="quality-batch-summary">'+
@@ -1598,7 +1610,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       '<div class="item"><div class="label">פקודת עבודה</div><div class="value">'+escapeHtml(wo||'—')+'</div></div>'+
       '<div class="item"><div class="label">מתקן / קו</div><div class="value">'+escapeHtml([facility,line].filter(Boolean).join(' / ')||'—')+'</div></div>'+
       '<div class="item"><div class="label">מק״ט</div><div class="value">'+escapeHtml(q.materialCode||first.materialCode||'—')+'</div></div>'+
-      '<div class="item"><div class="label">UD Code</div><div class="value quality-result-bad">'+escapeHtml(ud||'—')+'</div></div>'+
+      '<div class="item"><div class="label">החלטת שימוש (UD Code)</div><div class="value" style="color:'+(udInfo?udInfo.color:'var(--text)')+'">'+escapeHtml(ud||'—')+(udInfo&&udInfo.costLabel?' · <span style="font-size:11px">'+escapeHtml(udInfo.costLabel)+'</span>':'')+'</div></div>'+
       '<div class="item"><div class="label">QA Status</div><div class="value">'+escapeHtml(qa||'—')+'</div></div>'+
       '<div class="item"><div class="label">תאריך</div><div class="value">'+escapeHtml(q.date||'—')+'</div></div></div>'+
       '<div class="quality-results-body"><div class="table-scroll"><table class="quality-results-table" dir="rtl"><colgroup><col style="width:245px"><col style="width:110px"><col style="width:125px"><col style="width:110px"><col style="width:85px"><col style="width:135px"><col style="width:145px"><col style="width:220px"></colgroup><thead><tr><th>מאפיין בדיקה</th><th>גבול תחתון</th><th>ערך בפועל</th><th>גבול עליון</th><th>יחידה</th><th>מצב</th><th>Result Status</th><th>הערה</th></tr></thead><tbody>';
@@ -1608,6 +1620,9 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       const valClass=bad?'mono nowrap quality-result-bad':'mono nowrap';
       html+='<tr'+trClass+'><td class="test-name">'+escapeHtml(r.testName||'—')+'</td><td class="mono nowrap">'+escapeHtml(r.min==null?'—':String(r.min))+'</td><td class="'+valClass+'">'+escapeHtml(r.result||'—')+'</td><td class="mono nowrap">'+escapeHtml(r.max==null?'—':String(r.max))+'</td><td class="nowrap">'+escapeHtml(r.unit||'—')+'</td><td class="'+(bad?'quality-result-bad':'')+'">'+escapeHtml(r.status||'—')+'</td><td>'+escapeHtml(r.resultStatus||'—')+'</td><td class="test-name">'+escapeHtml(r.remarks||'—')+'</td></tr>';
     });
+    if(!rows.length){
+      html+='<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:18px">אין תוצאות בדיקה מפורטות למנה זו — מוצגת החלטת השימוש בלבד</td></tr>';
+    }
     html+='</tbody></table></div></div></div>';
     overlay.innerHTML=html; overlay.classList.add('open');
     overlay.querySelector('#qualityResultsClose').onclick=()=>overlay.classList.remove('open');
@@ -3881,12 +3896,18 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     } else {
       html += '<div class="table-scroll"><table><thead><tr><th>תאריך</th><th>מתקן</th><th>קו / מוצר</th><th>סוג אריזה</th><th>שם חומר</th><th>פקודת עבודה</th><th>Batch</th><th>'+metricLabel+'</th><th>הערות</th></tr></thead><tbody>';
       rows.slice(0,120).forEach(e=>{
-        html += '<tr><td class="mono">'+escapeHtml(e.date||'')+'</td><td class="mono">'+escapeHtml(e.facility||'—')+'</td><td>'+escapeHtml(e.line||'—')+'</td><td>'+escapeHtml(e.packagingType||'—')+'</td><td>'+escapeHtml(e.materialName||'—')+'</td><td class="mono">'+escapeHtml(e.workOrder||'—')+'</td><td class="mono">'+escapeHtml(e.batch||'—')+'</td><td class="mono">'+fmt(Number(e[metric]||0))+'</td><td>'+escapeHtml(getEntryNotes(e)||'—')+'</td></tr>';
+        const batchCell = e.batch
+          ? '<span class="batch-quality-link" data-batch="'+escapeHtml(e.batch)+'" title="לחצו להצגת החלטת השימוש ותוצאות המעבדה">'+escapeHtml(e.batch)+'</span>'
+          : '—';
+        html += '<tr><td class="mono">'+escapeHtml(e.date||'')+'</td><td class="mono">'+escapeHtml(e.facility||'—')+'</td><td>'+escapeHtml(e.line||'—')+'</td><td>'+escapeHtml(e.packagingType||'—')+'</td><td>'+escapeHtml(e.materialName||'—')+'</td><td class="mono">'+escapeHtml(e.workOrder||'—')+'</td><td class="mono">'+batchCell+'</td><td class="mono">'+fmt(Number(e[metric]||0))+'</td><td>'+escapeHtml(getEntryNotes(e)||'—')+'</td></tr>';
       });
       html += '</tbody></table></div>';
     }
     html += '</div>';
     panel.innerHTML = html;
+    panel.querySelectorAll('.batch-quality-link').forEach(el=>{
+      el.onclick = ()=> openQualityResultsModal(el.dataset.batch||'');
+    });
     const close = panel.querySelector('#closeTrendDetail');
     if(close) close.onclick = ()=>{ trendDetail = null; renderTrendDetailPanel(view); };
   }
@@ -3940,10 +3961,10 @@ html, body { margin:0; padding:0; background:#0A0D12; }
         '<td class="mono">'+escapeHtml(e.plant || getPlant(e.facility) || '—')+'</td>'+ 
         '<td class="mono">'+escapeHtml(e.facility||'—')+'</td>'+ 
         '<td class="text-full" title="'+escapeHtml(e.line||'כללי')+'">'+escapeHtml(e.line||'כללי')+'</td>'+ 
-        '<td class="text-full" title="'+escapeHtml(e.materialName||'—')+'">'+escapeHtml(e.materialName||'—')+'</td>'+ 
-        '<td class="mono">'+escapeHtml(e.batch||'—')+'</td>'+ 
-        '<td class="mono">'+escapeHtml(e.workOrder||'—')+'</td>'+ 
-        '<td class="mono">'+escapeHtml(e.orderType||'—')+'</td>'+ 
+        '<td class="text-full" title="'+escapeHtml(e.materialName||'—')+'">'+escapeHtml(e.materialName||'—')+'</td>'+
+        '<td class="mono">'+(e.batch?'<span class="batch-quality-link" data-batch="'+escapeHtml(e.batch)+'" title="לחצו להצגת החלטת השימוש ותוצאות המעבדה">'+escapeHtml(e.batch)+'</span>':'—')+'</td>'+
+        '<td class="mono">'+escapeHtml(e.workOrder||'—')+'</td>'+
+        '<td class="mono">'+escapeHtml(e.orderType||'—')+'</td>'+
         '<td class="text-full" title="'+escapeHtml(rawUD||'—')+'">'+udCell+'</td>'+ 
         '<td class="text-full" title="'+escapeHtml(e.packagingType||'—')+'">'+escapeHtml(e.packagingType||'—')+'</td>'+ 
         '<td>'+escapeHtml(e.shift||'—')+'</td>'+ 
@@ -3958,6 +3979,9 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     });
     html += '</tbody></table></div>';
     wrap.innerHTML = html;
+    wrap.querySelectorAll('.batch-quality-link').forEach(el=>{
+      el.onclick = ()=> openQualityResultsModal(el.dataset.batch||'');
+    });
     wrap.querySelectorAll('.row-del').forEach(btn=>{
       btn.onclick = async ()=>{
         const ok1 = await showConfirm('למחוק את הרשומה?');
