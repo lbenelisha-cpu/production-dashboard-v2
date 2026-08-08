@@ -1063,19 +1063,33 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   function getUDCodeForEntry(e){
     if(!e.batch) return null;
     const batchNorm = String(e.batch).replace(/^0+/,'').trim();
-    const best = qualityBestByKey[batchNorm];
+    const matNorm = String(e.materialCode||'').replace(/\.0$/,'').trim();
+    // Match by מק"ט + מספר מנה when the material is known; fall back to batch-only
+    // only when the production row has no material code.
+    const best = matNorm
+      ? qualityBestByMatBatch[matNorm+'|'+batchNorm]
+      : qualityBestByKey[batchNorm];
     return best ? best.udCode : null;
   }
 
   function buildQualitySummary(){
     const byKey = {};
     const bestByBatch = {};
+    const bestByMatBatch = {};
     qualityEntries.forEach(q=>{
       // Build bestByKey cache (batch -> latest udDate row)
-      const bk = String(q.batch||'').trim();
+      const bk = String(q.batch||'').replace(/^0+/,'').trim();
       if(bk && q.udCode){
         const ex = bestByBatch[bk];
         if(!ex || (q.udDate||0) > (ex.udDate||0)) bestByBatch[bk] = q;
+        // Precise index by מק"ט + מספר מנה for matching production batches to the
+        // quality decision of the SAME material (not merely the same batch number).
+        const mk = String(q.materialCode||'').replace(/\.0$/,'').trim();
+        if(mk){
+          const mbk = mk+'|'+bk;
+          const ex2 = bestByMatBatch[mbk];
+          if(!ex2 || (q.udDate||0) > (ex2.udDate||0)) bestByMatBatch[mbk] = q;
+        }
       }
       // Build qualitySummary (for existing panels)
       const key = qualityKey(q);
@@ -1102,6 +1116,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     });
     qualitySummary = byKey;
     qualityBestByKey = bestByBatch;
+    qualityBestByMatBatch = bestByMatBatch;
   }
 
   function getQualityForPackaging(e){
@@ -1149,9 +1164,13 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       qualityEntries.forEach(q=>{
         if(!q.batch || !q.udCode) return;
         const bk = String(q.batch).replace(/^0+/,'').trim();
-        const existing = bestByBatch[bk];
+        // Dedup by מק"ט + מספר מנה so batches reused across different materials are
+        // each preserved, instead of collapsing to a single row per batch number.
+        const mk = String(q.materialCode||'').replace(/\.0$/,'').trim();
+        const dedupKey = mk ? (mk+'|'+bk) : bk;
+        const existing = bestByBatch[dedupKey];
         if(!existing || (q.udDate||0) > (existing.udDate||0)){
-          bestByBatch[bk] = {
+          bestByBatch[dedupKey] = {
             batch: bk,
             udCode: q.udCode || '',
             udDate: q.udDate || 0,
@@ -1572,10 +1591,15 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     return t.includes('REJECT') || t.includes('FAIL') || t.includes('NOT SUCCESS') || t.includes('OUT') || t.includes('חריג') || t.includes('פסול');
   }
 
-  function openQualityResultsModal(batch){
-    const bk=normalizeBatch(batch), q=qualityBestByKey[bk]||{};
+  function openQualityResultsModal(batch, materialArg){
+    const bk=normalizeBatch(batch);
+    const matNorm=String(materialArg||'').replace(/\.0$/,'').trim();
+    // Prefer an exact מק"ט + מנה match; fall back to batch-only only when no material was given.
+    const q = matNorm
+      ? (qualityBestByMatBatch[matNorm+'|'+bk] || {})
+      : (qualityBestByKey[bk]||{});
     const allBatchRows=qualityTestResultsByBatch[bk]||[];
-    const qMaterial=String(q.materialCode||'').replace(/\.0$/,'').trim();
+    const qMaterial=String(q.materialCode||matNorm||'').replace(/\.0$/,'').trim();
     const qLot=String(q.inspectionLot||'').trim();
     // Prefer the exact material; use Inspection Lot only when it matches. SAP exports can contain a different lot
     // for the same material/batch, so material+batch is the safe fallback.
@@ -2000,7 +2024,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
         const info = udCodeInfo(row.udCode);
         const color = info ? info.color : 'var(--text-muted)';
         const testCount=(qualityTestResultsByBatch[batchNorm]||[]).length;
-        html += '<tr class="quality-test-row" data-quality-batch="'+escapeHtml(row.batch||batchNorm)+'" title="לחיצה כפולה להצגת כל תוצאות החריגה">'+
+        html += '<tr class="quality-test-row" data-quality-batch="'+escapeHtml(row.batch||batchNorm)+'" data-quality-material="'+escapeHtml(row.materialCode||'')+'" title="לחיצה כפולה להצגת כל תוצאות החריגה">'+
           '<td class="nowrap">'+escapeHtml(String(row.facility||'—'))+'</td>'+
           '<td class="mono nowrap">'+escapeHtml(row.batch||'—')+'</td>'+
           '<td class="mono nowrap">'+escapeHtml(String(row.materialCode||'—').replace(/\.0$/,''))+'</td>'+
@@ -2118,6 +2142,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   let qualityEntries = [];
   let qualitySummary = {};
   let qualityBestByKey = {}; // cache: batch -> best quality row (latest udDate)
+  let qualityBestByMatBatch = {}; // cache: "materialCode|batch" -> best quality row (מק"ט + מנה)
   let loaded = false;
   let tab = 'day';
   const filters = {
@@ -3897,7 +3922,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       html += '<div class="table-scroll"><table><thead><tr><th>תאריך</th><th>מתקן</th><th>קו / מוצר</th><th>סוג אריזה</th><th>שם חומר</th><th>פקודת עבודה</th><th>Batch</th><th>'+metricLabel+'</th><th>הערות</th></tr></thead><tbody>';
       rows.slice(0,120).forEach(e=>{
         const batchCell = e.batch
-          ? '<span class="batch-quality-link" data-batch="'+escapeHtml(e.batch)+'" title="לחצו להצגת החלטת השימוש ותוצאות המעבדה">'+escapeHtml(e.batch)+'</span>'
+          ? '<span class="batch-quality-link" data-batch="'+escapeHtml(e.batch)+'" data-material="'+escapeHtml(e.materialCode||'')+'" title="לחצו להצגת החלטת השימוש ותוצאות המעבדה">'+escapeHtml(e.batch)+'</span>'
           : '—';
         html += '<tr><td class="mono">'+escapeHtml(e.date||'')+'</td><td class="mono">'+escapeHtml(e.facility||'—')+'</td><td>'+escapeHtml(e.line||'—')+'</td><td>'+escapeHtml(e.packagingType||'—')+'</td><td>'+escapeHtml(e.materialName||'—')+'</td><td class="mono">'+escapeHtml(e.workOrder||'—')+'</td><td class="mono">'+batchCell+'</td><td class="mono">'+fmt(Number(e[metric]||0))+'</td><td>'+escapeHtml(getEntryNotes(e)||'—')+'</td></tr>';
       });
@@ -3906,7 +3931,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     html += '</div>';
     panel.innerHTML = html;
     panel.querySelectorAll('.batch-quality-link').forEach(el=>{
-      el.onclick = ()=> openQualityResultsModal(el.dataset.batch||'');
+      el.onclick = ()=> openQualityResultsModal(el.dataset.batch||'', el.dataset.material||'');
     });
     const close = panel.querySelector('#closeTrendDetail');
     if(close) close.onclick = ()=>{ trendDetail = null; renderTrendDetailPanel(view); };
@@ -3962,7 +3987,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
         '<td class="mono">'+escapeHtml(e.facility||'—')+'</td>'+ 
         '<td class="text-full" title="'+escapeHtml(e.line||'כללי')+'">'+escapeHtml(e.line||'כללי')+'</td>'+ 
         '<td class="text-full" title="'+escapeHtml(e.materialName||'—')+'">'+escapeHtml(e.materialName||'—')+'</td>'+
-        '<td class="mono">'+(e.batch?'<span class="batch-quality-link" data-batch="'+escapeHtml(e.batch)+'" title="לחצו להצגת החלטת השימוש ותוצאות המעבדה">'+escapeHtml(e.batch)+'</span>':'—')+'</td>'+
+        '<td class="mono">'+(e.batch?'<span class="batch-quality-link" data-batch="'+escapeHtml(e.batch)+'" data-material="'+escapeHtml(e.materialCode||'')+'" title="לחצו להצגת החלטת השימוש ותוצאות המעבדה">'+escapeHtml(e.batch)+'</span>':'—')+'</td>'+
         '<td class="mono">'+escapeHtml(e.workOrder||'—')+'</td>'+
         '<td class="mono">'+escapeHtml(e.orderType||'—')+'</td>'+
         '<td class="text-full" title="'+escapeHtml(rawUD||'—')+'">'+udCell+'</td>'+ 
@@ -3980,7 +4005,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     html += '</tbody></table></div>';
     wrap.innerHTML = html;
     wrap.querySelectorAll('.batch-quality-link').forEach(el=>{
-      el.onclick = ()=> openQualityResultsModal(el.dataset.batch||'');
+      el.onclick = ()=> openQualityResultsModal(el.dataset.batch||'', el.dataset.material||'');
     });
     wrap.querySelectorAll('.row-del').forEach(btn=>{
       btn.onclick = async ()=>{
@@ -6040,7 +6065,7 @@ root.querySelector('#printBtn').onclick = ()=> window.print();
 
   root.addEventListener('dblclick', function(e){
     const tr=e.target&&e.target.closest?e.target.closest('tr[data-quality-batch]'):null;
-    if(tr) openQualityResultsModal(tr.dataset.qualityBatch||'');
+    if(tr) openQualityResultsModal(tr.dataset.qualityBatch||'', tr.dataset.qualityMaterial||'');
   });
 
   /* ---------------- init ---------------- */
