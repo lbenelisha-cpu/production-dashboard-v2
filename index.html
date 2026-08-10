@@ -1392,6 +1392,30 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     return !s || s==='-' || s==='N/A' || s==='NA' || s==='N.A.' || s==='NOT APPLICABLE';
   }
 
+  // Lightweight classifier: peek at the first ~40 rows of each sheet to decide whether a
+  // workbook is a detailed test-RESULTS export (has measured value + limits) or a batch
+  // SUMMARY export (UD Code per batch, no per-characteristic measurements). Avoids running
+  // both heavy parsers over huge files.
+  function classifyQualityWorkbook(wb){
+    let hasResults=false, hasSummary=false;
+    for(const sheetName of wb.SheetNames){
+      const ws=wb.Sheets[sheetName];
+      if(!ws || !ws['!ref']) continue;
+      const full=XLSX.utils.decode_range(ws['!ref']);
+      const probe={s:{r:full.s.r,c:full.s.c}, e:{r:Math.min(full.e.r, full.s.r+40), c:full.e.c}};
+      let grid=[];
+      try{ grid=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:true,blankrows:false,range:XLSX.utils.encode_range(probe)}); }catch(e){ continue; }
+      for(const row of grid){
+        const m=mapQualityHeaders(row||[]);
+        const hasMeasure=(m.measured_value!==undefined || m.lower_limit!==undefined || m.upper_limit!==undefined);
+        if(m.batch!==undefined && m.test_name!==undefined && hasMeasure) hasResults=true;
+        if(m.batch!==undefined && m.ud_code!==undefined && !hasMeasure) hasSummary=true;
+      }
+      if(hasResults || hasSummary) break; // first sheet with a recognizable header is enough
+    }
+    return {hasResults, hasSummary};
+  }
+
   function processQualityResultsWorkbook(wb){
     const results=[];
     const badStatus = v => {
@@ -1527,8 +1551,14 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       let summaryRows=[], resultRows=[], sourceNames=[];
       for(const file of files){
         const wb=XLSX.read(await file.arrayBuffer(),{type:'array',cellDates:false});
-        const foundSummary=processQualitySummaryWorkbook(wb);
-        const foundResults=processQualityResultsWorkbook(wb);
+        // Classify the file first (cheap header probe) and run ONLY the relevant parser.
+        // A large detailed-results export has hundreds of thousands of rows; running both
+        // parsers over it doubles the work and can freeze the tab.
+        const cls=classifyQualityWorkbook(wb);
+        const runSummary = cls.hasSummary || (!cls.hasSummary && !cls.hasResults);
+        const runResults = cls.hasResults || (!cls.hasSummary && !cls.hasResults);
+        const foundSummary=runSummary ? processQualitySummaryWorkbook(wb) : [];
+        const foundResults=runResults ? processQualityResultsWorkbook(wb) : [];
         if(foundSummary.length) summaryRows.push(...foundSummary);
         if(foundResults.length) resultRows.push(...foundResults);
         sourceNames.push(file.name);
