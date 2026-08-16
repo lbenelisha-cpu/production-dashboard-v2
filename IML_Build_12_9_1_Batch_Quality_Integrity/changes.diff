@@ -1,0 +1,472 @@
+--- /tmp/orig.jsx	2026-08-16 08:30:15.359328498 +0000
++++ IML_Build_12_9_0_Batch_Quality_Integrity/src/DashboardApp.jsx	2026-08-16 09:04:09.734289657 +0000
+@@ -334,12 +334,39 @@
+   .filter(row => !isLegacyCombinedTarget(row?.resource || row?.lineName || ''))
+ 
+ 
++// A quality record is uniquely identified by the SAP triplet
++// Inspection Lot + Sample # + Operation Activity + Characteristic.
++// Sample # and Operation Activity used to be missing from this key, so two
++// genuine measurements of the same characteristic that happened to return the
++// same value collapsed into one row and the second was discarded at ingest.
+ const qualityRowKey = (row) => [
+-  normalize(row?.inspectionLot), normalize(row?.batch), normalize(row?.material),
++  normalize(row?.inspectionLot), normalize(row?.sample), normalize(row?.activity),
++  normalize(row?.batch), normalize(row?.material),
+   normalize(row?.characteristic), row?.date ? new Date(row.date).toISOString() : '',
+   normalize(row?.value), normalize(row?.qualitative), normalize(row?.status)
+ ].join('|')
+ 
++// SAP inspection lots: 3xxxxxxxxx = in-process check during production,
++// 4xxxxxxxxx = final / goods-receipt inspection. Only final lots ever receive a
++// usage decision, so the batch verdict must be read off those lots alone.
++const LOT_KIND_FINAL = 'final'
++const LOT_KIND_INPROCESS = 'inprocess'
++const lotKind = (lot) => {
++  const value = normalize(lot)
++  if (!value) return ''
++  if (value.startsWith('4')) return LOT_KIND_FINAL
++  if (value.startsWith('3') || value.startsWith('1')) return LOT_KIND_INPROCESS
++  return ''
++}
++const lotKindLabel = (kind) => kind === LOT_KIND_FINAL ? 'סופי'
++  : kind === LOT_KIND_INPROCESS ? 'תוך-תהליכי' : '—'
++
++// A usage decision is "open" only while no UD code has been issued.
++const isOpenDecision = (row) => {
++  const code = normalize(row?.udCode)
++  return !code || code === 'N/A' || code === '-'
++}
++
+ async function filterNewQualityRows(existingRows, incomingRows, onProgress) {
+   const keys = new Set()
+   const total = existingRows.length + incomingRows.length
+@@ -413,28 +440,56 @@
+   return output
+ }
+ 
++// Big SAP exports (280K+ rows) sit right at the browser's JS heap ceiling.
++// Parsing this file costs ~1.1GB on its own, so every avoidable copy matters:
++// the old version built the row objects, then cloned every one of them again to
++// stamp __sheet, then loadFiles built a third array on top — roughly 1.7GB peak,
++// which is where the tab died. Here each worksheet is released as soon as it has
++// been converted, and __sheet is written in place instead of via a spread.
+ async function readWorkbook(file) {
+   const buf = await file.arrayBuffer()
+   const wb = XLSX.read(buf, { type: 'array', cellDates: false, dense: true })
+-  let rows = []
++  const rows = []
+   for (const sheetName of wb.SheetNames) {
+-    const sheetRows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { defval: '', raw: true })
+-    if (sheetRows.length) rows = rows.concat(sheetRows.map(row => ({ ...row, __sheet: sheetName })))
++    const sheet = wb.Sheets[sheetName]
++    if (!sheet) continue
++    const sheetRows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: true })
++    delete wb.Sheets[sheetName]
++    for (let i = 0; i < sheetRows.length; i++) {
++      const row = sheetRows[i]
++      row.__sheet = sheetName
++      rows.push(row)
++      sheetRows[i] = null
++    }
+   }
++  wb.SheetNames = []
+   return rows
+ }
++
++// Maps rows into their compact shape while releasing each source row, so the raw
++// array and the compact array are never both fully resident.
++function mapRowsInPlace(rows, mapFn) {
++  const out = []
++  for (let i = 0; i < rows.length; i++) {
++    const mapped = mapFn(rows[i], i)
++    rows[i] = null
++    if (mapped) out.push(mapped)
++  }
++  rows.length = 0
++  return out
++}
+ function classifyFile(rows) {
+   // Some workbooks start with a title/summary sheet. Inspect headers across
+   // a sample of rows instead of relying only on the first row.
+   const keys = [...new Set(rows.slice(0, 250).flatMap(row => Object.keys(row || {}).map(normKey)))]
+   const hasAny = (...terms) => terms.some(term => keys.some(k => k.includes(normKey(term))))
+-  const hasAll = (...groups) => groups.every(group => group.some(term => hasAny(term)))
+-
+-  const targetLike = hasAll(
+-    ['monthly target', 'monthly plan', 'יעד חודשי', 'תוכנית חודשית', 'target', 'plan'],
+-    ['facility', 'מתקן', 'resource', 'משאב']
+-  )
+-  if (targetLike) return 'targets'
++  // Whole-header match. 'plan' used to match by substring inside
++  // "Production Plant ID", which every SAP export carries — that alone sent the
++  // usage-decision file down the targets branch and made it fail to load.
++  const hasHeader = (...terms) => terms.some(term => {
++    const t = normKey(term)
++    return keys.some(k => k === t || k.startsWith(t))
++  })
+ 
+   const productionLike = hasAny('actual finish time', 'delivered quantity', 'confirmed yield quantity') &&
+     hasAny('storage location', 'order', 'batch')
+@@ -450,6 +505,12 @@
+   )
+   if (qualityLike) return 'quality'
+ 
++  // Targets is checked last: it is the loosest signature, so it must not be able
++  // to claim a file that any of the SAP exports above already matched.
++  const targetLike = hasHeader('monthly target', 'monthly plan', 'יעד חודשי', 'תוכנית חודשית', 'target', 'plan', 'capacity') &&
++    hasHeader('facility', 'מתקן', 'resource', 'משאב')
++  if (targetLike) return 'targets'
++
+   return 'unknown'
+ }
+ 
+@@ -903,15 +964,30 @@
+             bytes: originalBuffer,
+           })
+         }
+-        const rows = forcedKind === 'targets' ? await readTargetWorkbook(file) : await readWorkbook(file)
++        const sizeMB = file.size ? file.size / 1048576 : 0
++        let rows
++        try {
++          rows = forcedKind === 'targets' ? await readTargetWorkbook(file) : await readWorkbook(file)
++        } catch (readError) {
++          // A 40MB / 280K-row SAP export needs well over 1GB of JS heap just to
++          // parse. When the tab runs out, the failure used to surface further
++          // down as the misleading "סוג הקובץ לא זוהה".
++          throw new Error(sizeMB >= 15
++            ? `${file.name}: הקובץ (${sizeMB.toFixed(0)}MB) גדול מכדי להיקרא בדפדפן — נגמר הזיכרון של הלשונית. פצל את הייצוא מ-SAP (לפי חודש או מתקן) וטען את החלקים בזה אחר זה.`
++            : `${file.name}: קריאת הקובץ נכשלה — ${readError?.message || 'שגיאה לא ידועה'}`)
++        }
++        if (!rows.length) throw new Error(`${file.name}: הקובץ נקרא אך לא נמצאו בו שורות נתונים. ודא ששורת הכותרות היא הראשונה בגיליון.`)
+         const detected = forcedKind === 'targets' ? 'targets' : classifyFile(rows)
+         const kind = forcedKind || detected
+         const missing = validateRows(kind, rows)
+         if (missing.length) throw new Error(`${file.name}: חסרות עמודות חובה — ${missing.join(', ')}`)
++        const rawRowCount = rows.length
++        // Sampled before the rows are consumed by mapRowsInPlace below.
++        const facilitiesFound = new Set(rows.slice(0, 5000).map(r => canonicalFacility(getField(r, ['Storage Location','Inspection Lot Storage Location','Process Order Storage Location','Facility','Production Line','מתקן']))).filter(Boolean)).size
+         let storedCount = rows.length
+         let rowsForCloud = rows
+         if (kind === 'production') {
+-          const compact = rows.map(r => ({
++          const compact = mapRowsInPlace(rows, r => ({
+             __compactProduction: true,
+             facility: canonicalFacility(getField(r, ['Storage Location', 'Storage location'])),
+             productionDay: localDateOnlyString(getField(r, ['Actual finish date', 'Actual Finish Date'])),
+@@ -935,7 +1011,7 @@
+           rowsForCloud = compact
+         }
+         else if (kind === 'quality') {
+-          const compact = rows.map(r => ({
++          const compact = mapRowsInPlace(rows, r => ({
+             __compactQuality: true,
+             facility: canonicalFacility(getField(r, ['Inspection Lot Storage Location', 'Process Order Storage Location', 'Storage Location', 'Facility', 'Production Line'])),
+             date: combineExcelDateTime(
+@@ -954,6 +1030,10 @@
+ ])),
+             order: normalize(getField(r, ['Process Order', 'Process Order #', 'Order'])), status: normalize(getField(r, ['Result Status', 'QA Approval', 'Status'])),
+             approval: normalize(getField(r, ['QA Approval'])), inspectionLot: normalize(getField(r, ['Inspection Lot', 'Inspection Lot #'])),
++            sample: normalize(getField(r, ['Sample #', 'Sample Number', 'Sample No.', 'Sample'])),
++            activity: normalize(getField(r, ['Operation Activity', 'Activity', 'Operation'])),
++            operationText: normalize(getField(r, ['Operation short text'])),
++            inspectionType: normalize(getField(r, ['Inspection Type'])),
+             characteristic: normalize(getField(r, ['Master Insp Charactristic', 'Master Inspection Characteristic'])),
+             value: normalize(getField(r, ['Arithmetic Mean of Valid Measured Values'])), lower: normalize(getField(r, ['Lower Specif Limit', 'Lower Spec Limit'])),
+             upper: normalize(getField(r, ['Upper Specif Limit', 'Upper Spec Limit'])), unit: normalize(getField(r, ['Unit of Measurement'])),
+@@ -1012,10 +1092,9 @@
+           }).filter(r=>r.resource&&r.facilities.length&&isApprovedTargetResource(r.resource))
+           if(!parsed.length) throw new Error(`${file.name}: לא נמצאו שורות יעד תקינות. ודא שקיימות עמודות Resource, Capacity ו-Plan.`)
+           storedCount=parsed.length; rowsForCloud=parsed; if(parsed[0]?.month) setPlanningMonth(parsed[0].month)
+-        } else throw new Error(`${file.name}: סוג הקובץ לא זוהה. השתמש באזור הטעינה המתאים במרכז הנתונים.`)
+-        const facilitiesFound = new Set(rows.slice(0, 5000).map(r => canonicalFacility(getField(r, ['Storage Location','Inspection Lot Storage Location','Process Order Storage Location','Facility','Production Line','מתקן']))).filter(Boolean)).size
++        } else throw new Error(`${file.name}: סוג הקובץ לא זוהה לפי הכותרות שנמצאו (${Object.keys(rows[0] || {}).slice(0, 6).join(', ')}...). טען אותו מאזור הטעינה הייעודי במרכז הנתונים.`)
+         const displayName = displayDatasetName(kind, kind === 'targets' ? rowsForCloud?.[0]?.month : '')
+-        const nextMeta = { fileName:displayName, originalFileName:file.name, rows:storedCount, rawRows:rows.length, loadedAt:new Date().toISOString(), facilities:facilitiesFound, valid:true, source:'cloud' }
++        const nextMeta = { fileName:displayName, originalFileName:file.name, rows:storedCount, rawRows:rawRowCount, loadedAt:new Date().toISOString(), facilities:facilitiesFound, valid:true, source:'cloud' }
+         setStatus(`מעלה את ${displayName} למסד המשותף...`)
+         setUploadProgress({ fileName:displayName, kind, phase:'prepare', percent:0, message:'מכין את הנתונים' })
+         const progressHandler = progress => {
+@@ -1144,7 +1223,20 @@
+ ])),
+  order: normalize(getField(r, ['Process Order', 'Process Order #', 'Order'])),
+ status: normalize(getField(r, ['Result Status', 'QA Approval', 'Status'])),
++approval: normalize(getField(r, ['QA Approval'])),
+ inspectionLot: normalize(getField(r, ['Inspection Lot', 'Inspection Lot #'])),
++sample: normalize(getField(r, ['Sample #', 'Sample Number', 'Sample No.', 'Sample'])),
++activity: normalize(getField(r, ['Operation Activity', 'Activity', 'Operation'])),
++operationText: normalize(getField(r, ['Operation short text'])),
++inspectionType: normalize(getField(r, ['Inspection Type'])),
++characteristic: normalize(getField(r, ['Master Insp Charactristic', 'Master Inspection Characteristic'])),
++value: normalize(getField(r, ['Arithmetic Mean of Valid Measured Values'])),
++lower: normalize(getField(r, ['Lower Specif Limit', 'Lower Spec Limit'])),
++upper: normalize(getField(r, ['Upper Specif Limit', 'Upper Spec Limit'])),
++unit: normalize(getField(r, ['Unit of Measurement'])),
++line: normalize(getField(r, ['Production Line'])),
++remarks: normalize(getField(r, ['Charactristic Remarks', 'Characteristic Remarks', 'Batch Remarks'])),
++qualitative: normalize(getField(r, ['Qualitative'])),
+ udCode: normalize(getField(r, ['UD Code', 'Usage Decision', 'Usage decision', 'החלטת שימוש']))
+   })
+ }), [quality, materialByBatchDescription])
+@@ -1165,6 +1257,8 @@
+     inspectionLot: normalize(getField(r, ['Inspection Lot', 'Inspection Lot #'])),
+     status: normalize(getField(r, ['QA Status', 'Status'])),
+     rejectedCount: num(getField(r, ['Rejected characteristics', 'Rejected characteristics '])),
++    approvedCount: num(getField(r, ['Approved characteristics', 'Approved characteristics '])),
++    udDate: normalize(getField(r, ['Inspection Lot UD Date', 'UD Date'])),
+     remarks: normalize(getField(r, ['UD Remarks', 'Remarks', 'Batch Remarks'])),
+     udCode: normalize(getField(r, ['UD Code'])),
+   })), [deviations])
+@@ -1184,7 +1278,7 @@
+ 
+     const addCharacteristic = (target, seenMap, key, item) => {
+       if (!key || !item.characteristic) return
+-      const signature = `${item.characteristic}|${item.value}|${item.inspectionLot}`
++      const signature = `${item.characteristic}|${item.value}|${item.inspectionLot}|${item.sample}|${item.activity}`
+       let seen = seenMap.get(key)
+       if (!seen) { seen = new Set(); seenMap.set(key, seen) }
+       if (seen.has(signature)) return
+@@ -1195,30 +1289,23 @@
+     }
+ 
+     qualityRows.forEach(row => {
+-      if (normalize(row.batch) === '0000000101') {
+-  console.log(
+-    'QUALITY CHECK',
+-    {
+-      batch: row.batch,
+-      material: row.material,
+-      characteristic: row.characteristic,
+-      status: row.status,
+-      approval: row.approval,
+-      inspectionLot: row.inspectionLot,
+-      value: row.value
+-    }
+-  )
+-}
+       const key = batchMaterialKey(row.batch, row.material)
+-      if (row.batch === '0000000101') {
+-  console.log("MAP KEY =", key)
+-}
+       if (!key) return
+ 
+       const list = byBatchMaterial.get(key) || []
+       list.push(row)
+       byBatchMaterial.set(key, list)
+ 
++      // Batch-only fallback, so a batch whose material is missing or that spans
++      // several materials still resolves to its quality rows instead of showing
++      // an empty card.
++      const batchOnly = normalize(row.batch)
++      if (batchOnly) {
++        const batchList = byBatch.get(batchOnly) || []
++        batchList.push(row)
++        byBatch.set(batchOnly, batchList)
++      }
++
+       const timestamp = row.date ? new Date(row.date).getTime() : 0
+       if (timestamp > (latestByBatchMaterial.get(key)?.timestamp || 0)) {
+         latestByBatchMaterial.set(key, { timestamp, date: row.date })
+@@ -1229,14 +1316,6 @@
+           latestByBatchMaterialLot.set(lotKey, { timestamp, date: row.date })
+         }
+       }
+-console.log({
+-  batch: row.batch,
+-  material: row.material,
+-  characteristic: row.characteristic,
+-  status: row.status,
+-  approval: row.approval,
+-  value: row.value
+-})
+       const status = normalize(row.status || row.approval).toLowerCase()
+       const isRejected = ['rejection', 'rejected', 'fail', 'failed', 'פסול', 'לא תקין', 'חריג'].some(x => status.includes(x))
+       const item = {
+@@ -1248,6 +1327,8 @@
+         remarks: row.remarks,
+         qualitative: row.qualitative,
+         inspectionLot: row.inspectionLot,
++        sample: row.sample,
++        activity: row.activity,
+         date: row.date,
+       }
+       addCharacteristic(isRejected ? rejected : approved, isRejected ? seenRejected : seenApproved, key, item)
+@@ -1288,27 +1369,32 @@
+     const batchMaterials = [...new Set(batchProductionRows.map(row => normalize(row.material)).filter(Boolean))]
+     const material = requestedMaterial || (batchMaterials.length === 1 ? batchMaterials[0] : '')
+     const key = batchMaterialKey(batch, material)
+-if (batch === '0000000101') {
+-  alert(`KEY=${key}\nMaterial=${material}`)
+-}
++
+     const productionRows = material
+       ? batchProductionRows.filter(row => normalize(row.material) === material)
+       : batchProductionRows
+ 
+-    const qualityForBatchMaterial = key ? (qualityIndex.byBatchMaterial.get(key) || []) : []
+-    console.log("Found quality records =", qualityForBatchMaterial.length)
+-    console.log("KEY =", key)
+-console.log("QUALITY =", qualityForBatchMaterial)
+-    const deviationForBatchMaterial = key
+-      ? enrichedDeviationRows.filter(row => batchMaterialKey(row.batch, row.material) === key)
+-      : []
++    // Exact Batch+Material stays the rule. When the batch spans several
++    // materials (or the material is blank) we fall back to batch-only instead of
++    // rendering an empty card, and flag it so the UI can say so.
++    const exactQuality = key ? (qualityIndex.byBatchMaterial.get(key) || []) : []
++    const usedBatchOnlyFallback = !key || (!exactQuality.length && batchMaterials.length !== 1)
++    const qualityForBatch = usedBatchOnlyFallback
++      ? (qualityIndex.byBatch.get(batch) || [])
++      : exactQuality
++
++    const deviationForBatch = usedBatchOnlyFallback
++      ? enrichedDeviationRows.filter(row => normalize(row.batch) === batch)
++      : enrichedDeviationRows.filter(row => batchMaterialKey(row.batch, row.material) === key)
+ 
+     return {
+       batch,
+       material,
++      materials: batchMaterials,
++      usedBatchOnlyFallback,
+       production: productionRows,
+-      quality: qualityForBatchMaterial,
+-      deviations: deviationForBatchMaterial,
++      quality: qualityForBatch,
++      deviations: deviationForBatch,
+     }
+   }, [selectedBatch, selectedBatchMaterial, prod, qualityIndex, enrichedDeviationRows])
+ 
+@@ -2215,6 +2301,22 @@
+ const planningSafeMonth = resource => String(resource?.month || new Date().toISOString().slice(0,7))
+ 
+ const BATCH_MODAL_WIDE_STYLES = `
++.batch-scope-note{margin:0;padding:6px 18px 0;font-size:12.5px;color:#8a6d1f;background:transparent}
++.batch-verdict-strip{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:8px 18px 0;padding:9px 14px;border:1px solid #dce7ec;border-radius:12px;background:#f6fafb;font-size:13px}
++.batch-verdict-strip>span{color:#5b7480;font-weight:600}
++.batch-verdict-strip>b.good{color:#0f7a52}
++.batch-verdict-strip>b.bad{color:#c0392b}
++.batch-verdict-strip>em{font-style:normal;color:#7a8f99;font-size:12.5px}
++.batch-kpi small{display:block;margin-top:2px;font-size:11.5px;color:#8098a4;font-weight:500}
++.quality-lot-filter{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:0 0 10px}
++.quality-lot-filter>span{font-size:12.5px;color:#5b7480;font-weight:600}
++.quality-lot-filter button{border:1px solid #dce7ec;background:#fff;border-radius:999px;padding:4px 12px;font-size:12.5px;cursor:pointer;color:#37515c}
++.quality-lot-filter button.active{background:#0f5c6b;border-color:#0f5c6b;color:#fff}
++.lot-kind{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11.5px;font-weight:600;white-space:nowrap}
++.lot-kind.final{background:#e4f1ff;color:#12508f}
++.lot-kind.inprocess{background:#f1efe6;color:#7a6a3a}
++.lot-kind.unknown{background:#f0f3f5;color:#7a8f99}
++.quality-status.unknown{background:#f0f3f5;color:#7a8f99}
+ .batch-modal-backdrop{padding:10px!important;align-items:stretch!important;justify-content:stretch!important}
+ .batch-control-card.batch-control-card-wide{width:calc(100vw - 20px)!important;max-width:none!important;height:calc(100vh - 20px)!important;max-height:none!important;margin:0!important;border-radius:22px!important;display:flex!important;flex-direction:column!important;overflow:hidden!important}
+ .batch-control-card-wide .batch-card-head{flex:0 0 auto}
+@@ -2243,6 +2345,7 @@
+ 
+ function BatchControlCard({ data, onClose }) {
+   const [qualityFilter, setQualityFilter] = useState('all')
++  const [lotFilter, setLotFilter] = useState('all')
+   const [activeBatchTab, setActiveBatchTab] = useState('quality')
+   useEffect(() => {
+     const previous = document.body.style.overflow
+@@ -2264,29 +2367,63 @@
+   const totalQty = productionRows.reduce((sum,r)=>sum+num(r.qty),0)
+   const prodDates = productionRows.map(r=>r.date).filter(Boolean).sort((a,b)=>a-b)
+   const qualityDates = qualityRows.map(r=>r.date).filter(Boolean).sort((a,b)=>a-b)
++  const REJECT_WORDS = ['rejection','rejected','fail','failed','פסול','לא תקין','חריג']
++  const ACCEPT_WORDS = ['acceptance','accepted','approved','pass','passed','תקין','מאושר']
+   const allQuality = qualityRows.filter(r=>r.characteristic).map((r,index) => {
+     const status = normalize(r.status || r.approval).toLowerCase()
+-    const rejected = ['rejection','rejected','fail','failed','פסול','לא תקין','חריג'].some(x=>status.includes(x))
+-    return {...r, rejected, _key:`${r.characteristic}-${r.inspectionLot}-${index}`}
++    const rejected = REJECT_WORDS.some(x=>status.includes(x))
++    const approved = !rejected && ACCEPT_WORDS.some(x=>status.includes(x))
++    return {
++      ...r,
++      rejected,
++      approved,
++      unknown: !rejected && !approved,
++      lotKind: lotKind(r.inspectionLot),
++      // Sample # + Operation Activity make the key unique per real measurement,
++      // so repeat samples of the same characteristic no longer share a React key.
++      _key:`${r.inspectionLot}-${r.sample}-${r.activity}-${r.characteristic}-${index}`,
++    }
+   })
+   const badCount = allQuality.filter(r=>r.rejected).length
+-  const goodCount = allQuality.length-badCount
+-  const shownQuality = allQuality.filter(r=>qualityFilter==='all' || (qualityFilter==='bad' ? r.rejected : !r.rejected))
+-  const qaApprovals = [...new Set(qualityRows.map(r=>r.approval || r.status).filter(Boolean))]
++  const goodCount = allQuality.filter(r=>r.approved).length
++  const unknownCount = allQuality.filter(r=>r.unknown).length
+   const inspectionLots = [...new Set(qualityRows.map(r=>r.inspectionLot).filter(Boolean))]
+-  const qualityPct = allQuality.length ? Math.round(goodCount/allQuality.length*100) : 0
+-  const released = qaApprovals.some(v => ['approved','released','מאושר','שוחרר'].some(x=>normalize(v).toLowerCase().includes(x)))
++  const finalLots = inspectionLots.filter(l=>lotKind(l)===LOT_KIND_FINAL)
++  const inProcessLots = inspectionLots.filter(l=>lotKind(l)===LOT_KIND_INPROCESS)
++  const finalQuality = allQuality.filter(r=>r.lotKind===LOT_KIND_FINAL)
++  const finalBad = finalQuality.filter(r=>r.rejected).length
++  const shownQuality = allQuality
++    .filter(r=>qualityFilter==='all' || (qualityFilter==='bad' ? r.rejected : !r.rejected))
++    .filter(r=>lotFilter==='all' || r.lotKind===lotFilter)
++  // Success % is measured against rows that actually carry a verdict, so rows
++  // with a blank status no longer silently inflate the approved side.
++  const judged = goodCount + badCount
++  const qualityPct = judged ? Math.round(goodCount/judged*100) : 0
++
++  // The usage decision comes from the usage-decision file (SAP UD), never from
++  // concatenated Result Status values on the quality file.
++  const decidedRows = deviationRows.filter(r=>!isOpenDecision(r))
++  const openDecisionRows = deviationRows.filter(isOpenDecision)
++  const finalDecision = decidedRows
++    .slice()
++    .sort((a,b)=>new Date(b.date||0)-new Date(a.date||0))[0] || null
++  const udCodes = [...new Set(decidedRows.map(r=>r.udCode).filter(Boolean))]
++  const qaLabel = finalDecision
++    ? [finalDecision.udCode, finalDecision.status].filter(Boolean).join(' · ')
++    : 'ממתין להחלטת שימוש'
++  const released = udCodes.some(v => /^A1|release/i.test(normalize(v)))
++  const decisionDate = finalDecision?.date || null
+   const steps = [
+     {label:'ייצור / אריזה', done:productionRows.length>0, date:prodDates[0]},
+     {label:'בדיקות איכות', done:qualityRows.length>0, date:qualityDates[0]},
+-    {label:'החלטת QA', done:qaApprovals.length>0, date:qualityDates.at(-1)},
+-    {label:'שחרור', done:released, date:released ? qualityDates.at(-1) : null},
++    {label:'החלטת QA', done:Boolean(finalDecision), date:decisionDate},
++    {label:'שחרור', done:released, date:released ? decisionDate : null},
+   ]
+   const exportBatch = () => {
+     const wb = XLSX.utils.book_new()
+     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(productionRows.map(r=>({Date:iso(r.date),Facility:r.facility,RoutingGroup:r.routingGroup,Order:r.order,Batch:r.batch,Material:r.material,Description:r.desc,Quantity:r.qty}))), 'Production')
+-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(allQuality.map(r=>({Date:iso(r.date),InspectionLot:r.inspectionLot,Material:r.material||materials.join(', '),Characteristic:r.characteristic,Result:r.value||r.qualitative,Lower:r.lower,Upper:r.upper,Unit:r.unit,Status:r.rejected?'חריג':'תקין',Remarks:r.remarks}))), 'Quality')
+-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(deviationRows.map(r=>({Date:iso(r.date),Facility:r.facility,Material:r.material||materials.join(', '),Status:r.status,UDCode:r.udCode,Remarks:r.remarks}))), 'Deviations')
++    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(allQuality.map(r=>({Date:iso(r.date),InspectionLot:r.inspectionLot,LotKind:lotKindLabel(r.lotKind),Sample:r.sample,Activity:r.activity,Material:r.material||materials.join(', '),Characteristic:r.characteristic,Result:r.value||r.qualitative,Lower:r.lower,Upper:r.upper,Unit:r.unit,Status:r.rejected?'חריג':r.approved?'תקין':'ללא סטטוס',Remarks:r.remarks}))), 'Quality')
++    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(deviationRows.map(r=>({Date:iso(r.date),InspectionLot:r.inspectionLot,Facility:r.facility,Material:r.material||materials.join(', '),Status:r.status,UDCode:r.udCode,UDDate:r.udDate,Rejected:r.rejectedCount,Approved:r.approvedCount,Open:isOpenDecision(r)?'פתוח':'הוכרע',Remarks:r.remarks}))), 'Deviations')
+     XLSX.writeFile(wb, `Batch_${data.batch}.xlsx`)
+   }
+   return <div className="batch-modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget) onClose()}}>
+@@ -2294,20 +2431,22 @@
+     <section className="batch-control-card batch-control-card-wide" role="dialog" aria-modal="true" aria-label={`כרטיס מנה ${data.batch}`}>
+       <header className="batch-card-head"><div><span className="batch-eyebrow">BATCH CONTROL CENTER</span><h2>כרטיס מנה — {data.batch}</h2><p>{descriptions.join(' · ') || materials.join(', ') || 'ללא תיאור חומר'}</p></div><div className="batch-head-actions"><button type="button" className="batch-export" onClick={exportBatch}><Download size={17}/> ייצוא מנה</button><button type="button" className="batch-close" onClick={onClose} aria-label="סגירה"><X/></button></div></header>
+       <div className="batch-summary-grid">
+-        <BatchMetric label="Batch" value={data.batch}/><BatchMetric label="Order" value={orders.join(', ') || '—'}/><BatchMetric label="מק״ט חומר" value={materials.join(', ') || '—'}/><BatchMetric label="מתקן" value={facilities.join(', ') || '—'}/><BatchMetric label="Routing group" value={routingGroups.join(', ') || '—'}/><BatchMetric label="כמות ארוזה" value={fmt(totalQty)}/><BatchMetric label="Inspection Lot" value={inspectionLots.join(', ') || '—'}/><BatchMetric label="QA" value={qaApprovals.join(', ') || 'טרם התקבלה החלטה'}/>
++        <BatchMetric label="Batch" value={data.batch}/><BatchMetric label="Order" value={orders.join(', ') || '—'}/><BatchMetric label="מק״ט חומר" value={materials.join(', ') || '—'}/><BatchMetric label="מתקן" value={facilities.join(', ') || '—'}/><BatchMetric label="Routing group" value={routingGroups.join(', ') || '—'}/><BatchMetric label="כמות ארוזה" value={fmt(totalQty)}/><BatchMetric label="Inspection Lot" value={inspectionLots.join(', ') || '—'}/><BatchMetric label="QA" value={qaLabel}/>
+       </div>
+-      <div className="batch-kpi-row"><div className="batch-kpi good"><span>מאפיינים תקינים</span><b>{goodCount}</b></div><div className="batch-kpi bad"><span>מאפיינים חריגים</span><b>{badCount}</b></div><div className="batch-kpi"><span>אחוז הצלחה</span><b>{qualityPct}%</b></div><div className="batch-kpi"><span>חריגות פתוחות</span><b>{deviationRows.length}</b></div></div>
++      {data.usedBatchOnlyFallback && (data.materials?.length || 0) > 1 && <p className="batch-scope-note">המנה מופיעה על {data.materials.length} מק״טים — מוצגות תוצאות כל המק״טים של המנה.</p>}
++      <div className="batch-kpi-row"><div className="batch-kpi good"><span>מאפיינים תקינים</span><b>{goodCount}</b></div><div className="batch-kpi bad"><span>מאפיינים חריגים</span><b>{badCount}</b></div><div className="batch-kpi"><span>אחוז הצלחה</span><b>{qualityPct}%</b>{unknownCount>0&&<small>{unknownCount} ללא סטטוס — לא נספרו</small>}</div><div className="batch-kpi"><span>חריגות פתוחות</span><b>{openDecisionRows.length}</b>{decidedRows.length>0&&<small>{decidedRows.length} הוכרעו</small>}</div></div>
++      {finalLots.length>0 && <div className="batch-verdict-strip"><span>בדיקה סופית ({finalLots.join(', ')})</span><b className={finalBad?'bad':'good'}>{finalBad?`${finalBad} מתוך ${finalQuality.length} מאפיינים חריגים`:`כל ${finalQuality.length} המאפיינים תקינים`}</b>{inProcessLots.length>0&&<em>+ {allQuality.length-finalQuality.length} בדיקות תוך-תהליכיות ({inProcessLots.join(', ')}) — ללא החלטת שימוש</em>}</div>}
+       <div className="batch-card-body batch-card-body-wide">
+         <nav className="batch-workspace-tabs" aria-label="לשוניות כרטיס מנה">
+           <button type="button" className={activeBatchTab==='quality'?'active':''} onClick={()=>setActiveBatchTab('quality')}><FlaskConical size={17}/> תוצאות איכות ({allQuality.length})</button>
+-          <button type="button" className={`bad ${activeBatchTab==='deviations'?'active':''}`} onClick={()=>setActiveBatchTab('deviations')}><AlertTriangle size={17}/> חריגים ({deviationRows.length})</button>
++          <button type="button" className={`bad ${activeBatchTab==='deviations'?'active':''}`} onClick={()=>setActiveBatchTab('deviations')}><AlertTriangle size={17}/> חריגים ({openDecisionRows.length})</button>
+           <button type="button" className={activeBatchTab==='production'?'active':''} onClick={()=>setActiveBatchTab('production')}><Factory size={17}/> ייצור ואריזה ({productionRows.length})</button>
+           <button type="button" className={activeBatchTab==='timeline'?'active':''} onClick={()=>setActiveBatchTab('timeline')}><Clock3 size={17}/> Timeline והערות</button>
+         </nav>
+         <div className="batch-workspace">
+-          {activeBatchTab==='quality' && <section className="batch-panel quality-panel"><div className="batch-panel-title"><div><h3>תוצאות איכות</h3><p>תצוגה רחבה של כל המאפיינים שנמצאו למנה בקובץ האיכות</p></div><div className="quality-filter"><button className={qualityFilter==='all'?'active':''} onClick={()=>setQualityFilter('all')}>הכול {allQuality.length}</button><button className={qualityFilter==='good'?'active good':''} onClick={()=>setQualityFilter('good')}>תקינים {goodCount}</button><button className={qualityFilter==='bad'?'active bad':''} onClick={()=>setQualityFilter('bad')}>חריגים {badCount}</button></div></div><div className="table-wrap batch-quality-table"><table><thead><tr><th>מק״ט חומר</th><th>מאפיין</th><th>תוצאה</th><th>גבול תחתון</th><th>גבול עליון</th><th>יחידה</th><th>סטטוס</th><th>הערה</th></tr></thead><tbody>{shownQuality.map(r=><tr key={r._key} className={r.rejected?'quality-row-bad':''}><td>{r.material || materials.join(', ') || '—'}</td><td><b>{r.characteristic}</b></td><td>{r.value||r.qualitative||'—'}</td><td>{r.lower||'—'}</td><td>{r.upper||'—'}</td><td>{r.unit||'—'}</td><td><span className={`quality-status ${r.rejected?'bad':'good'}`}>{r.rejected?'חריג':'תקין'}</span></td><td>{r.remarks||'—'}</td></tr>)}{!shownQuality.length&&<tr><td colSpan="8" className="empty">לא נמצאו תוצאות במסנן שנבחר</td></tr>}</tbody></table></div></section>}
++          {activeBatchTab==='quality' && <section className="batch-panel quality-panel"><div className="batch-panel-title"><div><h3>תוצאות איכות</h3><p>תצוגה רחבה של כל המאפיינים שנמצאו למנה בקובץ האיכות</p></div><div className="quality-filter"><button className={qualityFilter==='all'?'active':''} onClick={()=>setQualityFilter('all')}>הכול {allQuality.length}</button><button className={qualityFilter==='good'?'active good':''} onClick={()=>setQualityFilter('good')}>תקינים {goodCount}</button><button className={qualityFilter==='bad'?'active bad':''} onClick={()=>setQualityFilter('bad')}>חריגים {badCount}</button></div></div>{inspectionLots.length>1&&<div className="quality-lot-filter"><span>Inspection Lot:</span><button className={lotFilter==='all'?'active':''} onClick={()=>setLotFilter('all')}>הכול {allQuality.length}</button><button className={lotFilter===LOT_KIND_FINAL?'active':''} onClick={()=>setLotFilter(LOT_KIND_FINAL)}>סופי {finalQuality.length}</button><button className={lotFilter===LOT_KIND_INPROCESS?'active':''} onClick={()=>setLotFilter(LOT_KIND_INPROCESS)}>תוך-תהליכי {allQuality.filter(r=>r.lotKind===LOT_KIND_INPROCESS).length}</button></div>}<div className="table-wrap batch-quality-table"><table><thead><tr><th>מק״ט חומר</th><th>Inspection Lot</th><th>סוג בדיקה</th><th>Sample #</th><th>שלב</th><th>מאפיין</th><th>תוצאה</th><th>גבול תחתון</th><th>גבול עליון</th><th>יחידה</th><th>סטטוס</th><th>הערה</th></tr></thead><tbody>{shownQuality.map(r=><tr key={r._key} className={r.rejected?'quality-row-bad':''}><td>{r.material || materials.join(', ') || '—'}</td><td>{r.inspectionLot||'—'}</td><td><span className={`lot-kind ${r.lotKind||'unknown'}`}>{lotKindLabel(r.lotKind)}</span></td><td>{r.sample||'—'}</td><td>{r.activity||'—'}</td><td><b>{r.characteristic}</b></td><td>{r.value||r.qualitative||'—'}</td><td>{r.lower||'—'}</td><td>{r.upper||'—'}</td><td>{r.unit||'—'}</td><td><span className={`quality-status ${r.rejected?'bad':r.approved?'good':'unknown'}`}>{r.rejected?'חריג':r.approved?'תקין':'ללא סטטוס'}</span></td><td>{r.remarks||'—'}</td></tr>)}{!shownQuality.length&&<tr><td colSpan="12" className="empty">לא נמצאו תוצאות במסנן שנבחר</td></tr>}</tbody></table></div></section>}
+ 
+-          {activeBatchTab==='deviations' && <section className="batch-panel deviation-panel"><div className="batch-panel-title"><div><h3>חריגים</h3><p>תצוגה רחבה של כל החריגות, המאפיינים החריגים וההערות המקושרות למנה</p></div><span className="production-record-count">{deviationRows.length} חריגים</span></div><div className="table-wrap batch-deviation-table"><table><thead><tr><th>תאריך חריגה</th><th>תאריך דגימה</th><th>שעת דגימה</th><th>מתקן</th><th>סטטוס</th><th>UD Code</th><th>מאפייני חריגה</th><th>הערות</th></tr></thead><tbody>{deviationRows.map((r,i)=><tr key={`${r.batch}-${r.inspectionLot||i}-${i}`} className="quality-row-bad"><td>{iso(r.date)||'—'}</td><td>{iso(r.sampleDate)||'—'}</td><td>{r.sampleDate?new Date(r.sampleDate).toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'}):'—'}</td><td>{r.facility||facilities.join(', ')||'—'}</td><td><span className="quality-status bad">{r.status||'פתוח'}</span></td><td>{r.udCode||'—'}</td><td>{r.rejectedCharacteristics?.length ? r.rejectedCharacteristics.map((c,j)=><div className="deviation-characteristic" key={`${c.characteristic}-${j}`}><strong>{c.characteristic}</strong><span>תוצאה: <b>{c.value||c.qualitative||'—'}{c.unit?` ${c.unit}`:''}</b></span><span>מפרט: {c.lower!==''||c.upper!==''?`${c.lower||'—'} עד ${c.upper||'—'}${c.unit?` ${c.unit}`:''}`:'—'}</span>{c.remarks&&c.remarks!=='N/A'&&<small>{c.remarks}</small>}</div>) : <span className="no-characteristics">לא נמצאו פרטי מאפיינים חריגים בקובץ האיכות{r.rejectedCount?` (בקובץ החריגות מופיע מספר: ${r.rejectedCount})`:''}</span>}</td><td>{r.remarks||'—'}</td></tr>)}{!deviationRows.length&&<tr><td colSpan="8" className="empty">לא נמצאו חריגות למנה</td></tr>}</tbody></table></div></section>}
++          {activeBatchTab==='deviations' && <section className="batch-panel deviation-panel"><div className="batch-panel-title"><div><h3>חריגים</h3><p>תצוגה רחבה של כל החריגות, המאפיינים החריגים וההערות המקושרות למנה</p></div><span className="production-record-count">{openDecisionRows.length} פתוחות · {decidedRows.length} הוכרעו</span></div><div className="table-wrap batch-deviation-table"><table><thead><tr><th>תאריך חריגה</th><th>Inspection Lot</th><th>תאריך דגימה</th><th>שעת דגימה</th><th>מתקן</th><th>סטטוס</th><th>UD Code</th><th>תאריך החלטה</th><th>מאפייני חריגה</th><th>הערות</th></tr></thead><tbody>{deviationRows.map((r,i)=><tr key={`${r.batch}-${r.inspectionLot||i}-${i}`} className={isOpenDecision(r)?'quality-row-bad':''}><td>{iso(r.date)||'—'}</td><td>{r.inspectionLot||'—'}</td><td>{iso(r.sampleDate)||'—'}</td><td>{r.sampleDate?new Date(r.sampleDate).toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'}):'—'}</td><td>{r.facility||facilities.join(', ')||'—'}</td><td><span className={`quality-status ${isOpenDecision(r)?'bad':'good'}`}>{r.status||'ממתין להחלטת שימוש'}</span></td><td>{r.udCode||'—'}</td><td>{r.udDate||'—'}</td><td>{r.rejectedCharacteristics?.length ? r.rejectedCharacteristics.map((c,j)=><div className="deviation-characteristic" key={`${c.characteristic}-${j}`}><strong>{c.characteristic}</strong><span>תוצאה: <b>{c.value||c.qualitative||'—'}{c.unit?` ${c.unit}`:''}</b></span><span>מפרט: {c.lower!==''||c.upper!==''?`${c.lower||'—'} עד ${c.upper||'—'}${c.unit?` ${c.unit}`:''}`:'—'}</span>{c.remarks&&c.remarks!=='N/A'&&<small>{c.remarks}</small>}</div>) : <span className="no-characteristics">לא נמצאו פרטי מאפיינים חריגים בקובץ האיכות{r.rejectedCount?` (בקובץ החריגות מופיע מספר: ${r.rejectedCount})`:''}</span>}</td><td>{r.remarks||'—'}</td></tr>)}{!deviationRows.length&&<tr><td colSpan="10" className="empty">לא נמצאו חריגות למנה</td></tr>}</tbody></table></div></section>}
+ 
+           {activeBatchTab==='production' && <section className="batch-panel production-panel"><div className="batch-panel-title"><div><h3>נתוני ייצור ואריזה</h3><p>כל דיווחי התפוקה המקושרים למנה</p></div><span className="production-record-count">{productionRows.length} דיווחים</span></div><div className="table-wrap batch-production-table"><table><thead><tr><th>תאריך</th><th>שעה</th><th>משאב יעד</th><th>מתקן / תחנה</th><th>Order</th><th>מק״ט</th><th>תיאור</th><th>כמות</th><th>משמרת</th></tr></thead><tbody>{productionRows.slice().sort((a,b)=>new Date(b.date||0)-new Date(a.date||0)).map((r,index)=><tr key={`${r.order}-${r.date?.getTime?.()||index}-${index}`}><td>{iso(r.date)||'—'}</td><td>{r.date?new Date(r.date).toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'}):'—'}</td><td>{r.facility||'—'}</td><td>{r.routingGroup||'—'}</td><td>{r.order||'—'}</td><td>{r.material||'—'}</td><td>{r.desc||'—'}</td><td><b>{fmt(r.qty)}</b></td><td>{shiftInfo(r.date).label}</td></tr>)}{!productionRows.length&&<tr><td colSpan="9" className="empty">לא נמצאו דיווחי ייצור או אריזה למנה</td></tr>}</tbody></table></div></section>}
+ 
