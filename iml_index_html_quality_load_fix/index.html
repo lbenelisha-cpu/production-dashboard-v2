@@ -1097,12 +1097,12 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     'storage location':'facility','facility':'facility','site':'facility','מתקן':'facility',
     'production plant id':'plant',
     'production line':'line','line':'line','resource':'line','work center':'line','קו':'line',
-    'operation short text':'test_name','master insp characteristic':'test_name','master inspection characteristic':'test_name','master insp charactristic':'test_name',
+    'operation short text':'operation_text','master insp characteristic':'test_name','master inspection characteristic':'test_name','master insp charactristic':'test_name',
     'arithmetic mean of valid measured values':'measured_value','measured value':'measured_value','inspection result value':'measured_value',
     'lower specif limit':'lower_limit','lower specification limit':'lower_limit','lower spec limit':'lower_limit',
     'upper specif limit':'upper_limit','upper specification limit':'upper_limit','upper spec limit':'upper_limit',
     'characteristic remarks':'characteristic_remarks','charactristic remarks':'characteristic_remarks','unit of measurement':'unit','qualitative':'qualitative','sample #':'sample',
-    'process order storage location':'facility','operation short text':'test_name','ud remarks':'remarks','batch remarks':'remarks'
+    'process order storage location':'facility','operation short text':'operation_text','ud remarks':'remarks','batch remarks':'remarks'
   };
 
   function normKeyPart(v){ return String(v || '').trim().toUpperCase(); }
@@ -1531,7 +1531,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       for(const row of grid){
         const m=mapQualityHeaders(row||[]);
         const hasMeasure=(m.measured_value!==undefined || m.lower_limit!==undefined || m.upper_limit!==undefined);
-        if(m.batch!==undefined && m.test_name!==undefined && hasMeasure) hasResults=true;
+        if(m.batch!==undefined && (m.test_name!==undefined||m.operation_text!==undefined) && hasMeasure) hasResults=true;
         if(m.batch!==undefined && m.ud_code!==undefined && !hasMeasure) hasSummary=true;
       }
       if(hasResults || hasSummary) break; // first sheet with a recognizable header is enough
@@ -1539,31 +1539,26 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     return {hasResults, hasSummary};
   }
 
-  function processQualityResultsWorkbook(wb){
-    const results=[];
+  // מיפוי שורות תוצאה משורת כותרת + מקבץ שורות נתונים.
+  // חולץ מתוך processQualityResultsWorkbook כדי שגם ה-Worker יוכל לקרוא לו
+  // על מקטע שורות בכל פעם, במקום לבנות טבלה של 280K שורות בזיכרון בבת אחת.
+  function mapQualityResultRows(headerRow, dataRows){
+    const out=[];
+    const map=mapQualityHeaders(headerRow||[]);
+    if(map.batch===undefined) return out;
     const badStatus = v => {
       const t=String(v==null?'':v).trim().toUpperCase();
       if(!t) return false;
       return t.includes('REJECT') || t.includes('FAIL') || t.includes('NOT SUCCESS') || t.includes('OUT') || t.includes('חריג') || t.includes('פסול');
     };
-    for(const sheetName of wb.SheetNames){
-      const ws=wb.Sheets[sheetName];
-      const grid=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:true,blankrows:false});
-      if(!grid.length) continue;
-      let headerIndex=-1, map=null;
-      for(let i=0;i<Math.min(grid.length,40);i++){
-        const m=mapQualityHeaders(grid[i]||[]);
-        if(m.batch!==undefined && (m.test_name!==undefined || m.measured_value!==undefined) && (m.inspection_lot!==undefined || m.material_code!==undefined)){
-          headerIndex=i; map=m; break;
-        }
-      }
-      if(headerIndex>=0){
-        const get=(row,k)=>map[k]===undefined?'':row[map[k]];
-        for(let i=headerIndex+1;i<grid.length;i++){
-          const row=grid[i]||[];
+    const get=(row,k)=>map[k]===undefined?'':row[map[k]];
+        for(let i=0;i<dataRows.length;i++){
+          const row=dataRows[i]||[];
           const batch=normalizeBatch(get(row,'batch'));
           if(!batch) continue;
-          const testName=String(get(row,'test_name')||'').trim();
+          // שם הבדיקה נלקח ממאפיין הבדיקה. 'Operation short text' הוא שלב
+          // התהליך ("בדיקות מעבדה") וזהה לכל השורות — הוא רק גיבוי.
+          const testName=String(get(row,'test_name')||get(row,'operation_text')||'').trim();
           const rawResult=get(row,'measured_value');
           const qualitative=String(get(row,'qualitative')||'').trim();
           const resultValue=!isMissingTestValue(rawResult)?rawResult:(!isMissingTestValue(qualitative)?qualitative:'');
@@ -1588,7 +1583,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
             status='ללא גבולות';
           }
           const rangeText=(min!==null||max!==null)?((min!==null?min:'—')+' - '+(max!==null?max:'—')):'';
-          results.push({
+          out.push({
             batch,
             inspectionLot:String(get(row,'inspection_lot')||'').trim(),
             sample:String(get(row,'sample')||'').trim(),
@@ -1608,7 +1603,31 @@ html, body { margin:0; padding:0; background:#0A0D12; }
             udCode:String(get(row,'ud_code')||'').trim(),
             remarks:String(get(row,'characteristic_remarks')||get(row,'remarks')||'').trim()
           });
+    }
+    return out;
+  }
+
+  function processQualityResultsWorkbook(wb){
+    const results=[];
+    const badStatus = v => {
+      const t=String(v==null?'':v).trim().toUpperCase();
+      if(!t) return false;
+      return t.includes('REJECT') || t.includes('FAIL') || t.includes('NOT SUCCESS') || t.includes('OUT') || t.includes('חריג') || t.includes('פסול');
+    };
+    for(const sheetName of wb.SheetNames){
+      const ws=wb.Sheets[sheetName];
+      const grid=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:true,blankrows:false});
+      if(!grid.length) continue;
+      let headerIndex=-1, map=null;
+      for(let i=0;i<Math.min(grid.length,40);i++){
+        const m=mapQualityHeaders(grid[i]||[]);
+        if(m.batch!==undefined && (m.test_name!==undefined || m.operation_text!==undefined || m.measured_value!==undefined) && (m.inspection_lot!==undefined || m.material_code!==undefined)){
+          headerIndex=i; map=m; break;
         }
+      }
+      if(headerIndex>=0){
+        const mapped = mapQualityResultRows(grid[headerIndex], grid.slice(headerIndex+1));
+        for(const r of mapped) results.push(r);
         continue;
       }
 
@@ -1661,6 +1680,127 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     return processQualityRows(selected.grid[selected.found.index],selected.grid.slice(selected.found.index+1));
   }
 
+
+  // ---------- פענוח קובץ איכות ב-Web Worker, בחלקים ----------
+  // הקובץ הגדול מ-SAP (40MB, 280K שורות) לא ניתן לפענוח ב-thread הראשי:
+  // XLSX.read לבדו עולה ~1.1GB, ובניית טבלה של 280K שורות בבת אחת מוסיפה
+  // עוד מאות MB. שני הדברים יחד מפילים את הלשונית.
+  //
+  // כאן הפענוח רץ ב-Worker עם heap משלו, והשורות נקראות במקטעים של 20,000
+  // ומוחזרות בזרם. ה-thread הראשי לא קופא, מוצגת התקדמות אמיתית, וקריסה
+  // של ה-Worker ניתנת לתפיסה במקום להפיל את הדף.
+  const QUALITY_WORKER_ROW_STEP = 20000;
+  const XLSX_CDN_URL = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+  let _qualityWorkerUrl = null;
+
+  function buildQualityWorkerUrl(){
+    if(_qualityWorkerUrl) return _qualityWorkerUrl;
+    // מקור ה-Worker נבנה מהפונקציות עצמן דרך toString(), כך שאין עותק שני
+    // של לוגיקת הפענוח שיכול להיפרד מהמקור.
+    const fns = [normalizeQualityHeader, mapQualityHeaders, findQualityHeaderRow,
+                 normalizeBatch, isMissingTestValue, parseNumericResult, parseTestHeader,
+                 normalizeFacilityForQuality, dateObjToISO, excelSerialToISO, normalizeDateStr,
+                 mapQualityResultRows, processQualityRows, classifyQualityWorkbook,
+                 processQualitySummaryWorkbook];
+    const src = "importScripts(" + JSON.stringify(XLSX_CDN_URL) + ");\n"
+      + "var QUALITY_HEADER_MAP=" + JSON.stringify(QUALITY_HEADER_MAP) + ";\n"
+      + "var OLD_TO_NEW_FACILITY=" + JSON.stringify(OLD_TO_NEW_FACILITY) + ";\n"
+      + "var ROW_STEP=" + QUALITY_WORKER_ROW_STEP + ";\n"
+      + fns.map(f => f.toString()).join("\n\n") + "\n\n"
+      + QUALITY_WORKER_MAIN;
+    _qualityWorkerUrl = URL.createObjectURL(new Blob([src], {type:'text/javascript'}));
+    return _qualityWorkerUrl;
+  }
+
+  const QUALITY_WORKER_MAIN = [
+    "self.onmessage = function(e){",
+    "  var buf = e.data.buf;",
+    "  try {",
+    "    self.postMessage({type:'progress', pct:0, message:'קורא את הקובץ'});",
+    "    // dense:true חובה כאן. בלעדיו SheetJS בונה אובייקט עם ~9.5 מיליון מפתחות",
+    "    // מחרוזת (אחד לכל תא) והקריאה נמשכת דקות ארוכות במקום שניות.",
+    "    var wb = XLSX.read(new Uint8Array(buf), {type:'array', cellDates:false, dense:true});",
+    "    var cls = classifyQualityWorkbook(wb);",
+    "    var runSummary = cls.hasSummary || (!cls.hasSummary && !cls.hasResults);",
+    "    var runResults = cls.hasResults || (!cls.hasSummary && !cls.hasResults);",
+    "    if(runSummary){",
+    "      var summary = processQualitySummaryWorkbook(wb) || [];",
+    "      if(summary.length) self.postMessage({type:'summary', rows:summary});",
+    "    }",
+    "    if(runResults){",
+    "      for(var si=0; si<wb.SheetNames.length; si++){",
+    "        var ws = wb.Sheets[wb.SheetNames[si]];",
+    "        if(!ws || !ws['!ref']) continue;",
+    "        var range = XLSX.utils.decode_range(ws['!ref']);",
+    "        var probeEnd = Math.min(range.e.r, range.s.r + 40);",
+    "        var probe = XLSX.utils.sheet_to_json(ws, {header:1, defval:'', raw:true, blankrows:false,",
+    "          range: XLSX.utils.encode_range({s:{r:range.s.r,c:range.s.c}, e:{r:probeEnd,c:range.e.c}})});",
+    "        var headerRow = null, headerAbs = -1;",
+    "        for(var i=0;i<probe.length;i++){",
+    "          var m = mapQualityHeaders(probe[i]||[]);",
+    "          if(m.batch!==undefined && (m.test_name!==undefined || m.operation_text!==undefined || m.measured_value!==undefined) &&",
+    "             (m.inspection_lot!==undefined || m.material_code!==undefined)){",
+    "            headerRow = probe[i]; headerAbs = range.s.r + i; break;",
+    "          }",
+    "        }",
+    "        if(headerAbs < 0) continue;",
+    "        var total = range.e.r - headerAbs;",
+    "        var done = 0;",
+    "        for(var start = headerAbs + 1; start <= range.e.r; start += ROW_STEP){",
+    "          var end = Math.min(range.e.r, start + ROW_STEP - 1);",
+    "          var grid = XLSX.utils.sheet_to_json(ws, {header:1, defval:'', raw:true, blankrows:false,",
+    "            range: XLSX.utils.encode_range({s:{r:start,c:range.s.c}, e:{r:end,c:range.e.c}})});",
+    "          var rows = mapQualityResultRows(headerRow, grid);",
+    "          grid = null;",
+    "          done = end - headerAbs;",
+    "          self.postMessage({type:'results', rows:rows, pct: total ? Math.round(done/total*100) : 100});",
+    "        }",
+    "        break;",
+    "      }",
+    "    }",
+    "    self.postMessage({type:'done'});",
+    "  } catch(err){",
+    "    self.postMessage({type:'error', message: String((err && err.message) || err)});",
+    "  }",
+    "};"
+  ].join("\n");
+
+  function parseQualityFileInWorker(file, onProgress){
+    return new Promise(function(resolve, reject){
+      var worker;
+      try { worker = new Worker(buildQualityWorkerUrl()); }
+      catch(e){ reject(Object.assign(new Error('WORKER_UNAVAILABLE'), {code:'WORKER_UNAVAILABLE'})); return; }
+      var summaryRows = [], resultRows = [];
+      var finish = function(fn, payload){ try{ worker.terminate(); }catch(e){} fn(payload); };
+      worker.onmessage = function(ev){
+        var d = ev.data || {};
+        if(d.type === 'progress'){ onProgress && onProgress(d); return; }
+        if(d.type === 'summary'){ summaryRows = summaryRows.concat(d.rows || []); return; }
+        if(d.type === 'results'){
+          if(d.rows && d.rows.length) resultRows = resultRows.concat(d.rows);
+          onProgress && onProgress({pct: d.pct, message: 'מפענח שורות: ' + resultRows.length.toLocaleString('he-IL')});
+          return;
+        }
+        if(d.type === 'done') return finish(resolve, {summaryRows: summaryRows, resultRows: resultRows});
+        if(d.type === 'error') return finish(reject, new Error(d.message || 'שגיאת פענוח'));
+      };
+      // נורה גם כשה-Worker נהרג מחוסר זיכרון — הדף שורד ואפשר לדווח.
+      worker.onerror = function(ev){
+        finish(reject, Object.assign(new Error(ev && ev.message || 'WORKER_CRASHED'), {code:'WORKER_CRASHED'}));
+      };
+      file.arrayBuffer().then(function(buf){
+        worker.postMessage({buf: buf}, [buf]);
+      }, function(err){ finish(reject, err); });
+    });
+  }
+
+  function setQualityLoadProgress(text){
+    const el = root && root.querySelector ? root.querySelector('#dataStatusLine') : null;
+    if(!el) return;
+    if(text){ el.dataset.busy='1'; el.textContent = '⏳ ' + text; }
+    else if(el.dataset.busy){ delete el.dataset.busy; renderAll(); }
+  }
+
   async function handleQualityFiles(fileList){
     try{
       const files=Array.from(fileList||[]);
@@ -1679,15 +1819,42 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 
       let summaryRows=[], resultRows=[], sourceNames=[], failedFiles=[];
       for(const file of files){
-        const wb=XLSX.read(await file.arrayBuffer(),{type:'array',cellDates:false});
-        // Classify the file first (cheap header probe) and run ONLY the relevant parser.
-        // A large detailed-results export has hundreds of thousands of rows; running both
-        // parsers over it doubles the work and can freeze the tab.
-        const cls=classifyQualityWorkbook(wb);
-        const runSummary = cls.hasSummary || (!cls.hasSummary && !cls.hasResults);
-        const runResults = cls.hasResults || (!cls.hasSummary && !cls.hasResults);
-        const foundSummary=runSummary ? processQualitySummaryWorkbook(wb) : [];
-        const foundResults=runResults ? processQualityResultsWorkbook(wb) : [];
+        const sizeMB = (file.size||0)/1048576;
+        let foundSummary=[], foundResults=[];
+        let parsedInWorker=false;
+        if(typeof Worker!=='undefined'){
+          try{
+            showToast('מפענח את '+file.name+' ברקע...');
+            const out = await parseQualityFileInWorker(file, p=>{
+              const pct = (p && typeof p.pct==='number') ? ' '+p.pct+'%' : '';
+              setQualityLoadProgress(file.name+pct+(p&&p.message?' · '+p.message:''));
+            });
+            foundSummary = out.summaryRows || [];
+            foundResults = out.resultRows || [];
+            parsedInWorker = true;
+          }catch(err){
+            console.warn('worker parse failed, falling back to main thread:', err);
+            // קובץ גדול שקרס ב-Worker לא יצליח גם ב-thread הראשי — עדיף לדווח
+            // מיד מאשר להקפיא את הלשונית בניסיון נוסף.
+            if(sizeMB >= 15 || err.code === 'WORKER_CRASHED'){
+              setQualityLoadProgress('');
+              failedFiles.push({ name:file.name, sizeMB: Math.round(sizeMB) });
+              recordDatasetSource('failed', file.name, 0);
+              sourceNames.push(file.name);
+              continue;
+            }
+          }
+        }
+        setQualityLoadProgress('');
+        if(!parsedInWorker){
+          const wb=XLSX.read(await file.arrayBuffer(),{type:'array',cellDates:false,dense:true});
+          // Classify the file first (cheap header probe) and run ONLY the relevant parser.
+          const cls=classifyQualityWorkbook(wb);
+          const runSummary = cls.hasSummary || (!cls.hasSummary && !cls.hasResults);
+          const runResults = cls.hasResults || (!cls.hasSummary && !cls.hasResults);
+          foundSummary=runSummary ? processQualitySummaryWorkbook(wb) : [];
+          foundResults=runResults ? processQualityResultsWorkbook(wb) : [];
+        }
         if(foundSummary.length) summaryRows.push(...foundSummary);
         if(foundResults.length) resultRows.push(...foundResults);
         // רישום לכל קובץ בנפרד, כדי שבטעינת חלקים מרובים יופיע שם כל חלק
