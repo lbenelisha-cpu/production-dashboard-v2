@@ -719,6 +719,23 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 
     .quality-results-table tr.quality-row-deviation td{background:rgba(239,68,68,.10);border-top-color:rgba(239,68,68,.35);border-bottom-color:rgba(239,68,68,.35)}
     .quality-results-table tr.quality-row-deviation td:first-child{box-shadow:inset -4px 0 0 #ef4444}
+
+    /* יומן טעינות קבצים */
+    .file-sources{margin-top:6px;font-size:11px}
+    .file-sources>summary{cursor:pointer;color:var(--text-muted);list-style:none;display:inline-flex;align-items:center;gap:6px;padding:2px 8px;border:1px solid rgba(255,255,255,.12);border-radius:999px;background:rgba(255,255,255,.03)}
+    .file-sources>summary::-webkit-details-marker{display:none}
+    .file-sources>summary::before{content:'▸';font-size:10px}
+    .file-sources[open]>summary::before{content:'▾'}
+    .file-sources>summary:hover{color:var(--text,#e8eef2);border-color:rgba(255,255,255,.25)}
+    .file-sources-body{margin-top:8px;padding:10px 12px;border:1px solid rgba(255,255,255,.10);border-radius:10px;background:rgba(255,255,255,.03);max-width:760px}
+    .file-source-group+.file-source-group{margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,.08)}
+    .file-source-group h4{margin:0 0 6px;font-size:11.5px;font-weight:700;color:var(--text,#e8eef2);display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+    .file-source-group h4 span{font-weight:400;color:var(--text-muted);font-size:10.5px}
+    .file-source-group table{width:100%;border-collapse:collapse}
+    .file-source-group td{padding:2px 0;vertical-align:top;color:var(--text-muted)}
+    .file-source-group .fs-name{color:var(--text,#e8eef2);max-width:380px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .file-source-group .fs-rows{text-align:left;font-variant-numeric:tabular-nums;padding-inline:12px;white-space:nowrap}
+    .file-source-group .fs-at{text-align:left;font-variant-numeric:tabular-nums;white-space:nowrap}
 </style>
 </head>
 <body>
@@ -972,6 +989,76 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   const QUALITY_CHUNK_PREFIX = 'quality_ud_full_v4_chunk_';
   const QUALITY_CHUNK_SIZE = 1800;
   const QUALITY_RESULTS_MANIFEST_KEY = 'quality_test_results_v1_manifest';
+
+  // ---- יומן טעינות: שם קובץ, כמות שורות ומתי נטען, לכל קובץ בנפרד ----
+  const DATASET_SOURCES_KEY = 'dataset_sources_v1';
+  const DATASET_SOURCE_LABELS = {
+    production: 'כמויות ייצור ואריזה',
+    qualitySummary: 'סיכום איכות / החלטת שימוש',
+    qualityResults: 'תוצאות בדיקה'
+  };
+  let datasetSources = { production: [], qualitySummary: [], qualityResults: [] };
+
+  function recordDatasetSource(kind, fileName, rowCount){
+    if(!datasetSources[kind]) datasetSources[kind] = [];
+    const name = String(fileName || 'ללא שם');
+    // טעינה חוזרת של אותו קובץ מעדכנת את הרשומה במקום להוסיף שורה נוספת.
+    datasetSources[kind] = datasetSources[kind].filter(s => s.name !== name);
+    datasetSources[kind].push({ name, rows: Number(rowCount) || 0, at: new Date().toISOString() });
+    datasetSources[kind].sort((a,b) => String(a.name).localeCompare(String(b.name), 'he'));
+  }
+
+  async function persistDatasetSources(){
+    try { await _dashStorage.set(DATASET_SOURCES_KEY, JSON.stringify(datasetSources)); return true; }
+    catch(e){ console.error('persistDatasetSources:', e); return false; }
+  }
+
+  async function loadDatasetSources(){
+    try {
+      const res = await _dashStorage.get(DATASET_SOURCES_KEY).catch(()=>null);
+      const parsed = res && res.value ? JSON.parse(res.value) : null;
+      if(parsed && typeof parsed === 'object'){
+        datasetSources = {
+          production: Array.isArray(parsed.production) ? parsed.production : [],
+          qualitySummary: Array.isArray(parsed.qualitySummary) ? parsed.qualitySummary : [],
+          qualityResults: Array.isArray(parsed.qualityResults) ? parsed.qualityResults : []
+        };
+      }
+    } catch(e){ console.error('loadDatasetSources:', e); }
+  }
+
+  function formatLoadStamp(iso){
+    const d = new Date(iso);
+    if(isNaN(d.getTime())) return '—';
+    const pad = n => String(n).padStart(2,'0');
+    return pad(d.getDate())+'/'+pad(d.getMonth()+1)+'/'+d.getFullYear()+' '+pad(d.getHours())+':'+pad(d.getMinutes());
+  }
+
+  function renderDatasetSources(){
+    const host = root.querySelector('#fileSourcesPanel');
+    if(!host) return;
+    const groups = Object.keys(DATASET_SOURCE_LABELS)
+      .map(kind => ({ kind, label: DATASET_SOURCE_LABELS[kind], items: datasetSources[kind] || [] }))
+      .filter(g => g.items.length);
+    if(!groups.length){ host.innerHTML = ''; host.style.display = 'none'; return; }
+    const total = groups.reduce((n,g)=>n+g.items.length,0);
+    const newest = groups.flatMap(g=>g.items).map(i=>i.at).sort().slice(-1)[0];
+    let html = '<details class="file-sources"><summary>קבצים שנטענו ('+total+') · אחרון: '+formatLoadStamp(newest)+'</summary><div class="file-sources-body">';
+    for(const g of groups){
+      const rows = g.items.reduce((n,i)=>n+(i.rows||0),0);
+      html += '<div class="file-source-group"><h4>'+g.label+' <span>'+g.items.length+' קבצים · '+rows.toLocaleString('he-IL')+' שורות</span></h4><table><tbody>';
+      for(const item of g.items){
+        html += '<tr><td class="fs-name" title="'+String(item.name).replace(/"/g,'&quot;')+'">'+item.name+'</td>'+
+                '<td class="fs-rows">'+(item.rows||0).toLocaleString('he-IL')+'</td>'+
+                '<td class="fs-at">'+formatLoadStamp(item.at)+'</td></tr>';
+      }
+      html += '</tbody></table></div>';
+    }
+    html += '</div></details>';
+    host.innerHTML = html;
+    host.style.display = '';
+  }
+
   const QUALITY_RESULTS_CHUNK_PREFIX = 'quality_test_results_v1_chunk_';
   const QUALITY_RESULTS_CHUNK_SIZE = 1200;
   let qualityTestResults = [];
@@ -1589,6 +1676,10 @@ html, body { margin:0; padding:0; background:#0A0D12; }
         const foundResults=runResults ? processQualityResultsWorkbook(wb) : [];
         if(foundSummary.length) summaryRows.push(...foundSummary);
         if(foundResults.length) resultRows.push(...foundResults);
+        // רישום לכל קובץ בנפרד, כדי שבטעינת חלקים מרובים יופיע שם כל חלק
+        // עם מספר השורות שלו והשעה שבה נטען.
+        if(foundSummary.length) recordDatasetSource('qualitySummary', file.name, foundSummary.length);
+        if(foundResults.length) recordDatasetSource('qualityResults', file.name, foundResults.length);
         sourceNames.push(file.name);
       }
 
@@ -1649,6 +1740,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 
       if(!(okSummary&&okResults)) return;
 
+      await persistDatasetSources();
       renderAll();
       if(summaryRows.length && resultRows.length){
         showToast('האיכות נטענה: '+summaryRows.length+' מנות · '+resultRows.length+' תוצאות בדיקה | '+sourceNames.join(' + '));
@@ -5203,6 +5295,7 @@ function renderAll(){
         ' (' + qualityEntries.length + ' שורות גולמיות)' +
         ' | אחסון: ' + (_netlifyAvailable ? '🟢 Netlify' : '🟡 מקומי');
     }
+    renderDatasetSources();
 
     root.querySelectorAll('.tabs .tab-btn').forEach(b=> b.classList.toggle('active', b.dataset.tab===tab));
 
@@ -5779,6 +5872,8 @@ function renderAll(){
       entries = entries.concat(rows);
       const ok = await persist();
       if(ok){
+        recordDatasetSource('production', file.name, rows.length);
+        await persistDatasetSources();
         showToast(rows.length+' רשומות יובאו ועודכנו'+(replaced>0?' ('+replaced+' רשומות ישנות הוחלפו)':''));
         renderAll();
       }
@@ -5802,7 +5897,7 @@ function renderAll(){
       '<div class="topbar">'+
         '<div class="brand">'+
           '<div class="brand-mark">IML</div>'+
-          '<div><h1>IML Production Dashboard <span class="app-version-badge">V4.6.9</span></h1><p><span id="entryCount">טוען נתונים…</span> <span id="storageStatusBadge" class="storage-status"></span></p><p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;"><span id="dataStatusLine">בודק נתונים…</span></p></div>'+
+          '<div><h1>IML Production Dashboard <span class="app-version-badge">V4.6.9</span></h1><p><span id="entryCount">טוען נתונים…</span> <span id="storageStatusBadge" class="storage-status"></span></p><p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;"><span id="dataStatusLine">בודק נתונים…</span></p><div id="fileSourcesPanel" style="display:none"></div></div>'+
         '</div>'+
         '<div class="topbar-actions"><span id="roleBadge" class="role-badge viewer">👁 צפייה בלבד</span><button class="tab-btn" id="adminLoginBtn" style="background:rgba(255,255,255,0.06);color:var(--text);font-size:12px;padding:6px 14px;">🔐 כניסת מנהל</button><button class="tab-btn" id="refreshSharedBtn" style="background:rgba(20,184,166,0.12);color:var(--teal);font-size:12px;padding:6px 14px;">🔄 רענן נתונים</button><button class="tab-btn" id="addEventTopBtn" style="background:rgba(139,183,255,0.12);color:#8BB7FF;font-size:12px;padding:6px 14px;">+ הוסף אירוע</button><button class="tab-btn" id="advancedDashboardBtn" style="background:var(--teal-soft);color:var(--green);font-size:12px;padding:6px 14px;">📊 דשבורד חדש</button><button class="tab-btn" id="excelAnalyzedExportBtn" style="background:rgba(124,217,146,0.12);color:#7CD992;font-size:12px;padding:6px 14px;">📥 ייצוא ניתוח לאקסל</button><label for="qualityFileInput" class="tab-btn admin-only" style="background:rgba(239,68,68,0.12);color:var(--red);font-size:12px;padding:6px 14px;cursor:pointer;">🧪 טעינת איכות (קובץ אחד או שניים)</label><button class="tab-btn" id="whatsappExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📲 WhatsApp טקסט</button><button class="tab-btn" id="whatsappImageExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📸 צילום דשבורד</button><button class="tab-btn admin-only" id="targetsProdBtn" style="background:var(--amber-soft);color:var(--amber);font-size:12px;padding:6px 14px;">⚙ יעדי ייצור</button><button class="tab-btn admin-only" id="targetsBtn" style="background:var(--teal-soft);color:var(--teal);font-size:12px;padding:6px 14px;">⚙ יעדי אריזה</button><button class="tab-btn admin-only" id="resetBtn" style="background:rgba(255,255,255,0.05);color:var(--text-muted);font-size:12px;padding:6px 14px;">איפוס</button></div>'+
       '</div>'+
@@ -6054,6 +6149,7 @@ function renderAll(){
       await Promise.all([
         loadQuality().catch(()=>{}),
         loadQualityTestResults().catch(()=>{}),
+        loadDatasetSources().catch(()=>{}),
         loadTargets().catch(()=>{}),
         loadProductionTargets().catch(()=>{}),
         loadPeriodPackagingTargets().catch(()=>{}),
