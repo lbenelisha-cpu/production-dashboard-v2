@@ -736,6 +736,9 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     .file-source-group .fs-name{color:var(--text,#e8eef2);max-width:380px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     .file-source-group .fs-rows{text-align:left;font-variant-numeric:tabular-nums;padding-inline:12px;white-space:nowrap}
     .file-source-group .fs-at{text-align:left;font-variant-numeric:tabular-nums;white-space:nowrap}
+    .file-source-group.failed h4{color:#ff8a80}
+    .file-source-group.failed .fs-name{color:#ff8a80}
+    .file-source-group.failed .fs-rows::after{content:'לא נטען'}
 </style>
 </head>
 <body>
@@ -995,15 +998,23 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   const DATASET_SOURCE_LABELS = {
     production: 'כמויות ייצור ואריזה',
     qualitySummary: 'סיכום איכות / החלטת שימוש',
-    qualityResults: 'תוצאות בדיקה'
+    qualityResults: 'תוצאות בדיקה',
+    failed: '⚠ קבצים שנבחרו ולא נטענו'
   };
-  let datasetSources = { production: [], qualitySummary: [], qualityResults: [] };
+  let datasetSources = { production: [], qualitySummary: [], qualityResults: [], failed: [] };
 
   function recordDatasetSource(kind, fileName, rowCount){
     if(!datasetSources[kind]) datasetSources[kind] = [];
     const name = String(fileName || 'ללא שם');
     // טעינה חוזרת של אותו קובץ מעדכנת את הרשומה במקום להוסיף שורה נוספת.
     datasetSources[kind] = datasetSources[kind].filter(s => s.name !== name);
+    // הצלחה מנקה רישום כישלון קודם של אותו קובץ, ולהפך.
+    if(kind !== 'failed' && datasetSources.failed) datasetSources.failed = datasetSources.failed.filter(s => s.name !== name);
+    if(kind === 'failed'){
+      ['qualitySummary','qualityResults','production'].forEach(k=>{
+        if(datasetSources[k]) datasetSources[k] = datasetSources[k].filter(s => s.name !== name);
+      });
+    }
     datasetSources[kind].push({ name, rows: Number(rowCount) || 0, at: new Date().toISOString() });
     datasetSources[kind].sort((a,b) => String(a.name).localeCompare(String(b.name), 'he'));
   }
@@ -1021,7 +1032,8 @@ html, body { margin:0; padding:0; background:#0A0D12; }
         datasetSources = {
           production: Array.isArray(parsed.production) ? parsed.production : [],
           qualitySummary: Array.isArray(parsed.qualitySummary) ? parsed.qualitySummary : [],
-          qualityResults: Array.isArray(parsed.qualityResults) ? parsed.qualityResults : []
+          qualityResults: Array.isArray(parsed.qualityResults) ? parsed.qualityResults : [],
+          failed: Array.isArray(parsed.failed) ? parsed.failed : []
         };
       }
     } catch(e){ console.error('loadDatasetSources:', e); }
@@ -1046,10 +1058,12 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     let html = '<details class="file-sources"><summary>קבצים שנטענו ('+total+') · אחרון: '+formatLoadStamp(newest)+'</summary><div class="file-sources-body">';
     for(const g of groups){
       const rows = g.items.reduce((n,i)=>n+(i.rows||0),0);
-      html += '<div class="file-source-group"><h4>'+g.label+' <span>'+g.items.length+' קבצים · '+rows.toLocaleString('he-IL')+' שורות</span></h4><table><tbody>';
+      const cls = g.kind === 'failed' ? ' failed' : '';
+      const meta = g.kind === 'failed' ? g.items.length+' קבצים' : g.items.length+' קבצים · '+rows.toLocaleString('he-IL')+' שורות';
+      html += '<div class="file-source-group'+cls+'"><h4>'+g.label+' <span>'+meta+'</span></h4><table><tbody>';
       for(const item of g.items){
         html += '<tr><td class="fs-name" title="'+String(item.name).replace(/"/g,'&quot;')+'">'+item.name+'</td>'+
-                '<td class="fs-rows">'+(item.rows||0).toLocaleString('he-IL')+'</td>'+
+                '<td class="fs-rows">'+(g.kind==='failed' ? '' : (item.rows||0).toLocaleString('he-IL'))+'</td>'+
                 '<td class="fs-at">'+formatLoadStamp(item.at)+'</td></tr>';
       }
       html += '</tbody></table></div>';
@@ -1663,7 +1677,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       if(typeof XLSX==='undefined'){ showToast('ספריית Excel לא נטענה — רעננו את הדף ונסו שוב',true); return; }
       showToast(files.length===1?'קורא ומזהה את קובץ האיכות...':'קורא ומזהה את שני קובצי האיכות...');
 
-      let summaryRows=[], resultRows=[], sourceNames=[];
+      let summaryRows=[], resultRows=[], sourceNames=[], failedFiles=[];
       for(const file of files){
         const wb=XLSX.read(await file.arrayBuffer(),{type:'array',cellDates:false});
         // Classify the file first (cheap header probe) and run ONLY the relevant parser.
@@ -1680,6 +1694,13 @@ html, body { margin:0; padding:0; background:#0A0D12; }
         // עם מספר השורות שלו והשעה שבה נטען.
         if(foundSummary.length) recordDatasetSource('qualitySummary', file.name, foundSummary.length);
         if(foundResults.length) recordDatasetSource('qualityResults', file.name, foundResults.length);
+        // קובץ שלא תרם ולו שורה אחת נרשם ככישלון. קודם, בחירה של שני קבצים
+        // שבה רק אחד נקרא בהצלחה הציגה הודעת הצלחה והשני נבלע בשקט — בדיוק
+        // מה שקרה כשקובץ התוצאות הגדול נפל וקובץ החלטת השימוש עבר.
+        if(!foundSummary.length && !foundResults.length){
+          failedFiles.push({ name:file.name, sizeMB: Math.round((file.size||0)/1048576) });
+          recordDatasetSource('failed', file.name, 0);
+        }
         sourceNames.push(file.name);
       }
 
@@ -1742,6 +1763,14 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 
       await persistDatasetSources();
       renderAll();
+
+      // אזהרה על קבצים שלא תרמו כלום, גם כשקבצים אחרים באותה בחירה הצליחו.
+      if(failedFiles.length){
+        const big = failedFiles.filter(f => f.sizeMB >= 15);
+        const names = failedFiles.map(f => f.name + (f.sizeMB ? ' ('+f.sizeMB+'MB)' : '')).join(', ');
+        showToast(failedFiles.length + ' מתוך ' + files.length + ' הקבצים לא נטענו: ' + names +
+          (big.length ? ' — גדולים מדי לפענוח בדפדפן. פצלו לפי חודש וטענו את החלקים יחד.' : ' — הכותרות לא זוהו.'), true);
+      }
       if(summaryRows.length && resultRows.length){
         showToast('האיכות נטענה: '+summaryRows.length+' מנות · '+resultRows.length+' תוצאות בדיקה | '+sourceNames.join(' + '));
       }else if(summaryRows.length){
