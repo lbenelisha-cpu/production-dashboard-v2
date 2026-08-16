@@ -9,9 +9,9 @@
 <meta name="theme-color" content="#030812">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="manifest" href="manifest.webmanifest?v=4.6.4">
-<link rel="icon" type="image/png" href="icons/iml-favicon-v4.png?v=4.6.4">
-<link rel="apple-touch-icon" href="icons/iml-apple-touch-icon-v4.png?v=4.6.4">
+<link rel="manifest" href="manifest.webmanifest?v=4.7.0">
+<link rel="icon" type="image/png" href="icons/iml-favicon-v4.png?v=4.7.0">
+<link rel="apple-touch-icon" href="icons/iml-apple-touch-icon-v4.png?v=4.7.0">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" onerror="window._xlsxLoadError=true"></script>
@@ -719,6 +719,41 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 
     .quality-results-table tr.quality-row-deviation td{background:rgba(239,68,68,.10);border-top-color:rgba(239,68,68,.35);border-bottom-color:rgba(239,68,68,.35)}
     .quality-results-table tr.quality-row-deviation td:first-child{box-shadow:inset -4px 0 0 #ef4444}
+
+    /* כרטיסי מקורות נתונים */
+    .ds-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin-top:10px;max-width:820px}
+    .ds-card{border:1px solid rgba(255,255,255,.10);border-radius:14px;padding:12px 14px;background:rgba(255,255,255,.04)}
+    .ds-card.ready{border-color:rgba(45,212,160,.35);background:rgba(45,212,160,.06)}
+    .ds-card-head{display:flex;align-items:center;gap:9px}
+    .ds-icon{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;font-size:15px;background:rgba(255,255,255,.07);flex:0 0 auto}
+    .ds-card.ready .ds-icon{background:rgba(45,212,160,.16)}
+    .ds-card h3{margin:0;font-size:13px;font-weight:700;color:var(--text,#e8eef2)}
+    .ds-state{font-size:10.5px;color:var(--text-muted)}
+    .ds-card.ready .ds-state{color:#2dd4a0}
+    .ds-count{margin:10px 0 8px}
+    .ds-count b{display:block;font-size:24px;font-weight:800;letter-spacing:.5px;color:var(--text,#e8eef2);font-variant-numeric:tabular-nums}
+    .ds-count span{font-size:10.5px;color:var(--text-muted)}
+    .ds-meta{display:flex;flex-direction:column;gap:2px;padding-top:8px;border-top:1px solid rgba(255,255,255,.08)}
+    .ds-meta small{font-size:10.5px;color:var(--text-muted)}
+    /* יומן טעינות קבצים */
+    .file-sources{margin-top:6px;font-size:11px}
+    .file-sources>summary{cursor:pointer;color:var(--text-muted);list-style:none;display:inline-flex;align-items:center;gap:6px;padding:2px 8px;border:1px solid rgba(255,255,255,.12);border-radius:999px;background:rgba(255,255,255,.03)}
+    .file-sources>summary::-webkit-details-marker{display:none}
+    .file-sources>summary::before{content:'▸';font-size:10px}
+    .file-sources[open]>summary::before{content:'▾'}
+    .file-sources>summary:hover{color:var(--text,#e8eef2);border-color:rgba(255,255,255,.25)}
+    .file-sources-body{margin-top:8px;padding:10px 12px;border:1px solid rgba(255,255,255,.10);border-radius:10px;background:rgba(255,255,255,.03);max-width:760px}
+    .file-source-group+.file-source-group{margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,.08)}
+    .file-source-group h4{margin:0 0 6px;font-size:11.5px;font-weight:700;color:var(--text,#e8eef2);display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+    .file-source-group h4 span{font-weight:400;color:var(--text-muted);font-size:10.5px}
+    .file-source-group table{width:100%;border-collapse:collapse}
+    .file-source-group td{padding:2px 0;vertical-align:top;color:var(--text-muted)}
+    .file-source-group .fs-name{color:var(--text,#e8eef2);max-width:380px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .file-source-group .fs-rows{text-align:left;font-variant-numeric:tabular-nums;padding-inline:12px;white-space:nowrap}
+    .file-source-group .fs-at{text-align:left;font-variant-numeric:tabular-nums;white-space:nowrap}
+    .file-source-group.failed h4{color:#ff8a80}
+    .file-source-group.failed .fs-name{color:#ff8a80}
+    .file-source-group.failed .fs-rows::after{content:'לא נטען'}
 </style>
 </head>
 <body>
@@ -770,12 +805,20 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   function _cacheDelete(key){ _storageMemoryCache.delete(key); _storageInflight.delete(key); }
   function _cacheClear(){ _storageMemoryCache.clear(); _storageInflight.clear(); }
 
+  // כל פעולה מקבלת ניסיונות חוזרים, לא רק הקריאות.
+  // קודם: attempts=1 לכל פעולה שאינה get/getMany/status — כלומר ל-'set'
+  // ול-'appendEvent' לא היה ניסיון חוזר בכלל, ובלוק ה-retry שלמטה היה קוד מת
+  // עבורן. 502 בודד על מקטע אחד מתוך מאות בהעלאת קובץ האיכות הפיל את כל
+  // ההעלאה. Netlify Blobs מחזיר 502/503 חולפים תחת עומס — זה קורה.
+  const STORAGE_MAX_ATTEMPTS = 5;
+  const STORAGE_TIMEOUT_MS = 25000;
+
   async function _callStorageApi(action, key, value){
     let lastError;
-    const attempts = action === 'get' || action === 'getMany' || action === 'status' ? 2 : 1;
+    const attempts = STORAGE_MAX_ATTEMPTS;
     for(let attempt=1; attempt<=attempts; attempt++){
       const controller = new AbortController();
-      const timer = setTimeout(()=>controller.abort(), 25000);
+      const timer = setTimeout(()=>controller.abort(), STORAGE_TIMEOUT_MS);
       try {
         const res = await fetch(STORAGE_API_URL, {
           method: 'POST',
@@ -795,9 +838,23 @@ html, body { margin:0; padding:0; background:#0A0D12; }
         return data;
       } catch(err){
         lastError = err;
-        const retryable = err?.name === 'AbortError' || [502,503,504].includes(Number(err?.status));
-        if(!retryable || attempt === attempts) throw err;
-        await new Promise(resolve=>setTimeout(resolve, 600 * attempt));
+        // נוספו: 429 (rate limit), 500, וכשל רשת של fetch (TypeError) — כולם
+        // חולפים ושווים ניסיון נוסף.
+        const status = Number(err?.status);
+        const networkFailure = err?.name === 'TypeError';
+        const retryable = err?.name === 'AbortError' || networkFailure ||
+          [429,500,502,503,504].includes(status);
+        if(!retryable || attempt === attempts){
+          if(attempt === attempts && retryable){
+            err.message = 'storage ' + action + ' נכשל אחרי ' + attempts +
+              ' ניסיונות (' + (status || err?.name || 'network') + ') — מפתח: ' + key;
+          }
+          throw err;
+        }
+        // השהיה מעריכית עם jitter, כדי שמקטעים מקבילים לא ינסו שוב בו-זמנית
+        // ויחזירו את אותו העומס שגרם ל-502 מלכתחילה.
+        const backoff = Math.min(8000, 500 * Math.pow(2, attempt - 1));
+        await new Promise(resolve=>setTimeout(resolve, backoff + Math.random() * 300));
       } finally {
         clearTimeout(timer);
       }
@@ -950,6 +1007,112 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   const QUALITY_CHUNK_PREFIX = 'quality_ud_full_v4_chunk_';
   const QUALITY_CHUNK_SIZE = 1800;
   const QUALITY_RESULTS_MANIFEST_KEY = 'quality_test_results_v1_manifest';
+
+  // ---- יומן טעינות: שם קובץ, כמות שורות ומתי נטען, לכל קובץ בנפרד ----
+  const DATASET_SOURCES_KEY = 'dataset_sources_v1';
+  const DATASET_SOURCE_LABELS = {
+    production: 'כמויות ייצור ואריזה',
+    qualitySummary: 'סיכום איכות / החלטת שימוש',
+    qualityResults: 'תוצאות בדיקה',
+    failed: '⚠ קבצים שנבחרו ולא נטענו'
+  };
+  let datasetSources = { production: [], qualitySummary: [], qualityResults: [], failed: [] };
+
+  function recordDatasetSource(kind, fileName, rowCount){
+    if(!datasetSources[kind]) datasetSources[kind] = [];
+    const name = String(fileName || 'ללא שם');
+    // טעינה חוזרת של אותו קובץ מעדכנת את הרשומה במקום להוסיף שורה נוספת.
+    datasetSources[kind] = datasetSources[kind].filter(s => s.name !== name);
+    // הצלחה מנקה רישום כישלון קודם של אותו קובץ, ולהפך.
+    if(kind !== 'failed' && datasetSources.failed) datasetSources.failed = datasetSources.failed.filter(s => s.name !== name);
+    if(kind === 'failed'){
+      ['qualitySummary','qualityResults','production'].forEach(k=>{
+        if(datasetSources[k]) datasetSources[k] = datasetSources[k].filter(s => s.name !== name);
+      });
+    }
+    datasetSources[kind].push({ name, rows: Number(rowCount) || 0, at: new Date().toISOString() });
+    datasetSources[kind].sort((a,b) => String(a.name).localeCompare(String(b.name), 'he'));
+  }
+
+  async function persistDatasetSources(){
+    try { await _dashStorage.set(DATASET_SOURCES_KEY, JSON.stringify(datasetSources)); return true; }
+    catch(e){ console.error('persistDatasetSources:', e); return false; }
+  }
+
+  async function loadDatasetSources(){
+    try {
+      const res = await _dashStorage.get(DATASET_SOURCES_KEY).catch(()=>null);
+      const parsed = res && res.value ? JSON.parse(res.value) : null;
+      if(parsed && typeof parsed === 'object'){
+        datasetSources = {
+          production: Array.isArray(parsed.production) ? parsed.production : [],
+          qualitySummary: Array.isArray(parsed.qualitySummary) ? parsed.qualitySummary : [],
+          qualityResults: Array.isArray(parsed.qualityResults) ? parsed.qualityResults : [],
+          failed: Array.isArray(parsed.failed) ? parsed.failed : []
+        };
+      }
+    } catch(e){ console.error('loadDatasetSources:', e); }
+  }
+
+  function formatLoadStamp(iso){
+    const d = new Date(iso);
+    if(isNaN(d.getTime())) return '—';
+    const pad = n => String(n).padStart(2,'0');
+    return pad(d.getDate())+'/'+pad(d.getMonth()+1)+'/'+d.getFullYear()+' '+pad(d.getHours())+':'+pad(d.getMinutes());
+  }
+
+  function renderDatasetSources(){
+    const host = root.querySelector('#fileSourcesPanel');
+    if(!host) return;
+    const latest = items => (items||[]).map(i=>i.at).sort().slice(-1)[0] || '';
+    const cards = [
+      { kind:'production',    icon:'📊', title:'תפוקות',      file:'קובץ כמויות יצור ואריזה',
+        count: (typeof entries!=='undefined' ? entries.length : 0) },
+      { kind:'qualityResults', icon:'🧪', title:'תוצאות איכות', file:'קובץ איכות תוצאות',
+        count: (typeof qualityTestResults!=='undefined' ? (qualityTestResults||[]).length : 0) },
+      { kind:'qualitySummary', icon:'⚠️', title:'חריגות איכות', file:'קובץ איכות החלטת שימוש',
+        count: (typeof qualityEntries!=='undefined' ? (qualityEntries||[]).length : 0) }
+    ];
+    let html = '<div class="ds-cards">';
+    for(const c of cards){
+      const items = datasetSources[c.kind] || [];
+      const at = latest(items);
+      const ready = c.count > 0;
+      html += '<article class="ds-card'+(ready?' ready':'')+'">'+
+        '<div class="ds-card-head"><span class="ds-icon">'+c.icon+'</span>'+
+          '<div><h3>'+c.title+'</h3><span class="ds-state">'+(ready?'תקין וזמין':'ממתין לקובץ')+'</span></div></div>'+
+        '<div class="ds-count"><b>'+c.count.toLocaleString('he-IL')+'</b><span>רשומות פעילות</span></div>'+
+        '<div class="ds-meta"><small>'+c.file+(items.length>1?' · '+items.length+' קבצים':'')+'</small>'+
+          '<small>'+(at?formatLoadStamp(at):'טרם נטען')+'</small></div>'+
+      '</article>';
+    }
+    html += '</div>';
+
+    // פירוט לכל קובץ בנפרד, מתחת לכרטיסים
+    const groups = Object.keys(DATASET_SOURCE_LABELS)
+      .map(kind => ({ kind, label: DATASET_SOURCE_LABELS[kind], items: datasetSources[kind] || [] }))
+      .filter(g => g.items.length);
+    if(groups.length){
+      const total = groups.reduce((n,g)=>n+g.items.length,0);
+      html += '<details class="file-sources"><summary>פירוט לפי קובץ ('+total+')</summary><div class="file-sources-body">';
+      for(const g of groups){
+        const rows = g.items.reduce((n,i)=>n+(i.rows||0),0);
+        const cls = g.kind === 'failed' ? ' failed' : '';
+        const meta = g.kind === 'failed' ? g.items.length+' קבצים' : g.items.length+' קבצים · '+rows.toLocaleString('he-IL')+' שורות';
+        html += '<div class="file-source-group'+cls+'"><h4>'+g.label+' <span>'+meta+'</span></h4><table><tbody>';
+        for(const item of g.items){
+          html += '<tr><td class="fs-name" title="'+String(item.name).replace(/"/g,'&quot;')+'">'+item.name+'</td>'+
+                  '<td class="fs-rows">'+(g.kind==='failed' ? '' : (item.rows||0).toLocaleString('he-IL'))+'</td>'+
+                  '<td class="fs-at">'+formatLoadStamp(item.at)+'</td></tr>';
+        }
+        html += '</tbody></table></div>';
+      }
+      html += '</div></details>';
+    }
+    host.innerHTML = html;
+    host.style.display = '';
+  }
+
   const QUALITY_RESULTS_CHUNK_PREFIX = 'quality_test_results_v1_chunk_';
   const QUALITY_RESULTS_CHUNK_SIZE = 1200;
   let qualityTestResults = [];
@@ -974,12 +1137,12 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     'storage location':'facility','facility':'facility','site':'facility','מתקן':'facility',
     'production plant id':'plant',
     'production line':'line','line':'line','resource':'line','work center':'line','קו':'line',
-    'operation short text':'test_name','master insp characteristic':'test_name','master inspection characteristic':'test_name','master insp charactristic':'test_name',
+    'operation short text':'operation_text','master insp characteristic':'test_name','master inspection characteristic':'test_name','master insp charactristic':'test_name',
     'arithmetic mean of valid measured values':'measured_value','measured value':'measured_value','inspection result value':'measured_value',
     'lower specif limit':'lower_limit','lower specification limit':'lower_limit','lower spec limit':'lower_limit',
     'upper specif limit':'upper_limit','upper specification limit':'upper_limit','upper spec limit':'upper_limit',
     'characteristic remarks':'characteristic_remarks','charactristic remarks':'characteristic_remarks','unit of measurement':'unit','qualitative':'qualitative','sample #':'sample',
-    'process order storage location':'facility','operation short text':'test_name','ud remarks':'remarks','batch remarks':'remarks'
+    'process order storage location':'facility','operation short text':'operation_text','ud remarks':'remarks','batch remarks':'remarks'
   };
 
   function normKeyPart(v){ return String(v || '').trim().toUpperCase(); }
@@ -1408,7 +1571,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       for(const row of grid){
         const m=mapQualityHeaders(row||[]);
         const hasMeasure=(m.measured_value!==undefined || m.lower_limit!==undefined || m.upper_limit!==undefined);
-        if(m.batch!==undefined && m.test_name!==undefined && hasMeasure) hasResults=true;
+        if(m.batch!==undefined && (m.test_name!==undefined||m.operation_text!==undefined) && hasMeasure) hasResults=true;
         if(m.batch!==undefined && m.ud_code!==undefined && !hasMeasure) hasSummary=true;
       }
       if(hasResults || hasSummary) break; // first sheet with a recognizable header is enough
@@ -1416,31 +1579,26 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     return {hasResults, hasSummary};
   }
 
-  function processQualityResultsWorkbook(wb){
-    const results=[];
+  // מיפוי שורות תוצאה משורת כותרת + מקבץ שורות נתונים.
+  // חולץ מתוך processQualityResultsWorkbook כדי שגם ה-Worker יוכל לקרוא לו
+  // על מקטע שורות בכל פעם, במקום לבנות טבלה של 280K שורות בזיכרון בבת אחת.
+  function mapQualityResultRows(headerRow, dataRows){
+    const out=[];
+    const map=mapQualityHeaders(headerRow||[]);
+    if(map.batch===undefined) return out;
     const badStatus = v => {
       const t=String(v==null?'':v).trim().toUpperCase();
       if(!t) return false;
       return t.includes('REJECT') || t.includes('FAIL') || t.includes('NOT SUCCESS') || t.includes('OUT') || t.includes('חריג') || t.includes('פסול');
     };
-    for(const sheetName of wb.SheetNames){
-      const ws=wb.Sheets[sheetName];
-      const grid=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:true,blankrows:false});
-      if(!grid.length) continue;
-      let headerIndex=-1, map=null;
-      for(let i=0;i<Math.min(grid.length,40);i++){
-        const m=mapQualityHeaders(grid[i]||[]);
-        if(m.batch!==undefined && (m.test_name!==undefined || m.measured_value!==undefined) && (m.inspection_lot!==undefined || m.material_code!==undefined)){
-          headerIndex=i; map=m; break;
-        }
-      }
-      if(headerIndex>=0){
-        const get=(row,k)=>map[k]===undefined?'':row[map[k]];
-        for(let i=headerIndex+1;i<grid.length;i++){
-          const row=grid[i]||[];
+    const get=(row,k)=>map[k]===undefined?'':row[map[k]];
+        for(let i=0;i<dataRows.length;i++){
+          const row=dataRows[i]||[];
           const batch=normalizeBatch(get(row,'batch'));
           if(!batch) continue;
-          const testName=String(get(row,'test_name')||'').trim();
+          // שם הבדיקה נלקח ממאפיין הבדיקה. 'Operation short text' הוא שלב
+          // התהליך ("בדיקות מעבדה") וזהה לכל השורות — הוא רק גיבוי.
+          const testName=String(get(row,'test_name')||get(row,'operation_text')||'').trim();
           const rawResult=get(row,'measured_value');
           const qualitative=String(get(row,'qualitative')||'').trim();
           const resultValue=!isMissingTestValue(rawResult)?rawResult:(!isMissingTestValue(qualitative)?qualitative:'');
@@ -1465,7 +1623,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
             status='ללא גבולות';
           }
           const rangeText=(min!==null||max!==null)?((min!==null?min:'—')+' - '+(max!==null?max:'—')):'';
-          results.push({
+          out.push({
             batch,
             inspectionLot:String(get(row,'inspection_lot')||'').trim(),
             sample:String(get(row,'sample')||'').trim(),
@@ -1485,7 +1643,31 @@ html, body { margin:0; padding:0; background:#0A0D12; }
             udCode:String(get(row,'ud_code')||'').trim(),
             remarks:String(get(row,'characteristic_remarks')||get(row,'remarks')||'').trim()
           });
+    }
+    return out;
+  }
+
+  function processQualityResultsWorkbook(wb){
+    const results=[];
+    const badStatus = v => {
+      const t=String(v==null?'':v).trim().toUpperCase();
+      if(!t) return false;
+      return t.includes('REJECT') || t.includes('FAIL') || t.includes('NOT SUCCESS') || t.includes('OUT') || t.includes('חריג') || t.includes('פסול');
+    };
+    for(const sheetName of wb.SheetNames){
+      const ws=wb.Sheets[sheetName];
+      const grid=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:true,blankrows:false});
+      if(!grid.length) continue;
+      let headerIndex=-1, map=null;
+      for(let i=0;i<Math.min(grid.length,40);i++){
+        const m=mapQualityHeaders(grid[i]||[]);
+        if(m.batch!==undefined && (m.test_name!==undefined || m.operation_text!==undefined || m.measured_value!==undefined) && (m.inspection_lot!==undefined || m.material_code!==undefined)){
+          headerIndex=i; map=m; break;
         }
+      }
+      if(headerIndex>=0){
+        const mapped = mapQualityResultRows(grid[headerIndex], grid.slice(headerIndex+1));
+        for(const r of mapped) results.push(r);
         continue;
       }
 
@@ -1538,33 +1720,214 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     return processQualityRows(selected.grid[selected.found.index],selected.grid.slice(selected.found.index+1));
   }
 
+
+  // ---------- פענוח קובץ איכות ב-Web Worker, בחלקים ----------
+  // הקובץ הגדול מ-SAP (40MB, 280K שורות) לא ניתן לפענוח ב-thread הראשי:
+  // XLSX.read לבדו עולה ~1.1GB, ובניית טבלה של 280K שורות בבת אחת מוסיפה
+  // עוד מאות MB. שני הדברים יחד מפילים את הלשונית.
+  //
+  // כאן הפענוח רץ ב-Worker עם heap משלו, והשורות נקראות במקטעים של 20,000
+  // ומוחזרות בזרם. ה-thread הראשי לא קופא, מוצגת התקדמות אמיתית, וקריסה
+  // של ה-Worker ניתנת לתפיסה במקום להפיל את הדף.
+  const QUALITY_WORKER_ROW_STEP = 20000;
+  // כתובת ה-XLSX נלקחת מתג ה-script שנטען בפועל. אם ה-CDN הראשי נחסם
+  // ונטענה כתובת גיבוי, ה-Worker חייב לטעון את אותה כתובת.
+  function resolveXlsxUrl(){
+    try{
+      const tag = Array.from(document.getElementsByTagName('script'))
+        .map(t=>t.src||'').find(src=>/xlsx.*\.min\.js/i.test(src));
+      if(tag) return new URL(tag, location.href).href;
+    }catch(e){}
+    return 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+  }
+  let _qualityWorkerUrl = null;
+
+  function buildQualityWorkerUrl(){
+    if(_qualityWorkerUrl) return _qualityWorkerUrl;
+    // מקור ה-Worker נבנה מהפונקציות עצמן דרך toString(), כך שאין עותק שני
+    // של לוגיקת הפענוח שיכול להיפרד מהמקור.
+    const fns = [normalizeQualityHeader, mapQualityHeaders, findQualityHeaderRow,
+                 normalizeBatch, isMissingTestValue, parseNumericResult, parseTestHeader,
+                 normalizeFacilityForQuality, dateObjToISO, excelSerialToISO, normalizeDateStr,
+                 mapQualityResultRows, processQualityRows, classifyQualityWorkbook,
+                 processQualitySummaryWorkbook];
+    const src = "importScripts(" + JSON.stringify(resolveXlsxUrl()) + ");\n"
+      + "var QUALITY_HEADER_MAP=" + JSON.stringify(QUALITY_HEADER_MAP) + ";\n"
+      + "var OLD_TO_NEW_FACILITY=" + JSON.stringify(OLD_TO_NEW_FACILITY) + ";\n"
+      + "var ROW_STEP=" + QUALITY_WORKER_ROW_STEP + ";\n"
+      + fns.map(f => f.toString()).join("\n\n") + "\n\n"
+      + QUALITY_WORKER_MAIN;
+    _qualityWorkerUrl = URL.createObjectURL(new Blob([src], {type:'text/javascript'}));
+    return _qualityWorkerUrl;
+  }
+
+  const QUALITY_WORKER_MAIN = [
+    "self.onmessage = function(e){",
+    "  var buf = e.data.buf;",
+    "  try {",
+    "    self.postMessage({type:'progress', pct:0, message:'קורא את הקובץ'});",
+    "    // dense:true חובה כאן. בלעדיו SheetJS בונה אובייקט עם ~9.5 מיליון מפתחות",
+    "    // מחרוזת (אחד לכל תא) והקריאה נמשכת דקות ארוכות במקום שניות.",
+    "    var wb = XLSX.read(new Uint8Array(buf), {type:'array', cellDates:false, dense:true});",
+    "    var cls = classifyQualityWorkbook(wb);",
+    "    var runSummary = cls.hasSummary || (!cls.hasSummary && !cls.hasResults);",
+    "    var runResults = cls.hasResults || (!cls.hasSummary && !cls.hasResults);",
+    "    if(runSummary){",
+    "      var summary = processQualitySummaryWorkbook(wb) || [];",
+    "      if(summary.length) self.postMessage({type:'summary', rows:summary});",
+    "    }",
+    "    if(runResults){",
+    "      for(var si=0; si<wb.SheetNames.length; si++){",
+    "        var ws = wb.Sheets[wb.SheetNames[si]];",
+    "        if(!ws || !ws['!ref']) continue;",
+    "        var range = XLSX.utils.decode_range(ws['!ref']);",
+    "        var probeEnd = Math.min(range.e.r, range.s.r + 40);",
+    "        var probe = XLSX.utils.sheet_to_json(ws, {header:1, defval:'', raw:true, blankrows:false,",
+    "          range: XLSX.utils.encode_range({s:{r:range.s.r,c:range.s.c}, e:{r:probeEnd,c:range.e.c}})});",
+    "        var headerRow = null, headerAbs = -1;",
+    "        for(var i=0;i<probe.length;i++){",
+    "          var m = mapQualityHeaders(probe[i]||[]);",
+    "          if(m.batch!==undefined && (m.test_name!==undefined || m.operation_text!==undefined || m.measured_value!==undefined) &&",
+    "             (m.inspection_lot!==undefined || m.material_code!==undefined)){",
+    "            headerRow = probe[i]; headerAbs = range.s.r + i; break;",
+    "          }",
+    "        }",
+    "        if(headerAbs < 0) continue;",
+    "        var total = range.e.r - headerAbs;",
+    "        var done = 0;",
+    "        for(var start = headerAbs + 1; start <= range.e.r; start += ROW_STEP){",
+    "          var end = Math.min(range.e.r, start + ROW_STEP - 1);",
+    "          var grid = XLSX.utils.sheet_to_json(ws, {header:1, defval:'', raw:true, blankrows:false,",
+    "            range: XLSX.utils.encode_range({s:{r:start,c:range.s.c}, e:{r:end,c:range.e.c}})});",
+    "          var rows = mapQualityResultRows(headerRow, grid);",
+    "          grid = null;",
+    "          done = end - headerAbs;",
+    "          self.postMessage({type:'results', rows:rows, pct: total ? Math.round(done/total*100) : 100});",
+    "        }",
+    "        break;",
+    "      }",
+    "    }",
+    "    self.postMessage({type:'done'});",
+    "  } catch(err){",
+    "    self.postMessage({type:'error', message: String((err && err.message) || err)});",
+    "  }",
+    "};"
+  ].join("\n");
+
+  function parseQualityFileInWorker(file, onProgress){
+    return new Promise(function(resolve, reject){
+      var worker;
+      try { worker = new Worker(buildQualityWorkerUrl()); }
+      catch(e){ reject(Object.assign(new Error('WORKER_UNAVAILABLE'), {code:'WORKER_UNAVAILABLE'})); return; }
+      var summaryRows = [], resultRows = [];
+      var finish = function(fn, payload){ try{ worker.terminate(); }catch(e){} fn(payload); };
+      worker.onmessage = function(ev){
+        var d = ev.data || {};
+        if(d.type === 'progress'){ onProgress && onProgress(d); return; }
+        if(d.type === 'summary'){ summaryRows = summaryRows.concat(d.rows || []); return; }
+        if(d.type === 'results'){
+          if(d.rows && d.rows.length) resultRows = resultRows.concat(d.rows);
+          onProgress && onProgress({pct: d.pct, message: 'מפענח שורות: ' + resultRows.length.toLocaleString('he-IL')});
+          return;
+        }
+        if(d.type === 'done') return finish(resolve, {summaryRows: summaryRows, resultRows: resultRows});
+        if(d.type === 'error') return finish(reject, new Error(d.message || 'שגיאת פענוח'));
+      };
+      // נורה גם כשה-Worker נהרג מחוסר זיכרון — הדף שורד ואפשר לדווח.
+      worker.onerror = function(ev){
+        finish(reject, Object.assign(new Error(ev && ev.message || 'WORKER_CRASHED'), {code:'WORKER_CRASHED'}));
+      };
+      file.arrayBuffer().then(function(buf){
+        worker.postMessage({buf: buf}, [buf]);
+      }, function(err){ finish(reject, err); });
+    });
+  }
+
+  function setQualityLoadProgress(text){
+    const el = root && root.querySelector ? root.querySelector('#dataStatusLine') : null;
+    if(!el) return;
+    if(text){ el.dataset.busy='1'; el.textContent = '⏳ ' + text; }
+    else if(el.dataset.busy){ delete el.dataset.busy; renderAll(); }
+  }
+
   async function handleQualityFiles(fileList){
     try{
       const files=Array.from(fileList||[]);
-      if(files.length<1 || files.length>2){
-        showToast('יש לבחור קובץ Excel אחד או שני קובצי איכות יחד',true);
+      // הוסרה מגבלת שני קבצים: ייצוא איכות גדול מ-SAP חייב להיות מפוצל
+      // (הדפדפן לא מסוגל לפענח 280K שורות בקובץ אחד), ואז יש 9-12 חלקים.
+      if(files.length<1){
+        showToast('יש לבחור לפחות קובץ Excel אחד',true);
+        return;
+      }
+      if(files.length>20){
+        showToast('יותר מדי קבצים בבת אחת — בחרו עד 20',true);
         return;
       }
       if(typeof XLSX==='undefined'){ showToast('ספריית Excel לא נטענה — רעננו את הדף ונסו שוב',true); return; }
       showToast(files.length===1?'קורא ומזהה את קובץ האיכות...':'קורא ומזהה את שני קובצי האיכות...');
 
-      let summaryRows=[], resultRows=[], sourceNames=[];
+      let summaryRows=[], resultRows=[], sourceNames=[], failedFiles=[];
       for(const file of files){
-        const wb=XLSX.read(await file.arrayBuffer(),{type:'array',cellDates:false});
-        // Classify the file first (cheap header probe) and run ONLY the relevant parser.
-        // A large detailed-results export has hundreds of thousands of rows; running both
-        // parsers over it doubles the work and can freeze the tab.
-        const cls=classifyQualityWorkbook(wb);
-        const runSummary = cls.hasSummary || (!cls.hasSummary && !cls.hasResults);
-        const runResults = cls.hasResults || (!cls.hasSummary && !cls.hasResults);
-        const foundSummary=runSummary ? processQualitySummaryWorkbook(wb) : [];
-        const foundResults=runResults ? processQualityResultsWorkbook(wb) : [];
+        const sizeMB = (file.size||0)/1048576;
+        let foundSummary=[], foundResults=[];
+        let parsedInWorker=false, workerError='';
+        if(typeof Worker!=='undefined'){
+          try{
+            showToast('מפענח את '+file.name+' ברקע...');
+            const out = await parseQualityFileInWorker(file, p=>{
+              const pct = (p && typeof p.pct==='number') ? ' '+p.pct+'%' : '';
+              setQualityLoadProgress(file.name+pct+(p&&p.message?' · '+p.message:''));
+            });
+            foundSummary = out.summaryRows || [];
+            foundResults = out.resultRows || [];
+            parsedInWorker = true;
+          }catch(err){
+            workerError = (err && err.message) || String(err);
+            console.warn('worker parse failed, falling back to main thread:', err);
+            // Worker חסום (CSP / דפדפן ישן) הוא לא אותו דבר כמו Worker שקרס
+            // מחוסר זיכרון. בשני המקרים שווה לנסות ב-thread הראשי: מאז
+            // שהוספנו dense:true הפענוח שם לוקח ~30 שניות במקום להיתקע.
+            setQualityLoadProgress(file.name+' · ה-Worker לא זמין, מפענח בחלון הראשי (עד דקה)');
+            await new Promise(r=>setTimeout(r,50));
+          }
+        }
+        setQualityLoadProgress('');
+        if(!parsedInWorker){
+          const wb=XLSX.read(await file.arrayBuffer(),{type:'array',cellDates:false,dense:true});
+          // Classify the file first (cheap header probe) and run ONLY the relevant parser.
+          const cls=classifyQualityWorkbook(wb);
+          const runSummary = cls.hasSummary || (!cls.hasSummary && !cls.hasResults);
+          const runResults = cls.hasResults || (!cls.hasSummary && !cls.hasResults);
+          foundSummary=runSummary ? processQualitySummaryWorkbook(wb) : [];
+          foundResults=runResults ? processQualityResultsWorkbook(wb) : [];
+        }
         if(foundSummary.length) summaryRows.push(...foundSummary);
         if(foundResults.length) resultRows.push(...foundResults);
+        // רישום לכל קובץ בנפרד, כדי שבטעינת חלקים מרובים יופיע שם כל חלק
+        // עם מספר השורות שלו והשעה שבה נטען.
+        if(foundSummary.length) recordDatasetSource('qualitySummary', file.name, foundSummary.length);
+        if(foundResults.length) recordDatasetSource('qualityResults', file.name, foundResults.length);
+        // קובץ שלא תרם ולו שורה אחת נרשם ככישלון. קודם, בחירה של שני קבצים
+        // שבה רק אחד נקרא בהצלחה הציגה הודעת הצלחה והשני נבלע בשקט — בדיוק
+        // מה שקרה כשקובץ התוצאות הגדול נפל וקובץ החלטת השימוש עבר.
+        if(!foundSummary.length && !foundResults.length){
+          failedFiles.push({ name:file.name, sizeMB: Math.round((file.size||0)/1048576), why: workerError });
+          recordDatasetSource('failed', file.name, 0);
+          console.error('quality file produced no rows:', file.name, 'worker error:', workerError || '(none)');
+        }
         sourceNames.push(file.name);
       }
 
       if(!summaryRows.length && !resultRows.length){
+        // הודעת "לא זוהה" נכונה רק אם הכותרות באמת לא מוכרות. כשקובץ ענק
+        // מפיל את הפענוח מחוסר זיכרון הגענו לכאן גם כן, וההודעה שלחה לכיוון
+        // הלא נכון. מפרידים בין השניים.
+        const bigFile = files.some(f => (f.size||0) > 15*1024*1024);
+        if(bigFile){
+          throw new Error('הקובץ גדול מדי לפענוח בדפדפן (' +
+            Math.round(files.reduce((n,f)=>n+(f.size||0),0)/1048576) + 'MB). ' +
+            'פצלו את הייצוא מ-SAP לפי חודש וטענו את החלקים יחד — ניתן לבחור כמה קבצים בבת אחת.');
+        }
         throw new Error('הקובץ לא זוהה כקובץ סיכום איכות או כקובץ תוצאות בדיקה');
       }
 
@@ -1587,20 +1950,41 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       // Sequential loading is intentionally supported:
       // first load the summary file, then load the detailed results file.
       let okSummary=true, okResults=true;
+      // צבירה במקום דריסה. קודם כל טעינה החליפה את qualityTestResults במלואו,
+      // כך שטעינת קובץ מפוצל בחלקים השאירה רק את החלק האחרון. עכשיו כל חלק
+      // מתווסף לקודמים, עם סינון כפילויות מול מה שכבר קיים.
       if(summaryRows.length){
-        qualityEntries=summaryRows;
+        const seen=new Set();
+        qualityEntries=[...(qualityEntries||[]), ...summaryRows].filter(r=>{
+          const k=[normalizeBatch(r.batch),String(r.inspectionLot||''),String(r.udCode||''),String(r.workOrder||'')].join('|');
+          if(seen.has(k)) return false; seen.add(k); return true;
+        });
         buildQualitySummary();
         okSummary=await persistQuality();
       }
       if(resultRows.length){
-        qualityTestResults=resultRows;
+        const seen=new Set();
+        qualityTestResults=[...(qualityTestResults||[]), ...resultRows].filter(r=>{
+          const k=[normalizeBatch(r.batch),String(r.inspectionLot||''),String(r.sample||''),
+                   String(r.testCode||r.testName||''),String(r.result||'')].join('|');
+          if(seen.has(k)) return false; seen.add(k); return true;
+        });
         rebuildQualityTestIndex();
         okResults=await persistQualityTestResults();
       }
 
       if(!(okSummary&&okResults)) return;
 
+      await persistDatasetSources();
       renderAll();
+
+      // אזהרה על קבצים שלא תרמו כלום, גם כשקבצים אחרים באותה בחירה הצליחו.
+      if(failedFiles.length){
+        const big = failedFiles.filter(f => f.sizeMB >= 15);
+        const names = failedFiles.map(f => f.name + (f.sizeMB ? ' ('+f.sizeMB+'MB)' : '') + (f.why ? ' — ' + f.why : '')).join(', ');
+        showToast(failedFiles.length + ' מתוך ' + files.length + ' הקבצים לא נטענו: ' + names +
+          (big.length ? ' — גדולים מדי לפענוח בדפדפן. פצלו לפי חודש וטענו את החלקים יחד.' : ' — הכותרות לא זוהו.'), true);
+      }
       if(summaryRows.length && resultRows.length){
         showToast('האיכות נטענה: '+summaryRows.length+' מנות · '+resultRows.length+' תוצאות בדיקה | '+sourceNames.join(' + '));
       }else if(summaryRows.length){
@@ -5154,6 +5538,7 @@ function renderAll(){
         ' (' + qualityEntries.length + ' שורות גולמיות)' +
         ' | אחסון: ' + (_netlifyAvailable ? '🟢 Netlify' : '🟡 מקומי');
     }
+    renderDatasetSources();
 
     root.querySelectorAll('.tabs .tab-btn').forEach(b=> b.classList.toggle('active', b.dataset.tab===tab));
 
@@ -5730,6 +6115,8 @@ function renderAll(){
       entries = entries.concat(rows);
       const ok = await persist();
       if(ok){
+        recordDatasetSource('production', file.name, rows.length);
+        await persistDatasetSources();
         showToast(rows.length+' רשומות יובאו ועודכנו'+(replaced>0?' ('+replaced+' רשומות ישנות הוחלפו)':''));
         renderAll();
       }
@@ -5753,7 +6140,7 @@ function renderAll(){
       '<div class="topbar">'+
         '<div class="brand">'+
           '<div class="brand-mark">IML</div>'+
-          '<div><h1>IML Production Dashboard <span class="app-version-badge">V4.6.9</span></h1><p><span id="entryCount">טוען נתונים…</span> <span id="storageStatusBadge" class="storage-status"></span></p><p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;"><span id="dataStatusLine">בודק נתונים…</span></p></div>'+
+          '<div><h1>IML Production Dashboard <span class="app-version-badge">V4.7.0</span></h1><p><span id="entryCount">טוען נתונים…</span> <span id="storageStatusBadge" class="storage-status"></span></p><p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;"><span id="dataStatusLine">בודק נתונים…</span></p><div id="fileSourcesPanel" style="display:none"></div></div>'+
         '</div>'+
         '<div class="topbar-actions"><span id="roleBadge" class="role-badge viewer">👁 צפייה בלבד</span><button class="tab-btn" id="adminLoginBtn" style="background:rgba(255,255,255,0.06);color:var(--text);font-size:12px;padding:6px 14px;">🔐 כניסת מנהל</button><button class="tab-btn" id="refreshSharedBtn" style="background:rgba(20,184,166,0.12);color:var(--teal);font-size:12px;padding:6px 14px;">🔄 רענן נתונים</button><button class="tab-btn" id="addEventTopBtn" style="background:rgba(139,183,255,0.12);color:#8BB7FF;font-size:12px;padding:6px 14px;">+ הוסף אירוע</button><button class="tab-btn" id="advancedDashboardBtn" style="background:var(--teal-soft);color:var(--green);font-size:12px;padding:6px 14px;">📊 דשבורד חדש</button><button class="tab-btn" id="excelAnalyzedExportBtn" style="background:rgba(124,217,146,0.12);color:#7CD992;font-size:12px;padding:6px 14px;">📥 ייצוא ניתוח לאקסל</button><label for="qualityFileInput" class="tab-btn admin-only" style="background:rgba(239,68,68,0.12);color:var(--red);font-size:12px;padding:6px 14px;cursor:pointer;">🧪 טעינת איכות (קובץ אחד או שניים)</label><button class="tab-btn" id="whatsappExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📲 WhatsApp טקסט</button><button class="tab-btn" id="whatsappImageExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📸 צילום דשבורד</button><button class="tab-btn admin-only" id="targetsProdBtn" style="background:var(--amber-soft);color:var(--amber);font-size:12px;padding:6px 14px;">⚙ יעדי ייצור</button><button class="tab-btn admin-only" id="targetsBtn" style="background:var(--teal-soft);color:var(--teal);font-size:12px;padding:6px 14px;">⚙ יעדי אריזה</button><button class="tab-btn admin-only" id="resetBtn" style="background:rgba(255,255,255,0.05);color:var(--text-muted);font-size:12px;padding:6px 14px;">איפוס</button></div>'+
       '</div>'+
@@ -6005,6 +6392,7 @@ function renderAll(){
       await Promise.all([
         loadQuality().catch(()=>{}),
         loadQualityTestResults().catch(()=>{}),
+        loadDatasetSources().catch(()=>{}),
         loadTargets().catch(()=>{}),
         loadProductionTargets().catch(()=>{}),
         loadPeriodPackagingTargets().catch(()=>{}),
@@ -6138,7 +6526,7 @@ root.querySelector('#printBtn').onclick = ()=> window.print();
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   window.addEventListener('load', async () => {
     try {
-      const reg = await navigator.serviceWorker.register('./service-worker.js?v=4.6.9', { updateViaCache: 'none' });
+      const reg = await navigator.serviceWorker.register('./service-worker.js?v=4.7.0', { updateViaCache: 'none' });
       await reg.update();
       let reloading = false;
       navigator.serviceWorker.addEventListener('controllerchange', () => {
