@@ -9,9 +9,9 @@
 <meta name="theme-color" content="#030812">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="manifest" href="manifest.webmanifest?v=4.7.5">
-<link rel="icon" type="image/png" href="icons/iml-favicon-v4.png?v=4.7.5">
-<link rel="apple-touch-icon" href="icons/iml-apple-touch-icon-v4.png?v=4.7.5">
+<link rel="manifest" href="manifest.webmanifest?v=4.7.7">
+<link rel="icon" type="image/png" href="icons/iml-favicon-v4.png?v=4.7.7">
+<link rel="apple-touch-icon" href="icons/iml-apple-touch-icon-v4.png?v=4.7.7">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" onerror="window._xlsxLoadError=true"></script>
@@ -349,6 +349,51 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 }
 #prod-dash-root .filter-summary button:hover{border-color:var(--teal);color:var(--teal)}
 @media print{ #prod-dash-root .col-filter-btn,#prod-dash-root .col-filter-pop,#prod-dash-root .filter-summary{display:none!important} }
+
+
+/* ── בחירת שורות והדפסה ───────────────────────────── */
+#prod-dash-root th.cf-select-col,#prod-dash-root td.cf-select-col{width:34px;text-align:center!important;padding:6px 4px!important}
+#prod-dash-root td.cf-select-col input,#prod-dash-root th.cf-select-col input{accent-color:var(--teal);cursor:pointer;margin:0}
+#prod-dash-root tbody tr.row-selected td{background:rgba(20,184,166,.12)}
+#prod-dash-root tbody tr.row-selected td:first-child{box-shadow:inset -3px 0 0 var(--teal)}
+#prod-dash-root .table-toolbar{
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 8px;font-size:12px;color:var(--text-muted);
+}
+#prod-dash-root .table-toolbar button{
+  border:1px solid var(--border-strong);background:var(--panel-2);color:var(--text);
+  border-radius:999px;padding:4px 12px;font-size:11.5px;font-family:inherit;cursor:pointer;font-weight:700;
+}
+#prod-dash-root .table-toolbar button:hover{border-color:var(--teal);color:var(--teal)}
+#prod-dash-root .table-toolbar b{color:var(--teal)}
+#imlPrintArea{display:none}
+@media print{
+  html.iml-print-area body>*:not(#imlPrintArea){display:none!important}
+  html.iml-print-area #imlPrintArea{display:block!important}
+  #imlPrintArea{font-family:'Heebo',sans-serif;direction:rtl;color:#000;background:#fff;padding:0}
+  #imlPrintArea h1{font-size:16px;margin:0 0 4px}
+  #imlPrintArea .pa-sub{font-size:11px;color:#444;margin:0 0 12px}
+  #imlPrintArea table{width:100%;border-collapse:collapse;font-size:10px}
+  #imlPrintArea th,#imlPrintArea td{border:1px solid #bbb;padding:4px 5px;text-align:right;vertical-align:top}
+  #imlPrintArea thead th{background:#eee;font-weight:800;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  #imlPrintArea tbody tr{break-inside:avoid;page-break-inside:avoid}
+  #prod-dash-root .table-toolbar,#prod-dash-root .cf-select-col{display:none!important}
+  @page{size:landscape;margin:10mm}
+}
+
+
+/* ── סיכום תוצרת ──────────────────────────────────── */
+#prod-dash-root .os-totals{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:0 0 12px}
+#prod-dash-root .os-totals>div{background:var(--panel-2);border:1px solid var(--border);border-radius:12px;padding:10px 14px}
+#prod-dash-root .os-totals span{display:block;font-size:11px;color:var(--text-muted)}
+#prod-dash-root .os-totals b{font-size:21px;font-weight:800;font-variant-numeric:tabular-nums}
+#prod-dash-root table.os-table tbody td{white-space:nowrap;max-width:none;overflow:visible}
+#prod-dash-root table.os-table td:not(:first-child){text-align:left;font-variant-numeric:tabular-nums}
+#prod-dash-root tr.os-fac{cursor:pointer}
+#prod-dash-root tr.os-fac:hover td{background:rgba(255,255,255,.05)}
+#prod-dash-root tr.os-fac.open td{background:rgba(20,184,166,.08)}
+#prod-dash-root .os-caret{display:inline-block;width:12px;color:var(--teal);font-size:10px}
+#prod-dash-root tr.os-mat td{color:var(--text-muted);font-size:12.5px}
+#prod-dash-root td.os-mat-name{padding-inline-start:30px!important;white-space:normal!important}
 
 /* ── Pills & badges ──────────────────────────────── */
 #prod-dash-root .pill { display:inline-block; padding: 2px 9px; border-radius: 999px; font-size: 10.5px; font-weight: 700; }
@@ -2878,11 +2923,31 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     entries.forEach(e=>{ if(e.facility) set.add(e.facility); });
     return Array.from(set).sort((a,b)=> (isNaN(a)||isNaN(b)) ? (''+a).localeCompare(''+b) : (a-b));
   }
+  // סינון חומרים דינמי: null = כל החומרים. הרשימה המוצעת נגזרת מהמתקנים
+  // שנבחרו, כך שהיא מצטמצמת יחד איתם ולא מציעה חומרים שאינם רלוונטיים.
+  let selectedMaterials = null;
+
+  function materialLabel(e){
+    const d = String(e.desc||'').trim();
+    const c = String(e.materialCode||'').trim();
+    return d || c || 'ללא שם חומר';
+  }
+
+  function availableMaterials(){
+    let base = entries;
+    if(selectedFacilities !== null) base = base.filter(e=> selectedFacilities.has(e.facility || 'לא מוגדר'));
+    return [...new Set(base.map(materialLabel))].sort((a,b)=>a.localeCompare(b,'he'));
+  }
+
   function facilityFilteredEntries(){
     let filtered = entries;
 
     if(selectedFacilities !== null){
       filtered = filtered.filter(e=> selectedFacilities.has(e.facility || 'לא מוגדר'));
+    }
+
+    if(selectedMaterials !== null && selectedMaterials.size){
+      filtered = filtered.filter(e=> selectedMaterials.has(materialLabel(e)));
     }
 
     // כלל עסקי למתקן 1542:
@@ -5757,6 +5822,7 @@ function exportToWhatsApp(){
       th.classList.toggle('col-filtered', !!active);
     });
     renderFilterSummary(table, shown, rows.length);
+    if(table.dataset.selReady === '1') updateTableToolbar(table);
   }
 
   function renderFilterSummary(table, shown, total){
@@ -5856,13 +5922,148 @@ function exportToWhatsApp(){
   });
   document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeColumnFilter(); });
 
+
+  /* ── בחירת שורות והדפסה (מסונן / נבחר) ───────────────
+     עמודת הבחירה נוספת כתא הראשון. אינדקסי הסינון נגזרים ממיקום התא
+     בפועל, ולכן ההוספה לא מזיזה אותם — אבל היא חייבת לקרות לפני בניית
+     כפתורי הסינון, אחרת הכותרות לא יתאימו לעמודות.
+     ─────────────────────────────────────────────────── */
+  function addSelectionColumn(table){
+    if(table.dataset.selReady === '1') return;
+    const headRow = table.querySelector('thead tr');
+    if(!headRow) return;
+    const cg = table.querySelector('colgroup');
+    if(cg){ const c=document.createElement('col'); c.style.width='34px'; cg.insertBefore(c, cg.firstChild); }
+    const th = document.createElement('th');
+    th.className='cf-select-col';
+    const master = document.createElement('input'); master.type='checkbox'; master.title='בחר הכל';
+    master.onclick = e=>{
+      e.stopPropagation();
+      [...table.querySelectorAll('tbody tr')].forEach(tr=>{
+        if(tr.style.display==='none') return;
+        const cb = tr.querySelector('.cf-select-col input');
+        if(cb){ cb.checked = master.checked; tr.classList.toggle('row-selected', master.checked); }
+      });
+      updateTableToolbar(table);
+    };
+    th.appendChild(master);
+    headRow.insertBefore(th, headRow.firstChild);
+    // שורות כותרת נוספות (אם יש) מקבלות תא ריק כדי לשמור על היישור
+    [...table.querySelectorAll('thead tr')].slice(1).forEach(tr=>{
+      const pad=document.createElement('th'); pad.className='cf-select-col'; tr.insertBefore(pad, tr.firstChild);
+    });
+    [...table.querySelectorAll('tbody tr')].forEach(tr=>{
+      const td=document.createElement('td'); td.className='cf-select-col';
+      if(tr.children.length===1 && tr.querySelector('td[colspan]')){
+        const only=tr.children[0]; only.colSpan = (parseInt(only.colSpan,10)||1)+1; return;
+      }
+      const cb=document.createElement('input'); cb.type='checkbox';
+      cb.onclick = e=>{ e.stopPropagation(); tr.classList.toggle('row-selected', cb.checked); updateTableToolbar(table); };
+      td.appendChild(cb); tr.insertBefore(td, tr.firstChild);
+    });
+    table.dataset.selReady='1';
+  }
+
+  function tableRowsFor(table, mode){
+    return [...table.querySelectorAll('tbody tr')].filter(tr=>{
+      if(tr.children.length<=1) return false;
+      if(tr.querySelector('td[colspan]') && tr.children.length===2) return false;
+      if(tr.style.display==='none') return false;
+      if(mode==='selected') return tr.classList.contains('row-selected');
+      return true;
+    });
+  }
+
+  function updateTableToolbar(table){
+    const wrap = table.closest('.table-scroll');
+    if(!wrap || !wrap.parentNode) return;
+    let bar = wrap.previousElementSibling;
+    while(bar && bar.classList && bar.classList.contains('filter-summary')) bar = bar.previousElementSibling;
+    if(!bar || !bar.classList || !bar.classList.contains('table-toolbar')){
+      bar = document.createElement('div'); bar.className='table-toolbar';
+      wrap.parentNode.insertBefore(bar, wrap);
+    }
+    const shown = tableRowsFor(table,'filtered').length;
+    const sel   = tableRowsFor(table,'selected').length;
+    bar.innerHTML = '';
+    const info=document.createElement('span');
+    info.innerHTML = sel ? 'נבחרו <b>'+sel.toLocaleString('he-IL')+'</b> שורות' : 'מוצגות <b>'+shown.toLocaleString('he-IL')+'</b> שורות';
+    bar.appendChild(info);
+    const bF=document.createElement('button'); bF.type='button';
+    bF.textContent='🖨 הדפס מסונן ('+shown.toLocaleString('he-IL')+')';
+    bF.onclick=()=>printTableRows(table,'filtered');
+    bar.appendChild(bF);
+    const bS=document.createElement('button'); bS.type='button';
+    bS.textContent='🖨 הדפס נבחרות ('+sel.toLocaleString('he-IL')+')';
+    bS.disabled = !sel; bS.style.opacity = sel ? '' : '.45';
+    bS.onclick=()=>printTableRows(table,'selected');
+    bar.appendChild(bS);
+    if(sel){
+      const bC=document.createElement('button'); bC.type='button'; bC.textContent='בטל בחירה';
+      bC.onclick=()=>{
+        table.querySelectorAll('tbody tr.row-selected').forEach(tr=>{
+          tr.classList.remove('row-selected');
+          const cb=tr.querySelector('.cf-select-col input'); if(cb) cb.checked=false;
+        });
+        const m=table.querySelector('thead .cf-select-col input'); if(m) m.checked=false;
+        updateTableToolbar(table);
+      };
+      bar.appendChild(bC);
+    }
+  }
+
+  function printTableRows(table, mode){
+    const rows = tableRowsFor(table, mode);
+    if(!rows.length){ showToast(mode==='selected' ? 'לא נבחרו שורות להדפסה' : 'אין שורות להדפסה', true); return; }
+    let area = document.getElementById('imlPrintArea');
+    if(!area){ area=document.createElement('div'); area.id='imlPrintArea'; document.body.appendChild(area); }
+
+    const heads = [...table.querySelectorAll('thead tr:first-child th')]
+      .filter(th=>!th.classList.contains('cf-select-col'))
+      .map(th=>(th.dataset.label || th.textContent).trim());
+
+    const panel = table.closest('.panel');
+    const title = (panel && panel.querySelector('h2,h3')) ? panel.querySelector('h2,h3').textContent.trim() : 'פירוט רשומות';
+    const m = filtersFor(table,false);
+    const activeFilters = [];
+    if(m) for(const [idx, vals] of m){
+      if(!vals || !vals.size) continue;
+      const th = table.querySelectorAll('thead tr:first-child th')[idx];
+      const label = th ? (th.dataset.label || th.textContent).trim() : 'עמודה '+idx;
+      activeFilters.push(label+': '+[...vals].slice(0,6).join(', ')+(vals.size>6?' ועוד '+(vals.size-6):''));
+    }
+
+    const now = new Date();
+    const stamp = String(now.getDate()).padStart(2,'0')+'/'+String(now.getMonth()+1).padStart(2,'0')+'/'+now.getFullYear()+
+      ' '+String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
+
+    let html = '<h1>'+escapeHtml(title)+'</h1><p class="pa-sub">'+
+      (mode==='selected' ? 'שורות נבחרות' : 'לפי הסינון הפעיל')+' · '+
+      rows.length.toLocaleString('he-IL')+' שורות · הודפס '+stamp+
+      (activeFilters.length ? '<br>סינון: '+escapeHtml(activeFilters.join(' | ')) : '')+
+      '</p><table><thead><tr>'+heads.map(h=>'<th>'+escapeHtml(h)+'</th>').join('')+'</tr></thead><tbody>';
+    rows.forEach(tr=>{
+      html += '<tr>'+[...tr.children].filter(td=>!td.classList.contains('cf-select-col'))
+        .map(td=>'<td>'+escapeHtml((td.innerText||td.textContent||'').replace(/\s+/g,' ').trim())+'</td>').join('')+'</tr>';
+    });
+    html += '</tbody></table>';
+    area.innerHTML = html;
+
+    document.documentElement.classList.add('iml-print-area');
+    const cleanup = ()=>{ document.documentElement.classList.remove('iml-print-area'); window.removeEventListener('afterprint', cleanup); };
+    window.addEventListener('afterprint', cleanup);
+    setTimeout(()=>{ window.print(); setTimeout(cleanup, 1500); }, 60);
+  }
+
   function enhanceTablesWithFilters(){
     const scope = (typeof root!=='undefined' && root) ? root : document;
     scope.querySelectorAll('.table-scroll table').forEach(table=>{
+      if(!table.querySelector('thead tr:first-child th') || !table.querySelector('tbody tr')) return;
+      addSelectionColumn(table);
       const headCells = table.querySelectorAll('thead tr:first-child th');
-      if(!headCells.length || !table.querySelector('tbody tr')) return;
       if(table.dataset.cfReady !== '1'){
         headCells.forEach((th,i)=>{
+          if(th.classList.contains('cf-select-col')) return;
           if(th.querySelector('.col-filter-btn')) return;
           if(!th.dataset.label) th.dataset.label = th.textContent.trim();
           const btn=document.createElement('button');
@@ -5874,7 +6075,132 @@ function exportToWhatsApp(){
         table.dataset.cfReady='1';
       }
       applyColumnFilters(table);
+      updateTableToolbar(table);
     });
+  }
+
+  /* ── סיכום תוצרת: מתקן ← חומר ─────────────────────── */
+  function renderOutputSummary(view){
+    const host = root.querySelector('#outputSummaryPanel');
+    if(!host) return;
+    const rows = (view && view.filtered) ? view.filtered : [];
+    if(!rows.length){ host.innerHTML=''; return; }
+
+    const byFac = new Map();
+    rows.forEach(e=>{
+      const fac = e.facility || 'לא מוגדר';
+      let f = byFac.get(fac);
+      if(!f){ f = { fac, production:0, packaging:0, mats:new Map() }; byFac.set(fac, f); }
+      f.production += numberValue(e.production);
+      f.packaging  += numberValue(e.packaging);
+      const mk = materialLabel(e);
+      let m = f.mats.get(mk);
+      if(!m){ m = { name:mk, production:0, packaging:0 }; f.mats.set(mk, m); }
+      m.production += numberValue(e.production);
+      m.packaging  += numberValue(e.packaging);
+    });
+    const facs = [...byFac.values()].sort((a,b)=>(b.production+b.packaging)-(a.production+a.packaging));
+    const totP = facs.reduce((n,f)=>n+f.production,0);
+    const totK = facs.reduce((n,f)=>n+f.packaging,0);
+
+    let html = '<div class="panel"><div class="panel-head"><h2>סיכום תוצרת</h2>'+
+      '<span class="panel-sub">'+escapeHtml(facilitySummaryText())+
+      (selectedMaterials && selectedMaterials.size ? ' · '+selectedMaterials.size+' חומרים נבחרו' : '')+
+      ' · '+escapeHtml(view.rangeLabel||'')+'</span></div>'+
+      '<div class="os-totals"><div><span>ייצור בפועל</span><b>'+fmtNum(totP)+'</b></div>'+
+      '<div><span>אריזה בפועל</span><b>'+fmtNum(totK)+'</b></div>'+
+      '<div><span>מתקנים</span><b>'+facs.length+'</b></div></div>'+
+      '<div class="table-scroll"><table class="os-table" style="min-width:auto"><thead><tr>'+
+      '<th>מתקן / חומר</th><th>ייצור בפועל</th><th>אריזה בפועל</th></tr></thead><tbody>';
+
+    facs.forEach(f=>{
+      const mats = [...f.mats.values()].sort((a,b)=>(b.production+b.packaging)-(a.production+a.packaging));
+      html += '<tr class="os-fac" data-fac="'+escapeHtml(f.fac)+'">'+
+        '<td><span class="os-caret">▶</span> <b>מתקן '+escapeHtml(f.fac)+'</b>'+
+        ' <small>('+mats.length+' חומרים)</small></td>'+
+        '<td><b>'+fmtNum(f.production)+'</b></td><td><b>'+fmtNum(f.packaging)+'</b></td></tr>';
+      mats.forEach(m=>{
+        html += '<tr class="os-mat os-of-'+escapeHtml(f.fac).replace(/[^\w-]/g,'_')+'" style="display:none">'+
+          '<td class="os-mat-name">'+escapeHtml(m.name)+'</td>'+
+          '<td>'+fmtNum(m.production)+'</td><td>'+fmtNum(m.packaging)+'</td></tr>';
+      });
+    });
+    html += '</tbody></table></div></div>';
+    host.innerHTML = html;
+
+    host.querySelectorAll('tr.os-fac').forEach(tr=>{
+      tr.onclick = ()=>{
+        const cls = 'os-of-'+tr.dataset.fac.replace(/[^\w-]/g,'_');
+        const open = tr.classList.toggle('open');
+        tr.querySelector('.os-caret').textContent = open ? '▼' : '▶';
+        host.querySelectorAll('tr.'+cls).forEach(r=> r.style.display = open ? '' : 'none');
+      };
+    });
+  }
+  function fmtNum(n){ return Math.round(n||0).toLocaleString('he-IL'); }
+
+  /* ── סינון דינמי לפי שם חומר ──────────────────────── */
+  function renderMaterialFilter(){
+    let host = root.querySelector('#materialFilterBar');
+    if(!host){
+      const fb = root.querySelector('#facilityBar');
+      if(!fb) return;
+      host = document.createElement('div');
+      host.id = 'materialFilterBar'; host.className = 'facility-bar';
+      fb.parentNode.insertBefore(host, fb.nextSibling);
+    }
+    const opts = availableMaterials();
+    const chosen = selectedMaterials && selectedMaterials.size ? selectedMaterials.size : 0;
+    host.innerHTML = '<span class="facility-label">סינון לפי שם חומר:</span>'+
+      '<button class="facility-chip'+(chosen?'':' active')+'" id="matAllBtn">כל החומרים ('+opts.length+')</button>'+
+      (chosen ? '<button class="facility-chip active" id="matPickBtn">'+chosen+' נבחרו ✎</button>'
+              : '<button class="facility-chip" id="matPickBtn">בחר חומרים…</button>');
+    host.querySelector('#matAllBtn').onclick = ()=>{ selectedMaterials = null; renderAll(); };
+    host.querySelector('#matPickBtn').onclick = (ev)=> openMaterialPicker(ev.currentTarget, opts);
+  }
+
+  function openMaterialPicker(anchor, opts){
+    closeColumnFilter();
+    const sel = new Set(selectedMaterials && selectedMaterials.size ? selectedMaterials : opts);
+    const pop = document.createElement('div');
+    pop.className = 'col-filter-pop';
+    pop.innerHTML = '<div class="cf-title">בחירת חומרים</div>'+
+      '<input class="cf-search" type="text" placeholder="חיפוש שם חומר...">'+
+      '<div class="cf-list"></div><div class="cf-count"></div>'+
+      '<div class="cf-actions"><button type="button" class="cf-apply">אישור</button>'+
+      '<button type="button" class="cf-none">כל החומרים</button></div>';
+    root.appendChild(pop); _cfPop = pop;
+    const list = pop.querySelector('.cf-list'), count = pop.querySelector('.cf-count'), search = pop.querySelector('.cf-search');
+    function paint(term){
+      const t=(term||'').trim().toLowerCase();
+      const vis = opts.filter(v=>!t||v.toLowerCase().includes(t));
+      list.innerHTML='';
+      const all=document.createElement('label');
+      all.innerHTML='<input type="checkbox"><span><b>(בחר הכל)</b></span>';
+      all.querySelector('input').checked = vis.length>0 && vis.every(v=>sel.has(v));
+      all.querySelector('input').onchange = e=>{ vis.forEach(v=> e.target.checked ? sel.add(v) : sel.delete(v)); paint(search.value); };
+      list.appendChild(all);
+      vis.slice(0,1000).forEach(v=>{
+        const lab=document.createElement('label');
+        const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=sel.has(v);
+        cb.onchange=()=>{ cb.checked?sel.add(v):sel.delete(v); count.textContent=sel.size+' מתוך '+opts.length+' חומרים נבחרו'; };
+        const sp=document.createElement('span'); sp.textContent=v; sp.title=v;
+        lab.appendChild(cb); lab.appendChild(sp); list.appendChild(lab);
+      });
+      if(vis.length>1000){ const n=document.createElement('div'); n.className='cf-count';
+        n.textContent='מוצגים 1,000 מתוך '+vis.length.toLocaleString('he-IL')+' — צמצמו בחיפוש'; list.appendChild(n); }
+      count.textContent=sel.size+' מתוך '+opts.length+' חומרים נבחרו';
+    }
+    paint(''); search.oninput=()=>paint(search.value);
+    pop.querySelector('.cf-apply').onclick=()=>{
+      selectedMaterials = (sel.size===opts.length || sel.size===0) ? null : new Set(sel);
+      closeColumnFilter(); renderAll();
+    };
+    pop.querySelector('.cf-none').onclick=()=>{ selectedMaterials=null; closeColumnFilter(); renderAll(); };
+    const r=anchor.getBoundingClientRect();
+    pop.style.top = Math.min(r.bottom+6, window.innerHeight-320)+'px';
+    pop.style.left= Math.max(8, Math.min(r.left, window.innerWidth-286))+'px';
+    setTimeout(()=>search.focus(),0);
   }
 
 function renderAll(){
@@ -5890,6 +6216,7 @@ function renderAll(){
         ' (' + qualityEntries.length + ' שורות גולמיות)' +
         ' | אחסון: ' + (_netlifyAvailable ? '🟢 Netlify' : '🟡 מקומי');
     }
+    renderMaterialFilter();
     renderDatasetSources();
     setTimeout(enhanceTablesWithFilters, 0);
 
@@ -5897,7 +6224,7 @@ function renderAll(){
 
     // Quality tab — show its own content, hide production panels
     const isQualityTab = tab === 'quality';
-    const mainPanels = ['kpiGrid','facilityTargetGaugesContainer','advancedDashboard','packagingBreakdownPanel',
+    const mainPanels = ['kpiGrid','facilityTargetGaugesContainer','advancedDashboard','packagingBreakdownPanel','outputSummaryPanel',
       'shiftComparisonPanel','operationalInsights','notesPanel','eventsPanel','qualityPanel',
       'chartWrap','entriesTableWrap','filterBar','facilityBar'];
     const qualityTabContent = root.querySelector('#qualityTabContent');
@@ -5924,6 +6251,7 @@ function renderAll(){
     renderAdvancedDashboard(view);
     renderPackagingTypeBreakdown(view);
     renderShiftComparison(view);
+    renderOutputSummary(view);
     renderOperationalInsights(view);
     renderNotesDashboard(view);
     renderEventsPanel(view);
@@ -6493,7 +6821,7 @@ function renderAll(){
       '<div class="topbar">'+
         '<div class="brand">'+
           '<div class="brand-mark">IML</div>'+
-          '<div><h1>IML Production Dashboard <span class="app-version-badge">V4.7.5</span></h1><p><span id="entryCount">טוען נתונים…</span> <span id="storageStatusBadge" class="storage-status"></span></p><p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;"><span id="dataStatusLine">בודק נתונים…</span></p><div id="fileSourcesPanel" style="display:none"></div></div>'+
+          '<div><h1>IML Production Dashboard <span class="app-version-badge">V4.7.7</span></h1><p><span id="entryCount">טוען נתונים…</span> <span id="storageStatusBadge" class="storage-status"></span></p><p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;"><span id="dataStatusLine">בודק נתונים…</span></p><div id="fileSourcesPanel" style="display:none"></div></div>'+
         '</div>'+
         '<div class="topbar-actions"><span id="roleBadge" class="role-badge viewer">👁 צפייה בלבד</span><button class="tab-btn" id="adminLoginBtn" style="background:rgba(255,255,255,0.06);color:var(--text);font-size:12px;padding:6px 14px;">🔐 כניסת מנהל</button><button class="tab-btn" id="refreshSharedBtn" style="background:rgba(20,184,166,0.12);color:var(--teal);font-size:12px;padding:6px 14px;">🔄 רענן נתונים</button><button class="tab-btn" id="addEventTopBtn" style="background:rgba(139,183,255,0.12);color:#8BB7FF;font-size:12px;padding:6px 14px;">+ הוסף אירוע</button><button class="tab-btn" id="advancedDashboardBtn" style="background:var(--teal-soft);color:var(--green);font-size:12px;padding:6px 14px;">📊 דשבורד חדש</button><button class="tab-btn" id="excelAnalyzedExportBtn" style="background:rgba(124,217,146,0.12);color:#7CD992;font-size:12px;padding:6px 14px;">📥 ייצוא ניתוח לאקסל</button><label for="qualityFileInput" class="tab-btn admin-only" style="background:rgba(239,68,68,0.12);color:var(--red);font-size:12px;padding:6px 14px;cursor:pointer;">🧪 טעינת איכות (קובץ אחד או שניים)</label><button class="tab-btn" id="whatsappExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📲 WhatsApp טקסט</button><button class="tab-btn" id="whatsappImageExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📸 צילום דשבורד</button><button class="tab-btn admin-only" id="targetsProdBtn" style="background:var(--amber-soft);color:var(--amber);font-size:12px;padding:6px 14px;">⚙ יעדי ייצור</button><button class="tab-btn admin-only" id="targetsBtn" style="background:var(--teal-soft);color:var(--teal);font-size:12px;padding:6px 14px;">⚙ יעדי אריזה</button><button class="tab-btn admin-only" id="resetBtn" style="background:rgba(255,255,255,0.05);color:var(--text-muted);font-size:12px;padding:6px 14px;">איפוס</button></div>'+
       '</div>'+
@@ -6509,6 +6837,7 @@ function renderAll(){
       '<div class="filter-bar" id="filterBar"></div>'+
       '<div class="print-only" id="printHeader" style="margin-bottom:12px;"></div>'+
       '<div class="advanced-summary" id="advancedDashboard"></div><div class="kpi-grid" id="kpiGrid"></div><div id="facilityTargetGauges"></div>'+
+      '<div id="outputSummaryPanel"></div>'+
       '<div id="packagingTypeBreakdown"></div>'+
       '<div id="shiftComparisonPanel"></div>'+
       '<div id="operationalInsights"></div><div id="notesPanel"></div><div id="eventsPanel"></div><div id="qualityPanel"></div>'+
@@ -6879,7 +7208,7 @@ root.querySelector('#printBtn').onclick = ()=> window.print();
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   window.addEventListener('load', async () => {
     try {
-      const reg = await navigator.serviceWorker.register('./service-worker.js?v=4.7.5', { updateViaCache: 'none' });
+      const reg = await navigator.serviceWorker.register('./service-worker.js?v=4.7.7', { updateViaCache: 'none' });
       await reg.update();
       let reloading = false;
       navigator.serviceWorker.addEventListener('controllerchange', () => {
