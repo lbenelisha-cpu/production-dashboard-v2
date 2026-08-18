@@ -9,9 +9,9 @@
 <meta name="theme-color" content="#030812">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="manifest" href="manifest.webmanifest?v=4.7.4">
-<link rel="icon" type="image/png" href="icons/iml-favicon-v4.png?v=4.7.4">
-<link rel="apple-touch-icon" href="icons/iml-apple-touch-icon-v4.png?v=4.7.4">
+<link rel="manifest" href="manifest.webmanifest?v=4.7.5">
+<link rel="icon" type="image/png" href="icons/iml-favicon-v4.png?v=4.7.5">
+<link rel="apple-touch-icon" href="icons/iml-apple-touch-icon-v4.png?v=4.7.5">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" onerror="window._xlsxLoadError=true"></script>
@@ -299,6 +299,56 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 #prod-dash-root table.records-full tbody td { white-space: normal; overflow: visible; text-overflow: clip; max-width: none; overflow-wrap: anywhere; line-height: 1.4; }
 #prod-dash-root table.records-full .nowrap { white-space: nowrap; }
 #prod-dash-root .quality-summary-grid .kpi-card { min-height: 150px; display:flex; flex-direction:column; justify-content:center; }
+
+
+/* ── סינון עמודות ─────────────────────────────────── */
+#prod-dash-root thead th { position: sticky; top: 0; z-index: 4; }
+#prod-dash-root th .col-filter-btn{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:16px;height:16px;margin-inline-start:6px;padding:0;
+  border:none;border-radius:4px;background:transparent;cursor:pointer;
+  color:var(--text-muted);font-size:10px;line-height:1;vertical-align:middle;
+  opacity:.55;transition:opacity .15s,background .15s,color .15s;font-family:inherit;
+}
+#prod-dash-root th:hover .col-filter-btn{opacity:1}
+#prod-dash-root th .col-filter-btn:hover{background:rgba(255,255,255,.10);color:var(--text)}
+#prod-dash-root th.col-filtered{color:var(--teal)}
+#prod-dash-root th.col-filtered .col-filter-btn{opacity:1;color:var(--teal);background:rgba(20,184,166,.16)}
+#prod-dash-root .col-filter-pop{
+  position:fixed;z-index:1200;width:270px;max-width:92vw;
+  background:var(--panel);border:1px solid var(--border-strong);border-radius:12px;
+  box-shadow:0 18px 50px rgba(0,0,0,.55);padding:10px;direction:rtl;
+  font-family:inherit;font-size:12.5px;color:var(--text);
+}
+#prod-dash-root .col-filter-pop .cf-title{font-weight:800;font-size:12px;margin:0 0 8px;color:var(--text)}
+#prod-dash-root .col-filter-pop input.cf-search{
+  width:100%;box-sizing:border-box;padding:7px 9px;margin-bottom:8px;
+  background:var(--panel-2);border:1px solid var(--border);border-radius:8px;
+  color:var(--text);font-family:inherit;font-size:12.5px;
+}
+#prod-dash-root .col-filter-pop .cf-list{max-height:230px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:4px}
+#prod-dash-root .col-filter-pop label{display:flex;align-items:center;gap:7px;padding:4px 6px;border-radius:6px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#prod-dash-root .col-filter-pop label:hover{background:rgba(255,255,255,.05)}
+#prod-dash-root .col-filter-pop label input{accent-color:var(--teal);flex:0 0 auto}
+#prod-dash-root .col-filter-pop label span{overflow:hidden;text-overflow:ellipsis}
+#prod-dash-root .col-filter-pop .cf-count{color:var(--text-muted);font-size:11px;margin:7px 2px 0}
+#prod-dash-root .col-filter-pop .cf-actions{display:flex;gap:6px;margin-top:9px}
+#prod-dash-root .col-filter-pop button{
+  flex:1;padding:6px 8px;border-radius:8px;border:1px solid var(--border-strong);
+  background:var(--panel-2);color:var(--text);font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;
+}
+#prod-dash-root .col-filter-pop button.cf-apply{background:var(--teal);border-color:var(--teal);color:#04201d}
+#prod-dash-root .col-filter-pop button:hover{border-color:var(--teal)}
+#prod-dash-root .filter-summary{
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 8px;font-size:12px;color:var(--text-muted);
+}
+#prod-dash-root .filter-summary b{color:var(--teal)}
+#prod-dash-root .filter-summary button{
+  border:1px solid var(--border-strong);background:var(--panel-2);color:var(--text);
+  border-radius:999px;padding:3px 11px;font-size:11.5px;font-family:inherit;cursor:pointer;font-weight:700;
+}
+#prod-dash-root .filter-summary button:hover{border-color:var(--teal);color:var(--teal)}
+@media print{ #prod-dash-root .col-filter-btn,#prod-dash-root .col-filter-pop,#prod-dash-root .filter-summary{display:none!important} }
 
 /* ── Pills & badges ──────────────────────────────── */
 #prod-dash-root .pill { display:inline-block; padding: 2px 9px; border-radius: 999px; font-size: 10.5px; font-weight: 700; }
@@ -2194,6 +2244,8 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     html+='</tbody></table></div></div></div>';
     overlay.innerHTML=html; overlay.classList.add('open');
     overlay.querySelector('#qualityResultsClose').onclick=()=>overlay.classList.remove('open');
+    // המודאל מרנדר טבלה משלו מחוץ ל-renderAll — מחברים לה סינון עמודות גם כן
+    setTimeout(enhanceTablesWithFilters, 0);
     overlay.onclick=e=>{if(e.target===overlay) overlay.classList.remove('open');};
   }
 
@@ -5660,6 +5712,171 @@ function exportToWhatsApp(){
     container.innerHTML=html;
   }
 
+
+  /* ── סינון עמודות (כמו אקסל) ─────────────────────────
+     נבנה גנרית מעל ה-DOM, אחרי כל render. כל 17 הטבלאות באפליקציה
+     עטופות ב-.table-scroll, ולכן אין צורך לגעת בכל פונקציית רינדור
+     בנפרד. הסינונים נשמרים לפי חתימת הכותרות, כך שהם שורדים רינדור
+     מחדש של אותה טבלה.
+     ─────────────────────────────────────────────────── */
+  const _colFilters = new Map();   // tableKey -> Map(colIndex -> Set(values))
+  let _cfPop = null;
+
+  function tableKey(table){
+    const heads = [...table.querySelectorAll('thead th')].map(th => (th.dataset.label || th.textContent || '').trim());
+    const host = table.closest('[id]');
+    return (host ? host.id : '') + '::' + heads.join('|');
+  }
+  function filtersFor(table, create){
+    const key = tableKey(table);
+    let m = _colFilters.get(key);
+    if(!m && create){ m = new Map(); _colFilters.set(key, m); }
+    return m || null;
+  }
+  function cellText(row, idx){
+    const td = row.children[idx];
+    if(!td) return '';
+    return (td.innerText || td.textContent || '').replace(/\s+/g,' ').trim();
+  }
+
+  function applyColumnFilters(table){
+    const m = filtersFor(table, false);
+    const rows = [...table.querySelectorAll('tbody tr')];
+    let shown = 0;
+    rows.forEach(tr=>{
+      if(tr.querySelector('td[colspan]') && tr.children.length === 1){ tr.style.display=''; return; }
+      let ok = true;
+      if(m) for(const [idx, allowed] of m){
+        if(allowed && allowed.size && !allowed.has(cellText(tr, idx))){ ok = false; break; }
+      }
+      tr.style.display = ok ? '' : 'none';
+      if(ok) shown++;
+    });
+    table.querySelectorAll('thead th').forEach((th,i)=>{
+      const active = m && m.get(i) && m.get(i).size;
+      th.classList.toggle('col-filtered', !!active);
+    });
+    renderFilterSummary(table, shown, rows.length);
+  }
+
+  function renderFilterSummary(table, shown, total){
+    const wrap = table.closest('.table-scroll');
+    if(!wrap || !wrap.parentNode) return;
+    const m = filtersFor(table, false);
+    const activeCols = m ? [...m.values()].filter(v=>v && v.size).length : 0;
+    let bar = wrap.previousElementSibling;
+    if(!bar || !bar.classList || !bar.classList.contains('filter-summary')){
+      if(!activeCols) return;
+      bar = document.createElement('div');
+      bar.className = 'filter-summary';
+      wrap.parentNode.insertBefore(bar, wrap);
+    }
+    if(!activeCols){ bar.remove(); return; }
+    bar.innerHTML = 'מסונן לפי <b>'+activeCols+'</b> עמודות · מוצגות <b>'+
+      shown.toLocaleString('he-IL')+'</b> מתוך '+total.toLocaleString('he-IL')+' שורות ';
+    const btn = document.createElement('button');
+    btn.type='button'; btn.textContent='נקה סינון';
+    btn.onclick = ()=>{ const mm=filtersFor(table,false); if(mm) mm.clear(); applyColumnFilters(table); };
+    bar.appendChild(btn);
+  }
+
+  function closeColumnFilter(){ if(_cfPop){ _cfPop.remove(); _cfPop=null; } }
+
+  function openColumnFilter(table, idx, th){
+    closeColumnFilter();
+    const rows = [...table.querySelectorAll('tbody tr')]
+      .filter(tr => !(tr.children.length === 1 && tr.querySelector('td[colspan]')));
+    const values = [...new Set(rows.map(tr => cellText(tr, idx)))].sort((a,b)=>a.localeCompare(b,'he',{numeric:true}));
+    const m = filtersFor(table, true);
+    const current = m.get(idx);
+    const selected = new Set(current && current.size ? current : values);
+
+    const pop = document.createElement('div');
+    pop.className = 'col-filter-pop';
+    pop.innerHTML =
+      '<div class="cf-title">סינון: '+ (th.dataset.label || th.textContent.trim()) +'</div>'+
+      '<input class="cf-search" type="text" placeholder="חיפוש ערך...">'+
+      '<div class="cf-list"></div>'+
+      '<div class="cf-count"></div>'+
+      '<div class="cf-actions"><button type="button" class="cf-apply">אישור</button>'+
+      '<button type="button" class="cf-none">נקה</button></div>';
+    (table.closest('#prod-dash-root') || document.body).appendChild(pop);
+    _cfPop = pop;
+
+    const list = pop.querySelector('.cf-list');
+    const count = pop.querySelector('.cf-count');
+    const search = pop.querySelector('.cf-search');
+
+    function paint(term){
+      const t = (term||'').trim().toLowerCase();
+      const visible = values.filter(v => !t || v.toLowerCase().includes(t));
+      list.innerHTML = '';
+      const all = document.createElement('label');
+      all.innerHTML = '<input type="checkbox"><span><b>(בחר הכל)</b></span>';
+      all.querySelector('input').checked = visible.every(v=>selected.has(v));
+      all.querySelector('input').onchange = e => {
+        visible.forEach(v => e.target.checked ? selected.add(v) : selected.delete(v));
+        paint(search.value);
+      };
+      list.appendChild(all);
+      visible.slice(0, 1000).forEach(v=>{
+        const lab = document.createElement('label');
+        const cb = document.createElement('input'); cb.type='checkbox'; cb.checked = selected.has(v);
+        cb.onchange = ()=>{ cb.checked ? selected.add(v) : selected.delete(v); count.textContent = selected.size+' מתוך '+values.length+' ערכים נבחרו'; };
+        const sp = document.createElement('span'); sp.textContent = v === '' ? '(ריק)' : v; sp.title = v;
+        lab.appendChild(cb); lab.appendChild(sp); list.appendChild(lab);
+      });
+      if(visible.length > 1000){
+        const note=document.createElement('div'); note.className='cf-count';
+        note.textContent='מוצגים 1,000 מתוך '+visible.length.toLocaleString('he-IL')+' ערכים — צמצמו בחיפוש';
+        list.appendChild(note);
+      }
+      count.textContent = selected.size+' מתוך '+values.length+' ערכים נבחרו';
+    }
+    paint('');
+    search.oninput = ()=>paint(search.value);
+
+    pop.querySelector('.cf-apply').onclick = ()=>{
+      if(selected.size === values.length) m.delete(idx);
+      else m.set(idx, new Set(selected));
+      applyColumnFilters(table); closeColumnFilter();
+    };
+    pop.querySelector('.cf-none').onclick = ()=>{
+      m.delete(idx); applyColumnFilters(table); closeColumnFilter();
+    };
+
+    const r = th.getBoundingClientRect();
+    pop.style.top  = Math.min(r.bottom + 6, window.innerHeight - pop.offsetHeight - 10) + 'px';
+    pop.style.left = Math.max(8, Math.min(r.left, window.innerWidth - pop.offsetWidth - 8)) + 'px';
+    setTimeout(()=>search.focus(), 0);
+  }
+
+  document.addEventListener('mousedown', e=>{
+    if(_cfPop && !_cfPop.contains(e.target) && !e.target.closest('.col-filter-btn')) closeColumnFilter();
+  });
+  document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeColumnFilter(); });
+
+  function enhanceTablesWithFilters(){
+    const scope = (typeof root!=='undefined' && root) ? root : document;
+    scope.querySelectorAll('.table-scroll table').forEach(table=>{
+      const headCells = table.querySelectorAll('thead tr:first-child th');
+      if(!headCells.length || !table.querySelector('tbody tr')) return;
+      if(table.dataset.cfReady !== '1'){
+        headCells.forEach((th,i)=>{
+          if(th.querySelector('.col-filter-btn')) return;
+          if(!th.dataset.label) th.dataset.label = th.textContent.trim();
+          const btn=document.createElement('button');
+          btn.type='button'; btn.className='col-filter-btn'; btn.textContent='▼';
+          btn.title='סינון עמודה';
+          btn.onclick = ev=>{ ev.stopPropagation(); ev.preventDefault(); openColumnFilter(table, i, th); };
+          th.appendChild(btn);
+        });
+        table.dataset.cfReady='1';
+      }
+      applyColumnFilters(table);
+    });
+  }
+
 function renderAll(){
     if(!loaded) return;
     applyRoleUI();
@@ -5674,6 +5891,7 @@ function renderAll(){
         ' | אחסון: ' + (_netlifyAvailable ? '🟢 Netlify' : '🟡 מקומי');
     }
     renderDatasetSources();
+    setTimeout(enhanceTablesWithFilters, 0);
 
     root.querySelectorAll('.tabs .tab-btn').forEach(b=> b.classList.toggle('active', b.dataset.tab===tab));
 
@@ -6275,7 +6493,7 @@ function renderAll(){
       '<div class="topbar">'+
         '<div class="brand">'+
           '<div class="brand-mark">IML</div>'+
-          '<div><h1>IML Production Dashboard <span class="app-version-badge">V4.7.4</span></h1><p><span id="entryCount">טוען נתונים…</span> <span id="storageStatusBadge" class="storage-status"></span></p><p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;"><span id="dataStatusLine">בודק נתונים…</span></p><div id="fileSourcesPanel" style="display:none"></div></div>'+
+          '<div><h1>IML Production Dashboard <span class="app-version-badge">V4.7.5</span></h1><p><span id="entryCount">טוען נתונים…</span> <span id="storageStatusBadge" class="storage-status"></span></p><p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;"><span id="dataStatusLine">בודק נתונים…</span></p><div id="fileSourcesPanel" style="display:none"></div></div>'+
         '</div>'+
         '<div class="topbar-actions"><span id="roleBadge" class="role-badge viewer">👁 צפייה בלבד</span><button class="tab-btn" id="adminLoginBtn" style="background:rgba(255,255,255,0.06);color:var(--text);font-size:12px;padding:6px 14px;">🔐 כניסת מנהל</button><button class="tab-btn" id="refreshSharedBtn" style="background:rgba(20,184,166,0.12);color:var(--teal);font-size:12px;padding:6px 14px;">🔄 רענן נתונים</button><button class="tab-btn" id="addEventTopBtn" style="background:rgba(139,183,255,0.12);color:#8BB7FF;font-size:12px;padding:6px 14px;">+ הוסף אירוע</button><button class="tab-btn" id="advancedDashboardBtn" style="background:var(--teal-soft);color:var(--green);font-size:12px;padding:6px 14px;">📊 דשבורד חדש</button><button class="tab-btn" id="excelAnalyzedExportBtn" style="background:rgba(124,217,146,0.12);color:#7CD992;font-size:12px;padding:6px 14px;">📥 ייצוא ניתוח לאקסל</button><label for="qualityFileInput" class="tab-btn admin-only" style="background:rgba(239,68,68,0.12);color:var(--red);font-size:12px;padding:6px 14px;cursor:pointer;">🧪 טעינת איכות (קובץ אחד או שניים)</label><button class="tab-btn" id="whatsappExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📲 WhatsApp טקסט</button><button class="tab-btn" id="whatsappImageExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📸 צילום דשבורד</button><button class="tab-btn admin-only" id="targetsProdBtn" style="background:var(--amber-soft);color:var(--amber);font-size:12px;padding:6px 14px;">⚙ יעדי ייצור</button><button class="tab-btn admin-only" id="targetsBtn" style="background:var(--teal-soft);color:var(--teal);font-size:12px;padding:6px 14px;">⚙ יעדי אריזה</button><button class="tab-btn admin-only" id="resetBtn" style="background:rgba(255,255,255,0.05);color:var(--text-muted);font-size:12px;padding:6px 14px;">איפוס</button></div>'+
       '</div>'+
@@ -6661,7 +6879,7 @@ root.querySelector('#printBtn').onclick = ()=> window.print();
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   window.addEventListener('load', async () => {
     try {
-      const reg = await navigator.serviceWorker.register('./service-worker.js?v=4.7.4', { updateViaCache: 'none' });
+      const reg = await navigator.serviceWorker.register('./service-worker.js?v=4.7.5', { updateViaCache: 'none' });
       await reg.update();
       let reloading = false;
       navigator.serviceWorker.addEventListener('controllerchange', () => {
