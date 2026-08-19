@@ -9,9 +9,9 @@
 <meta name="theme-color" content="#030812">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="manifest" href="manifest.webmanifest?v=4.7.7">
-<link rel="icon" type="image/png" href="icons/iml-favicon-v4.png?v=4.7.7">
-<link rel="apple-touch-icon" href="icons/iml-apple-touch-icon-v4.png?v=4.7.7">
+<link rel="manifest" href="manifest.webmanifest?v=4.7.8">
+<link rel="icon" type="image/png" href="icons/iml-favicon-v4.png?v=4.7.8">
+<link rel="apple-touch-icon" href="icons/iml-apple-touch-icon-v4.png?v=4.7.8">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" onerror="window._xlsxLoadError=true"></script>
@@ -387,13 +387,33 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 #prod-dash-root .os-totals span{display:block;font-size:11px;color:var(--text-muted)}
 #prod-dash-root .os-totals b{font-size:21px;font-weight:800;font-variant-numeric:tabular-nums}
 #prod-dash-root table.os-table tbody td{white-space:nowrap;max-width:none;overflow:visible}
-#prod-dash-root table.os-table td:not(:first-child){text-align:left;font-variant-numeric:tabular-nums}
+/* הכותרת והתאים באותה יישור, כדי שהמספרים יישבו בדיוק מתחת לכותרת */
+#prod-dash-root table.os-table th:not(.os-name-col):not(.cf-select-col),
+#prod-dash-root table.os-table td:not(.os-name-col):not(.cf-select-col){text-align:left;font-variant-numeric:tabular-nums;padding-inline-end:18px}
+/* לפי מחלקה ולא לפי מיקום — עמודת הבחירה מזיזה את :first-child */
+#prod-dash-root table.os-table th.os-name-col,
+#prod-dash-root table.os-table td.os-name-col{text-align:right!important}
+#prod-dash-root .os-mat-code{display:block;font-size:10.5px;color:var(--text-muted);opacity:.8;font-family:'JetBrains Mono',monospace;direction:ltr;text-align:right;margin-top:1px}
 #prod-dash-root tr.os-fac{cursor:pointer}
 #prod-dash-root tr.os-fac:hover td{background:rgba(255,255,255,.05)}
 #prod-dash-root tr.os-fac.open td{background:rgba(20,184,166,.08)}
 #prod-dash-root .os-caret{display:inline-block;width:12px;color:var(--teal);font-size:10px}
 #prod-dash-root tr.os-mat td{color:var(--text-muted);font-size:12.5px}
 #prod-dash-root td.os-mat-name{padding-inline-start:30px!important;white-space:normal!important}
+
+
+#prod-dash-root th .col-sort-btn{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:16px;height:16px;margin-inline-start:4px;padding:0;
+  border:none;border-radius:4px;background:transparent;cursor:pointer;
+  color:var(--text-muted);font-size:10px;line-height:1;vertical-align:middle;
+  opacity:.55;transition:opacity .15s,background .15s,color .15s;font-family:inherit;
+}
+#prod-dash-root th:hover .col-sort-btn{opacity:1}
+#prod-dash-root th .col-sort-btn:hover{background:rgba(255,255,255,.10);color:var(--text)}
+#prod-dash-root th.col-sorted{color:var(--amber)}
+#prod-dash-root th.col-sorted .col-sort-btn{opacity:1;color:var(--amber);background:rgba(245,158,11,.16)}
+@media print{ #prod-dash-root .col-sort-btn{display:none!important} }
 
 /* ── Pills & badges ──────────────────────────────── */
 #prod-dash-root .pill { display:inline-block; padding: 2px 9px; border-radius: 999px; font-size: 10.5px; font-weight: 700; }
@@ -6055,6 +6075,79 @@ function exportToWhatsApp(){
     setTimeout(()=>{ window.print(); setTimeout(cleanup, 1500); }, 60);
   }
 
+
+  /* ── מיון עמודות (כמו אקסל) ───────────────────────────
+     מחזורי: עולה ← יורד ← ללא מיון (חזרה לסדר המקורי).
+     שורות בת (חומרים בתוך מתקן בסיכום התוצרת) נשארות מוצמדות לשורת האב
+     שלהן, ולכן המיון עובד על "בלוקים" ולא על שורות בודדות.
+     ─────────────────────────────────────────────────── */
+  const _colSorts = new Map();   // tableKey -> {idx, dir}
+
+  function sortValue(text){
+    const t = String(text||'').replace(/‏|‎/g,'').trim();
+    if(!t) return {n:null, s:''};
+    const d = t.match(/^(\d{1,2})[\/.](\d{1,2})[\/.](\d{2,4})/);
+    if(d){ let y=+d[3]; if(y<100) y+=2000; return {n: y*10000 + (+d[2])*100 + (+d[1]), s:t}; }
+    const iso = t.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if(iso) return {n: (+iso[1])*10000 + (+iso[2])*100 + (+iso[3]), s:t};
+    const num = t.replace(/[,\s%]/g,'').replace(/[^\d.\-]/g,'');
+    if(num && /^-?\d+(\.\d+)?$/.test(num) && /\d/.test(t)) return {n: parseFloat(num), s:t};
+    return {n:null, s:t};
+  }
+
+  function tableBlocks(tbody){
+    const blocks = [];
+    [...tbody.rows].forEach(tr=>{
+      const isChild = tr.classList.contains('os-mat');
+      if(isChild && blocks.length) blocks[blocks.length-1].kids.push(tr);
+      else blocks.push({ head:tr, kids:[] });
+    });
+    return blocks;
+  }
+
+  function applyColumnSort(table){
+    const st = _colSorts.get(tableKey(table));
+    const tbody = table.querySelector('tbody');
+    if(!tbody) return;
+    const blocks = tableBlocks(tbody);
+    blocks.forEach((b,i)=>{ if(b.head.dataset.cfOrd === undefined) b.head.dataset.cfOrd = i; });
+
+    if(!st || !st.dir){
+      blocks.sort((a,b)=> (+a.head.dataset.cfOrd) - (+b.head.dataset.cfOrd));
+    } else {
+      const mul = st.dir === 'asc' ? 1 : -1;
+      blocks.sort((a,b)=>{
+        const A = sortValue(cellText(a.head, st.idx)), B = sortValue(cellText(b.head, st.idx));
+        if(A.n !== null && B.n !== null){ if(A.n !== B.n) return (A.n - B.n) * mul; }
+        else if(A.n !== null) return -1 * mul;
+        else if(B.n !== null) return 1 * mul;
+        const c = A.s.localeCompare(B.s, 'he', {numeric:true});
+        if(c) return c * mul;
+        return (+a.head.dataset.cfOrd) - (+b.head.dataset.cfOrd);
+      });
+    }
+    const frag = document.createDocumentFragment();
+    blocks.forEach(b=>{ frag.appendChild(b.head); b.kids.forEach(k=>frag.appendChild(k)); });
+    tbody.appendChild(frag);
+
+    table.querySelectorAll('thead tr:first-child th').forEach((th,i)=>{
+      const btn = th.querySelector('.col-sort-btn');
+      if(!btn) return;
+      const active = st && st.dir && st.idx === i;
+      btn.textContent = active ? (st.dir === 'asc' ? '▲' : '▼') : '⇅';
+      th.classList.toggle('col-sorted', !!active);
+    });
+  }
+
+  function cycleColumnSort(table, idx){
+    const key = tableKey(table);
+    const cur = _colSorts.get(key);
+    let dir = 'asc';
+    if(cur && cur.idx === idx) dir = cur.dir === 'asc' ? 'desc' : (cur.dir === 'desc' ? null : 'asc');
+    if(dir) _colSorts.set(key, {idx, dir}); else _colSorts.delete(key);
+    applyColumnSort(table);
+  }
+
   function enhanceTablesWithFilters(){
     const scope = (typeof root!=='undefined' && root) ? root : document;
     scope.querySelectorAll('.table-scroll table').forEach(table=>{
@@ -6066,6 +6159,11 @@ function exportToWhatsApp(){
           if(th.classList.contains('cf-select-col')) return;
           if(th.querySelector('.col-filter-btn')) return;
           if(!th.dataset.label) th.dataset.label = th.textContent.trim();
+          const sortBtn=document.createElement('button');
+          sortBtn.type='button'; sortBtn.className='col-sort-btn'; sortBtn.textContent='⇅';
+          sortBtn.title='מיון: עולה ← יורד ← ללא';
+          sortBtn.onclick = ev=>{ ev.stopPropagation(); ev.preventDefault(); cycleColumnSort(table, i); };
+          th.appendChild(sortBtn);
           const btn=document.createElement('button');
           btn.type='button'; btn.className='col-filter-btn'; btn.textContent='▼';
           btn.title='סינון עמודה';
@@ -6074,6 +6172,7 @@ function exportToWhatsApp(){
         });
         table.dataset.cfReady='1';
       }
+      applyColumnSort(table);
       applyColumnFilters(table);
       updateTableToolbar(table);
     });
@@ -6095,9 +6194,11 @@ function exportToWhatsApp(){
       f.packaging  += numberValue(e.packaging);
       const mk = materialLabel(e);
       let m = f.mats.get(mk);
-      if(!m){ m = { name:mk, production:0, packaging:0 }; f.mats.set(mk, m); }
+      if(!m){ m = { name:mk, production:0, packaging:0, codes:new Set() }; f.mats.set(mk, m); }
       m.production += numberValue(e.production);
       m.packaging  += numberValue(e.packaging);
+      const code = String(e.materialCode||'').replace(/\.0$/,'').trim();
+      if(code && code !== mk) m.codes.add(code);
     });
     const facs = [...byFac.values()].sort((a,b)=>(b.production+b.packaging)-(a.production+a.packaging));
     const totP = facs.reduce((n,f)=>n+f.production,0);
@@ -6111,17 +6212,19 @@ function exportToWhatsApp(){
       '<div><span>אריזה בפועל</span><b>'+fmtNum(totK)+'</b></div>'+
       '<div><span>מתקנים</span><b>'+facs.length+'</b></div></div>'+
       '<div class="table-scroll"><table class="os-table" style="min-width:auto"><thead><tr>'+
-      '<th>מתקן / חומר</th><th>ייצור בפועל</th><th>אריזה בפועל</th></tr></thead><tbody>';
+      '<th class="os-name-col">מתקן / חומר</th><th>ייצור בפועל</th><th>אריזה בפועל</th></tr></thead><tbody>';
 
     facs.forEach(f=>{
       const mats = [...f.mats.values()].sort((a,b)=>(b.production+b.packaging)-(a.production+a.packaging));
       html += '<tr class="os-fac" data-fac="'+escapeHtml(f.fac)+'">'+
-        '<td><span class="os-caret">▶</span> <b>מתקן '+escapeHtml(f.fac)+'</b>'+
+        '<td class="os-name-col"><span class="os-caret">▶</span> <b>מתקן '+escapeHtml(f.fac)+'</b>'+
         ' <small>('+mats.length+' חומרים)</small></td>'+
         '<td><b>'+fmtNum(f.production)+'</b></td><td><b>'+fmtNum(f.packaging)+'</b></td></tr>';
       mats.forEach(m=>{
+        const codes = m.codes && m.codes.size ? [...m.codes].sort().join(' · ') : '';
         html += '<tr class="os-mat os-of-'+escapeHtml(f.fac).replace(/[^\w-]/g,'_')+'" style="display:none">'+
-          '<td class="os-mat-name">'+escapeHtml(m.name)+'</td>'+
+          '<td class="os-mat-name os-name-col">'+escapeHtml(m.name)+
+            (codes ? '<small class="os-mat-code">'+escapeHtml(codes)+'</small>' : '')+'</td>'+
           '<td>'+fmtNum(m.production)+'</td><td>'+fmtNum(m.packaging)+'</td></tr>';
       });
     });
@@ -6821,7 +6924,7 @@ function renderAll(){
       '<div class="topbar">'+
         '<div class="brand">'+
           '<div class="brand-mark">IML</div>'+
-          '<div><h1>IML Production Dashboard <span class="app-version-badge">V4.7.7</span></h1><p><span id="entryCount">טוען נתונים…</span> <span id="storageStatusBadge" class="storage-status"></span></p><p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;"><span id="dataStatusLine">בודק נתונים…</span></p><div id="fileSourcesPanel" style="display:none"></div></div>'+
+          '<div><h1>IML Production Dashboard <span class="app-version-badge">V4.7.8</span></h1><p><span id="entryCount">טוען נתונים…</span> <span id="storageStatusBadge" class="storage-status"></span></p><p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;"><span id="dataStatusLine">בודק נתונים…</span></p><div id="fileSourcesPanel" style="display:none"></div></div>'+
         '</div>'+
         '<div class="topbar-actions"><span id="roleBadge" class="role-badge viewer">👁 צפייה בלבד</span><button class="tab-btn" id="adminLoginBtn" style="background:rgba(255,255,255,0.06);color:var(--text);font-size:12px;padding:6px 14px;">🔐 כניסת מנהל</button><button class="tab-btn" id="refreshSharedBtn" style="background:rgba(20,184,166,0.12);color:var(--teal);font-size:12px;padding:6px 14px;">🔄 רענן נתונים</button><button class="tab-btn" id="addEventTopBtn" style="background:rgba(139,183,255,0.12);color:#8BB7FF;font-size:12px;padding:6px 14px;">+ הוסף אירוע</button><button class="tab-btn" id="advancedDashboardBtn" style="background:var(--teal-soft);color:var(--green);font-size:12px;padding:6px 14px;">📊 דשבורד חדש</button><button class="tab-btn" id="excelAnalyzedExportBtn" style="background:rgba(124,217,146,0.12);color:#7CD992;font-size:12px;padding:6px 14px;">📥 ייצוא ניתוח לאקסל</button><label for="qualityFileInput" class="tab-btn admin-only" style="background:rgba(239,68,68,0.12);color:var(--red);font-size:12px;padding:6px 14px;cursor:pointer;">🧪 טעינת איכות (קובץ אחד או שניים)</label><button class="tab-btn" id="whatsappExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📲 WhatsApp טקסט</button><button class="tab-btn" id="whatsappImageExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📸 צילום דשבורד</button><button class="tab-btn admin-only" id="targetsProdBtn" style="background:var(--amber-soft);color:var(--amber);font-size:12px;padding:6px 14px;">⚙ יעדי ייצור</button><button class="tab-btn admin-only" id="targetsBtn" style="background:var(--teal-soft);color:var(--teal);font-size:12px;padding:6px 14px;">⚙ יעדי אריזה</button><button class="tab-btn admin-only" id="resetBtn" style="background:rgba(255,255,255,0.05);color:var(--text-muted);font-size:12px;padding:6px 14px;">איפוס</button></div>'+
       '</div>'+
@@ -7208,7 +7311,7 @@ root.querySelector('#printBtn').onclick = ()=> window.print();
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   window.addEventListener('load', async () => {
     try {
-      const reg = await navigator.serviceWorker.register('./service-worker.js?v=4.7.7', { updateViaCache: 'none' });
+      const reg = await navigator.serviceWorker.register('./service-worker.js?v=4.7.8', { updateViaCache: 'none' });
       await reg.update();
       let reloading = false;
       navigator.serviceWorker.addEventListener('controllerchange', () => {
