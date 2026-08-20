@@ -9,12 +9,14 @@
 <meta name="theme-color" content="#030812">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="manifest" href="manifest.webmanifest?v=4.7.9">
-<link rel="icon" type="image/png" href="icons/iml-favicon-v4.png?v=4.7.9">
-<link rel="apple-touch-icon" href="icons/iml-apple-touch-icon-v4.png?v=4.7.9">
+<link rel="manifest" href="manifest.webmanifest?v=4.7.1">
+<link rel="icon" type="image/png" href="icons/iml-favicon-v4.png?v=4.7.1">
+<link rel="apple-touch-icon" href="icons/iml-apple-touch-icon-v4.png?v=4.7.1">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" onerror="window._xlsxLoadError=true"></script>
+<!-- xlsx-js-style — fork תואם־API של SheetJS 0.18.5 שכן כותב עיצוב תאים
+     (גבולות, מילוי, יישור). נדרש כדי שהדיווח היומי ייצא עם גבולות. -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js" onerror="window._xlsxLoadError=true"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" onerror="window._html2canvasLoadError=true"></script>
 <script>
 // Fallback XLSX loader — if CDN blocked (e.g. Safari opening local file), load from alternative source
@@ -23,7 +25,7 @@
     try {
       await new Promise((resolve, reject) => {
         const s = document.createElement('script');
-        s.src = 'https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js';
+        s.src = 'https://unpkg.com/xlsx-js-style@1.2.0/dist/xlsx.bundle.js';
         s.onload = resolve;
         s.onerror = reject;
         document.head.appendChild(s);
@@ -1986,10 +1988,10 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   function resolveXlsxUrl(){
     try{
       const tag = Array.from(document.getElementsByTagName('script'))
-        .map(t=>t.src||'').find(src=>/xlsx.*\.min\.js/i.test(src));
+        .map(t=>t.src||'').find(src=>/\bxlsx[^/]*\.js/i.test(src));
       if(tag) return new URL(tag, location.href).href;
     }catch(e){}
-    return 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    return 'https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js';
   }
   let _qualityWorkerUrl = null;
 
@@ -5064,7 +5066,8 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     const mime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
     let safeName = makeSafeFileName(fileName || 'dashboard_report.xlsx');
     if(!/\.xlsx$/i.test(safeName)) safeName += '.xlsx';
-    const out = XLSX.write(wb, {bookType:'xlsx', type:'array', compression:true});
+    /* cellStyles:true — נדרש כדי שעיצוב התאים (גבולות/מילוי/יישור) ייכתב לקובץ */
+    const out = XLSX.write(wb, {bookType:'xlsx', type:'array', compression:true, cellStyles:true});
     const blob = new Blob([out], {type:mime});
     showFileDownloadDialog(safeName, blob, mime);
   }
@@ -5355,7 +5358,8 @@ html, body { margin:0; padding:0; background:#0A0D12; }
         }
         const end = r - 1;
         if(end < start) return;
-        put(start, C.C, /^\d+$/.test(fac) ? Number(fac) : fac, ST.cell);
+        /* z:'0' — מספר מתקן בלי מפריד אלפים (1542 ולא 1,542) */
+        put(start, C.C, /^\d+$/.test(fac) ? Number(fac) : fac, ST.cell, /^\d+$/.test(fac) ? '0' : undefined);
         putF(start, C.H, 'SUM(G'+start+':G'+end+')', ST.cell);
         for(let rr=start+1; rr<=end; rr++){ put(rr,C.C,'',ST.cell); put(rr,C.H,'',ST.cell); }
         if(end > start){
@@ -5373,6 +5377,17 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       ws['!ref']    = XLSX.utils.encode_range({s:{r:0,c:0}, e:{r:totalRow-1, c:C.J}});
       ws['!merges'] = merges;
       ws['!cols']   = [{wch:3},{wch:16},{wch:12},{wch:13},{wch:42},{wch:22},{wch:11},{wch:12},{wch:46},{wch:34}];
+
+      /* גובה שורות — כדי ששם החומר הגולש ייראה במלואו, כמו בדיווח הידני */
+      const rowsH = [];
+      rowsH[4] = {hpt:26};   /* באנר האירועים */
+      rowsH[6] = {hpt:30};   /* שורת הכותרות */
+      for(let rr=8; rr<=totalRow; rr++){
+        const matCell = ws[at(rr, C.E)];
+        const len = matCell && matCell.v != null ? String(matCell.v).length : 0;
+        rowsH[rr-1] = {hpt: len > 56 ? 46 : (len > 28 ? 32 : 20)};
+      }
+      ws['!rows'] = rowsH;
 
       const wb = XLSX.utils.book_new();
       wb.Workbook = {Views:[{RTL:true}]};
@@ -7558,7 +7573,7 @@ root.querySelector('#printBtn').onclick = ()=> window.print();
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   window.addEventListener('load', async () => {
     try {
-      const reg = await navigator.serviceWorker.register('./service-worker.js?v=4.7.9', { updateViaCache: 'none' });
+      const reg = await navigator.serviceWorker.register('./service-worker.js?v=4.7.1', { updateViaCache: 'none' });
       await reg.update();
       let reloading = false;
       navigator.serviceWorker.addEventListener('controllerchange', () => {
