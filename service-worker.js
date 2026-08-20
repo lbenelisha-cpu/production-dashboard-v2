@@ -1,4 +1,4 @@
-const CACHE_NAME = 'iml-production-dashboard-v4.7.1';
+const CACHE_NAME = 'iml-production-dashboard-v4.8.0';
 const APP_SHELL = [
   './',
   './index.html',

@@ -9,9 +9,9 @@
 <meta name="theme-color" content="#030812">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="manifest" href="manifest.webmanifest?v=4.7.1">
-<link rel="icon" type="image/png" href="icons/iml-favicon-v4.png?v=4.7.1">
-<link rel="apple-touch-icon" href="icons/iml-apple-touch-icon-v4.png?v=4.7.1">
+<link rel="manifest" href="manifest.webmanifest?v=4.8.1">
+<link rel="icon" type="image/png" href="icons/iml-favicon-v4.png?v=4.8.1">
+<link rel="apple-touch-icon" href="icons/iml-apple-touch-icon-v4.png?v=4.8.1">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
 <!-- xlsx-js-style — fork תואם־API של SheetJS 0.18.5 שכן כותב עיצוב תאים
@@ -908,15 +908,64 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     .file-source-group.failed h4{color:#ff8a80}
     .file-source-group.failed .fs-name{color:#ff8a80}
     .file-source-group.failed .fs-rows::after{content:'לא נטען'}
+
+/* ── V4.8 Control Room + target-file layer ───────── */
+#prod-dash-root .control-room{margin-bottom:20px}
+#prod-dash-root .control-room-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:12px;flex-wrap:wrap}
+#prod-dash-root .control-room-title{font-size:19px;font-weight:900}
+#prod-dash-root .control-room-sub{font-size:11.5px;color:var(--text-muted);margin-top:2px}
+#prod-dash-root .control-kpis{display:grid;grid-template-columns:repeat(6,minmax(130px,1fr));gap:10px;margin-bottom:12px}
+#prod-dash-root .control-kpi{background:var(--panel);border:1px solid var(--border);border-radius:13px;padding:13px;min-width:0}
+#prod-dash-root .control-kpi .label{font-size:10.5px;color:var(--text-muted);font-weight:800}
+#prod-dash-root .control-kpi .value{font-family:'JetBrains Mono',monospace;font-size:21px;font-weight:900;margin-top:4px;white-space:nowrap}
+#prod-dash-root .control-kpi .sub{font-size:10.5px;color:var(--text-muted);margin-top:3px}
+#prod-dash-root .attention-box{background:linear-gradient(145deg,rgba(239,68,68,.08),var(--panel));border:1px solid rgba(239,68,68,.22);border-radius:13px;padding:13px 15px;margin-bottom:12px}
+#prod-dash-root .attention-title{font-size:13px;font-weight:900;margin-bottom:7px}
+#prod-dash-root .attention-item{font-size:12px;color:var(--text-muted);padding:3px 0}
+#prod-dash-root .facility-score-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px}
+#prod-dash-root .facility-score{background:var(--panel);border:1px solid var(--border);border-radius:13px;padding:13px;cursor:pointer;transition:.18s}
+#prod-dash-root .facility-score:hover{transform:translateY(-1px);border-color:var(--border-strong)}
+#prod-dash-root .facility-score-head{display:flex;justify-content:space-between;gap:8px;align-items:center}
+#prod-dash-root .facility-score-name{font-weight:900}
+#prod-dash-root .facility-score-value{font-family:'JetBrains Mono',monospace;font-weight:900;font-size:18px}
+#prod-dash-root .facility-score-line{display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--text-muted);margin-top:7px}
+#prod-dash-root .mini-progress{height:7px;background:var(--panel-2);border-radius:999px;overflow:hidden;margin-top:8px}
+#prod-dash-root .mini-progress span{display:block;height:100%;background:var(--teal);border-radius:999px}
+#prod-dash-root .load-health{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+#prod-dash-root .load-health-chip{font-size:10px;font-weight:800;border:1px solid var(--border);padding:3px 7px;border-radius:999px;background:var(--panel)}
+#prod-dash-root .load-health-chip.ok{color:var(--green);border-color:rgba(34,197,94,.35)}
+#prod-dash-root .load-health-chip.missing{color:var(--text-muted)}
+#prod-dash-root .target-file-badge{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border-strong);background:var(--panel);padding:6px 10px;border-radius:999px;font-size:11px;color:var(--text-muted)}
+#prod-dash-root .management-strip{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:12px 0}
+#prod-dash-root .management-card{border:1px solid var(--border);background:rgba(15,23,42,.48);border-radius:14px;padding:12px}
+#prod-dash-root .management-card .mc-label{font-size:11px;color:var(--text-muted);font-weight:800}
+#prod-dash-root .management-card .mc-value{font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:900;margin-top:5px}
+#prod-dash-root .management-card .mc-sub{font-size:10px;color:var(--text-muted);margin-top:3px}
+@media(max-width:800px){#prod-dash-root .management-strip{grid-template-columns:repeat(2,1fr)}}
+#prod-dash-root .facility-score{position:relative}
+#prod-dash-root .facility-score.status-red{border-color:rgba(239,68,68,.5)}
+#prod-dash-root .facility-score.status-yellow{border-color:rgba(245,158,11,.5)}
+#prod-dash-root .facility-score.status-green{border-color:rgba(34,197,94,.4)}
+#prod-dash-root .facility-status-badge{position:absolute;top:10px;left:10px;font-size:10px;font-weight:900;padding:3px 7px;border-radius:999px}
+#prod-dash-root .facility-status-badge.red{background:rgba(239,68,68,.14);color:var(--red)}
+#prod-dash-root .facility-status-badge.yellow{background:rgba(245,158,11,.14);color:var(--yellow)}
+#prod-dash-root .facility-status-badge.green{background:rgba(34,197,94,.14);color:var(--green)}
+#prod-dash-root .control-room-note{font-size:11px;color:var(--text-muted);margin-top:5px}
+
+@media(max-width:1000px){#prod-dash-root .control-kpis{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:650px){#prod-dash-root .control-kpis{grid-template-columns:repeat(2,1fr)}#prod-dash-root .facility-score-grid{grid-template-columns:1fr}}
+
 </style>
 </head>
 <body>
 <div id="prod-dash-root" dir="rtl" lang="he"></div>
+<input type="file" id="targetsFileInput" accept=".xlsx,.xls,.csv" style="position:fixed;top:-100px;left:-100px;width:1px;height:1px;opacity:0;">
 <input type="file" id="qualityFileInput" accept=".xlsx,.xls,.csv" multiple style="position:fixed;top:-100px;left:-100px;width:1px;height:1px;opacity:0;">
+<input type="file" id="unifiedFileInput" accept=".xlsx,.xls,.csv,.txt" multiple style="position:fixed;top:-100px;left:-100px;width:1px;height:1px;opacity:0;">
 <script>
 (function(){
   const root = document.getElementById('prod-dash-root');
-  let adminToken = sessionStorage.getItem('dashboard_admin_token') || '';
+  let adminToken = sessionStorage.getItem('dashboard_admin_token') || (location.protocol === 'file:' ? 'local-preview' : '');
   let isAdmin = !!adminToken;
   function requireAdmin(){
     if(isAdmin && adminToken) return true;
@@ -934,7 +983,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     const loginBtn = root.querySelector('#adminLoginBtn');
     if(loginBtn) loginBtn.textContent = isAdmin ? 'יציאה ממנהל' : '🔐 כניסת מנהל';
     ['#targetsProdBtn','#targetsBtn','#resetBtn','#addBtn'].forEach(sel=>{ const el=root.querySelector(sel); if(el) el.classList.add('admin-only'); });
-    root.querySelectorAll('label[for="qualityFileInput"], label[for="csvInput"], .row-del, #f_period_pack_target, #f_save_period_target, #f_clear_period_target').forEach(el=>el.classList.add('admin-only'));
+    root.querySelectorAll('label[for="qualityFileInput"], label[for="targetsFileInput"], label[for="csvInput"], .row-del, #f_period_pack_target, #f_save_period_target, #f_clear_period_target').forEach(el=>el.classList.add('admin-only'));
   }
 
   // אחסון משותף אמיתי: באתר החי כל קריאה ושמירה מתבצעת דרך Netlify Blobs.
@@ -3013,6 +3062,9 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   const STORAGE_KEY_PERIOD_TARGETS = 'period_packaging_targets_v1';
   const STORAGE_KEY_EVENTS = 'production_events_quality_environment_v1';
   const STORAGE_KEY_QUALITY = 'quality_ud_data_v1';
+  const STORAGE_KEY_TARGET_FILE = 'monthly_target_file_v1';
+  let targetFileRows = [];
+  let targetFileMeta = {fileName:'', loadedAt:''};
 
   function migrateFacilityKey(obj){
     let changed = false;
@@ -3186,6 +3238,230 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     }
   }
 
+
+
+  async function loadTargetFile(){
+    try{
+      const res = await _dashStorage.get(STORAGE_KEY_TARGET_FILE);
+      const data = res && res.value ? JSON.parse(res.value) : null;
+      if(data && Array.isArray(data.rows)){ targetFileRows=data.rows; targetFileMeta=data.meta||targetFileMeta; }
+    }catch(e){
+      try{ const raw=localStorage.getItem(STORAGE_KEY_TARGET_FILE); const data=raw?JSON.parse(raw):null; if(data&&Array.isArray(data.rows)){targetFileRows=data.rows;targetFileMeta=data.meta||targetFileMeta;} }catch(e2){}
+    }
+  }
+  async function persistTargetFile(){
+    const payload=JSON.stringify({rows:targetFileRows,meta:targetFileMeta});
+    try{ await _dashStorage.set(STORAGE_KEY_TARGET_FILE,payload); return true; }
+    catch(e){ try{localStorage.setItem(STORAGE_KEY_TARGET_FILE,payload);return true;}catch(e2){return false;} }
+  }
+  function normTargetHeader(v){ return String(v??'').trim().toLowerCase().replace(/[\s_\-\/\\().]+/g,''); }
+  function targetHeaderIndex(headers, aliases){
+    const hs=headers.map(normTargetHeader); for(const a of aliases){ const i=hs.indexOf(normTargetHeader(a)); if(i>=0)return i; } return -1;
+  }
+  function monthNorm(v){
+    if(v instanceof Date && !isNaN(v)) return v.getFullYear()+'-'+String(v.getMonth()+1).padStart(2,'0');
+    const t=String(v??'').trim(); if(!t)return '';
+    let m=t.match(/(20\d{2})[\/.\-](\d{1,2})/); if(m)return m[1]+'-'+String(+m[2]).padStart(2,'0');
+    m=t.match(/(\d{1,2})[\/.\-](20\d{2})/); if(m)return m[2]+'-'+String(+m[1]).padStart(2,'0');
+    const en={jan:1,january:1,feb:2,february:2,mar:3,march:3,apr:4,april:4,may:5,jun:6,june:6,jul:7,july:7,aug:8,august:8,sep:9,september:9,oct:10,october:10,nov:11,november:11,dec:12,december:12};
+    m=t.toLowerCase().match(/\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b[^0-9]*(20\d{2})/i);
+    if(m){ const k=m[1].toLowerCase(); return m[2]+'-'+String(en[k]||0).padStart(2,'0'); }
+    return '';
+  }
+  function targetPackagingTypeFromLabel(label){
+    const t=String(label||'').toLowerCase().replace(/\s+/g,' ');
+    if(/\b1\s*(?:l|lt|ltr|liter|litre)\b/.test(t)) return 'קו אריזה 1 ליטר';
+    if(/\b5\s*(?:l|lt|ltr|liter|litre)\b/.test(t)) return 'קו אריזה 5 ליטר';
+    if(/10\s*\/\s*20\s*(?:l|lt|ltr|liter|litre)?/.test(t) || /\b(?:10|20)\s*(?:l|lt|ltr|liter|litre)\b/.test(t)) return 'קו אריזה 10/20 ליטר';
+    return '';
+  }
+  function targetFacilityFromLabel(label){
+    const raw=String(label||'').trim(), low=raw.toLowerCase();
+    // יעדי ISO מדווחים אצלנו למתקני Shaked ולא למחסני האריזה/פורמולציה.
+    if(/iso/.test(low) && /42/.test(low)) return '1142';
+    if(/iso/.test(low) && /23/.test(low) && !/42/.test(low)) return '1123';
+    if(/^lq\s*43\b/i.test(raw)) return '1543';
+    if(/^24f/i.test(raw)) return '1524';
+    const par=(raw.match(/\(([^)]+)\)/)||[])[1]||'';
+    const nums=(par.match(/\d{2}/g)||[]).filter(Boolean);
+    // שורה שמכילה כמה מתקנים היא יעד משותף; אין לייחס אותה למתקן יחיד באופן שרירותי.
+    if(nums.length!==1) return '';
+    const n=nums[0];
+    return ({'19':'1519','23':'1523','24':'1524','25':'1525','28':'1528','40':'1540','41':'1541','42':'1542','43':'1543'})[n]||'';
+  }
+  function parseAuditedSumTargetSheet(ws){
+    const grid=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:true,blankrows:false}); if(!grid.length)return [];
+    // בקובץ המבוקר: שורה 1 היא כותרת הדוח, שורה 2 מכילה Capacity / Plan / Production ...
+    let hi=-1;
+    for(let r=0;r<Math.min(20,grid.length);r++){
+      const row=grid[r].map(normTargetHeader);
+      if(row.includes(normTargetHeader('Capacity')) && row.includes(normTargetHeader('Plan'))){ hi=r; break; }
+    }
+    if(hi<0)return [];
+    const h=grid[hi];
+    const ci=targetHeaderIndex(h,['Capacity']);
+    const pi=targetHeaderIndex(h,['Plan']);
+    const prodI=targetHeaderIndex(h,['Production']);
+    const achI=targetHeaderIndex(h,['% Achievement','Achievement']);
+    const reqI=targetHeaderIndex(h,['Req. t/d']);
+    const adjI=targetHeaderIndex(h,['Adjusted Req. t/d']);
+    const actI=targetHeaderIndex(h,['Actual t/d']);
+    const adhI=targetHeaderIndex(h,['New Adherence']);
+    const remarksI=targetHeaderIndex(h,['Remarks']);
+    const titleMonth=monthNorm((grid[0]||[]).map(x=>String(x||'')).join(' '));
+    const out=[];
+    for(let r=hi+1;r<grid.length;r++){
+      const row=grid[r], label=String(row[0]??'').trim(); if(!label)continue;
+      const plan=pi>=0?numberValue(row[pi]):0; if(plan<=0)continue;
+      const fac=targetFacilityFromLabel(label);
+      // בקובץ היעדים הערכים Capacity/Plan הם באלפים (טון/אלף ליטר), בעוד נתוני הדשבורד ביחידות בסיס.
+      const scale=1000;
+      out.push({
+        facility:fac, sourceLabel:label, month:titleMonth, packagingType:targetPackagingTypeFromLabel(label),
+        materialCode:'', materialName:'', monthlyTarget:plan*scale, dailyTarget:0,
+        capacity:ci>=0?numberValue(row[ci])*scale:0, sourcePlan:plan, sourceScale:scale,
+        sourceProduction:prodI>=0?numberValue(row[prodI])*scale:0,
+        sourceAchievement:achI>=0?numberValue(row[achI]):0,
+        sourceRequiredPerDay:reqI>=0?numberValue(row[reqI])*scale:0,
+        sourceAdjustedRequiredPerDay:adjI>=0?numberValue(row[adjI])*scale:0,
+        sourceActualPerDay:actI>=0?numberValue(row[actI])*scale:0,
+        sourceNewAdherence:adhI>=0?numberValue(row[adhI]):0,
+        remarks:remarksI>=0?String(row[remarksI]??'').trim():'', sourceSheet:'Sum', sourceRow:r+1
+      });
+    }
+    return out;
+  }
+  function parseTargetSheet(ws){
+    const grid=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:true,blankrows:false}); if(!grid.length)return [];
+    let hi=-1;
+    for(let r=0;r<Math.min(20,grid.length);r++){
+      const row=grid[r].map(normTargetHeader);
+      if(row.some(x=>['מתקן','facility','station','תחנה','workcenter'].includes(x)) && row.some(x=>x.includes('יעד')||x.includes('target')||x==='plan')){hi=r;break;}
+    }
+    if(hi<0)return [];
+    const h=grid[hi];
+    const fi=targetHeaderIndex(h,['מתקן','facility','station','תחנה','work center']);
+    const ti=targetHeaderIndex(h,['יעד חודשי','monthly target','target','יעד','plan','תכנון']);
+    const di=targetHeaderIndex(h,['יעד יומי','daily target']);
+    const mi=targetHeaderIndex(h,['חודש','month','period','תקופה']);
+    const pi=targetHeaderIndex(h,['סוג אריזה','packaging type','קו','line','resource','משאב']);
+    const ii=targetHeaderIndex(h,['מק״ט','מקט','item code','material','material code']);
+    const ni=targetHeaderIndex(h,['תיאור','item descr','item description','שם חומר','material name','product']);
+    if(fi<0 || (ti<0 && di<0)) return [];
+    const out=[];
+    for(let r=hi+1;r<grid.length;r++){
+      const row=grid[r], facility=String(row[fi]??'').replace(/\.0$/,'').trim(); if(!facility)continue;
+      const monthly=ti>=0?numberValue(row[ti]):0, daily=di>=0?numberValue(row[di]):0; if(monthly<=0&&daily<=0)continue;
+      out.push({facility,sourceLabel:facility,month:mi>=0?monthNorm(row[mi]):'',packagingType:pi>=0?String(row[pi]??'').trim():'',materialCode:ii>=0?String(row[ii]??'').replace(/\.0$/,'').trim():'',materialName:ni>=0?String(row[ni]??'').trim():'',monthlyTarget:monthly,dailyTarget:daily,sourceSheet:'יעדים',sourceRow:r+1});
+    }
+    return out;
+  }
+  /* ── V4.8.5: dynamic product-family mapping from the target workbook DATA sheet ── */
+  function _v485FamilyKey(v){
+    return String(v||'').toUpperCase().replace(/\([^)]*\)/g,'').replace(/[^A-Z0-9]+/g,' ').replace(/\s+/g,' ').trim();
+  }
+  function _v485MaterialsByFamily(wb){
+    const out=new Map();
+    (wb.SheetNames||[]).forEach(sheetName=>{
+      const grid=XLSX.utils.sheet_to_json(wb.Sheets[sheetName],{header:1,defval:'',raw:true,blankrows:false});
+      if(!grid.length)return;
+      let hi=-1;
+      for(let r=0;r<Math.min(30,grid.length);r++){
+        const keys=(grid[r]||[]).map(normTargetHeader);
+        if(keys.includes(normTargetHeader('Item Code')) && keys.includes(normTargetHeader('Family'))){hi=r;break;}
+      }
+      if(hi<0)return;
+      const h=grid[hi]||[];
+      const ii=targetHeaderIndex(h,['Item Code','Material','Material Code','מק״ט','מקט']);
+      const fi=targetHeaderIndex(h,['Family','משפחה']);
+      const si=targetHeaderIndex(h,['Segmentation Class','Segmentation','סגמנטציה']);
+      if(ii<0||fi<0)return;
+      for(let r=hi+1;r<grid.length;r++){
+        const code=String((grid[r]||[])[ii]??'').replace(/\.0$/,'').trim();
+        if(!code)continue;
+        // V4.8.7: IML CONTROL master-data uses BOTH Family and Segmentation Class.
+        // Examples: NANA is Segmentation Class while Family=FLUROCHLORIDONE;
+        // 24F128 is Segmentation Class while Family can be blank.
+        const keys=[_v485FamilyKey((grid[r]||[])[fi]), si>=0?_v485FamilyKey((grid[r]||[])[si]):'']
+          .filter(k=>k&&k!=='#N A');
+        keys.forEach(key=>{
+          if(!out.has(key))out.set(key,new Set());
+          out.get(key).add(code);
+        });
+      }
+    });
+    return out;
+  }
+  function _v485AttachTargetMaterials(rows,materialsByFamily){
+    return (rows||[]).map(r=>{
+      const label=String(r.sourceLabel||'').trim();
+      // Packaging lines keep their proven Routing logic; DATA material matching is for product-family targets.
+      const protectedPackaging=/LQ\s*(1|5|10\s*\/\s*20)\s*(LT|L)/i.test(label)||/WG/i.test(label);
+      const key=_v485FamilyKey(label);
+      const materials=protectedPackaging?[]:[...(materialsByFamily.get(key)||[])];
+      return {...r,productFamily:key,materials};
+    });
+  }
+  async function handleTargetFile(file){
+    try{
+      if(typeof XLSX==='undefined'){showToast('ספריית Excel לא נטענה',true);return;}
+      const wb=XLSX.read(await file.arrayBuffer(),{type:'array',cellDates:true}); let rows=[];
+      const materialsByFamily=_v485MaterialsByFamily(wb);
+      // קודם כל משתמשים בגיליון Sum של קובץ היעדים המבוקר. רק אם לא זוהה — עוברים לפורמט הישן/תבנית.
+      const sumName=wb.SheetNames.find(n=>String(n).trim().toLowerCase()==='sum');
+      if(sumName) rows=parseAuditedSumTargetSheet(wb.Sheets[sumName]);
+      if(!rows.length) wb.SheetNames.forEach(n=>{ rows=rows.concat(parseTargetSheet(wb.Sheets[n])); });
+      rows=_v485AttachTargetMaterials(rows,materialsByFamily);
+      if(!rows.length){showToast('לא נמצאו יעדים. נדרש גיליון Sum עם Plan או טבלה עם עמודות מתקן + יעד.',true);return;}
+      targetFileRows=rows; targetFileMeta={fileName:file.name,loadedAt:new Date().toISOString(),sheet:sumName&&rows.some(r=>r.sourceSheet==='Sum')?'Sum':'auto',mapped:rows.filter(r=>r.facility).length,unmapped:rows.filter(r=>!r.facility).length};
+      await persistTargetFile();
+      const extra=targetFileMeta.unmapped?(' · '+targetFileMeta.unmapped+' שורות יעד משותפות/לא ממופות נשמרו לעיון') : '';
+      showToast('קובץ היעדים נטען: '+rows.length+' שורות · '+targetFileMeta.mapped+' ממופות'+extra); renderAll();
+    }catch(e){console.error(e);showToast('שגיאה בקריאת קובץ היעדים: '+(e.message||e),true);}
+  }
+  function downloadTargetsTemplate(){
+    if(typeof XLSX==='undefined'){showToast('ספריית Excel לא נטענה',true);return;}
+    const ym=(new Date()).toISOString().slice(0,7);
+    const data=[['חודש','מתקן','סוג אריזה / קו','מק״ט','תיאור','יעד חודשי','יעד יומי'],[ym,'1542','5L','','',1200000,''],[ym,'1519','WG','','',500000,'']];
+    const wb=XLSX.utils.book_new(),ws=XLSX.utils.aoa_to_sheet(data);ws['!cols']=[{wch:12},{wch:12},{wch:20},{wch:16},{wch:30},{wch:16},{wch:14}];XLSX.utils.book_append_sheet(wb,ws,'יעדים');XLSX.writeFile(wb,'תבנית_יעדים_IML.xlsx');
+  }
+  function targetMonthForView(view){
+    if(tab==='month') return effectiveMonth();
+    const dates=(view.filtered||[]).map(e=>e.date).filter(Boolean).sort(); return dates.length?dates[dates.length-1].slice(0,7):todayISO().slice(0,7);
+  }
+  function targetRowsForMonth(view){
+    const ym=targetMonthForView(view); let rows=targetFileRows.filter(r=>!r.month||r.month===ym);
+    if(selectedFacilities!==null) rows=rows.filter(r=>selectedFacilities.has(r.facility)); return rows;
+  }
+  function facilityMonthlyTarget(fac,view){
+    const rows=targetRowsForMonth(view).filter(r=>r.facility===fac); if(!rows.length)return 0;
+    const ym=targetMonthForView(view), days=new Date(+ym.slice(0,4),+ym.slice(5,7),0).getDate();
+    return rows.reduce((s,r)=>s+(r.monthlyTarget>0?r.monthlyTarget:r.dailyTarget*days),0);
+  }
+  function renderControlRoom(view){
+    const c=root.querySelector('#controlRoom'); if(!c)return;
+    const trows=targetRowsForMonth(view), ym=targetMonthForView(view), dim=new Date(+ym.slice(0,4),+ym.slice(5,7),0).getDate();
+    const monthEntries=facilityFilteredEntries().filter(e=>e.date&&e.date.slice(0,7)===ym);
+    const dates=monthEntries.map(e=>e.date).filter(Boolean).sort(); const latest=dates.length?dates[dates.length-1]:ym+'-01'; const elapsed=Math.max(1,Math.min(dim,+latest.slice(8,10)||1));
+    const facs=[...new Set(trows.map(r=>r.facility))];
+    const cards=facs.map(f=>{ const monthly=facilityMonthlyTarget(f,view); const actual=monthEntries.filter(e=>e.facility===f).reduce((s,e)=>s+numberValue(e.packaging),0); const paceTarget=monthly*elapsed/dim; const pacePct=paceTarget>0?actual/paceTarget*100:0; const forecast=elapsed>0?actual/elapsed*dim:0; const score=Math.max(0,Math.min(100,Math.round(pacePct))); return {facility:f,monthly,actual,paceTarget,pacePct,forecast,score}; });
+    const totalTarget=cards.reduce((s,x)=>s+x.monthly,0), totalActual=cards.reduce((s,x)=>s+x.actual,0), targetToDate=cards.reduce((s,x)=>s+x.paceTarget,0), pacePct=targetToDate>0?totalActual/targetToDate*100:0, forecast=cards.reduce((s,x)=>s+x.forecast,0), gap=forecast-totalTarget;
+    const openOrders=monthEntries.filter(e=>String(e.status||'').toUpperCase().includes('REL')&&!String(e.status||'').toUpperCase().includes('DLV')).length;
+    const events=(eventsEntries||[]).filter(e=>!e.status||String(e.status).toLowerCase()!=='closed').length;
+    const attention=[]; cards.filter(x=>x.pacePct<75).forEach(x=>attention.push('🔴 מתקן '+x.facility+' בקצב '+Math.round(x.pacePct)+'% מהנדרש לחודש.'));
+    cards.filter(x=>x.forecast<x.monthly && x.pacePct>=75).forEach(x=>attention.push('🟡 מתקן '+x.facility+' צפוי לסיים מתחת ליעד בכ־'+fmt(x.monthly-x.forecast)+'.'));
+    if(openOrders>0)attention.push('🟠 '+fmt(openOrders)+' רשומות של הזמנות פתוחות/בתהליך בטווח הנבחר.'); if(events>0)attention.push('⚠️ '+fmt(events)+' אירועים פתוחים/ללא סטטוס סגירה.'); if(!trows.length)attention.push('🎯 טרם נטען קובץ יעדים לחודש '+ym+'.');
+    if(Number(targetFileMeta.unmapped||0)>0) attention.push('ℹ️ '+fmt(targetFileMeta.unmapped)+' שורות יעד משותפות/ללא מיפוי נשמרו מהקובץ ואינן נכללות כרגע בחישוב מתקן יחיד.');
+    const fileText=targetFileMeta.fileName?('🎯 '+escapeHtml(targetFileMeta.fileName)+' · '+targetFileRows.length+' יעדים'+(targetFileMeta.sheet?' · '+escapeHtml(targetFileMeta.sheet):'')+(targetFileMeta.mapped!=null?' · '+targetFileMeta.mapped+' ממופים':'')):'🎯 אין קובץ יעדים';
+    c.innerHTML='<div class="panel control-room"><div class="control-room-head"><div><div class="control-room-title">🎛 חדר בקרה ניהולי</div><div class="control-room-sub">מצב מול יעד, קצב נדרש ותחזית סוף חודש · '+ym+'</div></div><div class="target-file-badge">'+fileText+'</div></div>'+ 
+      '<div class="control-kpis"><div class="control-kpi"><div class="label">אריזה בפועל</div><div class="value">'+fmt(totalActual)+'</div><div class="sub">לחודש/טווח הנבחר</div></div><div class="control-kpi"><div class="label">יעד חודשי</div><div class="value">'+fmt(totalTarget)+'</div><div class="sub">מקובץ היעדים</div></div><div class="control-kpi"><div class="label">עמידה בקצב</div><div class="value" style="color:'+(pacePct>=100?'var(--green)':pacePct>=75?'var(--yellow)':'var(--red)')+'">'+Math.round(pacePct)+'%</div><div class="sub">מול יעד עד יום '+elapsed+'</div></div><div class="control-kpi"><div class="label">תחזית סוף חודש</div><div class="value">'+fmt(forecast)+'</div><div class="sub">'+(gap>=0?'▲ '+fmt(gap)+' מעל היעד':'▼ חסרים '+fmt(Math.abs(gap)))+'</div></div><div class="control-kpi"><div class="label">הזמנות פתוחות</div><div class="value">'+fmt(openOrders)+'</div><div class="sub">בטווח הנבחר</div></div><div class="control-kpi"><div class="label">אירועים פתוחים</div><div class="value">'+fmt(events)+'</div><div class="sub">איכות / בטיחות / סביבה</div></div></div>'+ 
+      '<div class="attention-box"><div class="attention-title">⚠️ דורש טיפול</div>'+(attention.length?attention.slice(0,8).map(x=>'<div class="attention-item">'+x+'</div>').join(''):'<div class="attention-item">🟢 אין כרגע חריגות מרכזיות לפי הכללים שהוגדרו.</div>')+'</div>'+ 
+      '<div class="facility-score-grid">'+cards.map(x=>'<div class="facility-score" data-control-fac="'+escapeHtml(x.facility)+'"><div class="facility-score-head"><div class="facility-score-name">מתקן '+escapeHtml(x.facility)+'</div><div class="facility-score-value" style="color:'+(x.pacePct>=100?'var(--green)':x.pacePct>=75?'var(--yellow)':'var(--red)')+'">'+x.score+'/100</div></div><div class="facility-score-line"><span>בפועל '+fmt(x.actual)+'</span><span>יעד '+fmt(x.monthly)+'</span></div><div class="mini-progress"><span style="width:'+Math.min(100,Math.max(0,x.pacePct))+'%;background:'+(x.pacePct>=100?'var(--green)':x.pacePct>=75?'var(--yellow)':'var(--red)')+'"></span></div><div class="facility-score-line"><span>קצב '+Math.round(x.pacePct)+'%</span><span>תחזית '+fmt(x.forecast)+'</span></div></div>').join('')+'</div></div>';
+    c.insertAdjacentHTML('beforeend',_v484DiagHtml(m));
+    const excelBtn=c.querySelector('#controlExcelBtn'); if(excelBtn)excelBtn.onclick=(e)=>{e.stopPropagation();exportControlRoomExcel(view);};
+    const printBtn=c.querySelector('#controlPrintBtn'); if(printBtn)printBtn.onclick=(e)=>{e.stopPropagation();window.print();};
+    c.querySelectorAll('[data-control-fac]').forEach(el=>el.onclick=()=>{selectedFacilities=new Set([el.dataset.controlFac]);renderAll();});
+  }
 
   function selectedFacilitiesKey(){
     return selectedFacilities === null ? 'all' : Array.from(selectedFacilities).sort().join('|');
@@ -6567,6 +6843,7 @@ function exportToWhatsApp(){
   }
 
 function renderAll(){
+    updateLoadHealth();
     if(!loaded) return;
     applyRoleUI();
 
@@ -6589,7 +6866,7 @@ function renderAll(){
     const isQualityTab = tab === 'quality';
     const mainPanels = ['kpiGrid','facilityTargetGaugesContainer','advancedDashboard','packagingBreakdownPanel','outputSummaryPanel',
       'shiftComparisonPanel','operationalInsights','notesPanel','eventsPanel','qualityPanel',
-      'chartWrap','entriesTableWrap','filterBar','facilityBar'];
+      'chartWrap','entriesTableWrap','filterBar','facilityBar','controlRoom'];
     const qualityTabContent = root.querySelector('#qualityTabContent');
 
     if(isQualityTab){
@@ -6609,6 +6886,7 @@ function renderAll(){
     renderFacilityBar();
     renderFilterBar();
     const view = getView();
+    renderControlRoom(view);
     renderKPIs(view);
     renderFacilityTargetGauges(view);
     renderAdvancedDashboard(view);
@@ -6928,6 +7206,7 @@ function renderAll(){
     'מתקן':'facility','facility':'facility','site':'facility','storg. location':'facility','storage location':'facility','storg location':'facility',
     'מפעל':'plant','plant':'plant',
     'קו':'line','קו/מוצר':'line','line':'line','מוצר':'line','product':'line',
+    'routing group':'line','routinggroup':'line','routing_group':'line','קבוצת ניתוב':'line','resource':'line','משאב':'line',
     'משמרת':'shift','shift':'shift',
     'סוג_אריזה':'packaging_type','סוג אריזה':'packaging_type','packaging_type':'packaging_type',
     'description':'packaging_type_text','תיאור':'packaging_type_text',
@@ -7113,6 +7392,69 @@ function renderAll(){
     });
     return rows;
   }
+  async function classifyUnifiedFile(file){
+    const name=String(file.name||'').toLowerCase();
+    if(/target|יעד/.test(name)) return 'targets';
+    if(/quality|איכות|inspection|result/.test(name)) return 'quality';
+    if(!(name.endsWith('.xlsx')||name.endsWith('.xls'))) return 'production';
+    if(typeof XLSX==='undefined') return 'production';
+    try{
+      const wb=XLSX.read(await file.arrayBuffer(),{type:'array',cellDates:false,dense:true});
+      const sheetNames=(wb.SheetNames||[]).map(n=>String(n).trim().toLowerCase());
+      if(sheetNames.includes('sum')){
+        const ws=wb.Sheets[wb.SheetNames[sheetNames.indexOf('sum')]];
+        const grid=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:true,range:0});
+        for(let r=0;r<Math.min(grid.length,25);r++){
+          const h=(grid[r]||[]).map(v=>String(v||'').trim().toLowerCase());
+          if(h.some(v=>v==='plan') && h.some(v=>v==='capacity')) return 'targets';
+        }
+      }
+      for(const sn of wb.SheetNames.slice(0,3)){
+        const ws=wb.Sheets[sn];
+        const grid=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:true,range:0});
+        for(let r=0;r<Math.min(grid.length,30);r++){
+          const h=(grid[r]||[]).map(v=>String(v||'').toLowerCase());
+          const joined=h.join(' | ');
+          if(/inspection lot|usage decision|ud code|measured value|characteristic|תוצאת|איכות/.test(joined)) return 'quality';
+          if(/actual finish|storage location|delivered quantity|routing group|order type|work order|batch/.test(joined)) return 'production';
+        }
+      }
+    }catch(err){ console.warn('unified classifier:',err); }
+    return 'production';
+  }
+
+  async function handleUnifiedFiles(fileList){
+    if(!requireAdmin()) return;
+    const files=Array.from(fileList||[]);
+    if(!files.length)return;
+    const groups={production:[],quality:[],targets:[]};
+    showToast('מזהה '+files.length+' קבצים...');
+    for(const file of files){
+      const kind=await classifyUnifiedFile(file);
+      groups[kind].push(file);
+    }
+    const results=[];
+    try{
+      for(const file of groups.production){
+        await handleDataFile(file);
+        results.push('כמויות ✓ '+file.name);
+      }
+      if(groups.quality.length){
+        await handleQualityFiles(groups.quality);
+        results.push('איכות ✓ '+groups.quality.length+' קבצים');
+      }
+      for(const file of groups.targets){
+        await handleTargetFile(file);
+        results.push('יעדים ✓ '+file.name);
+      }
+      showToast('טעינה הושלמה · '+results.join(' · '));
+      renderAll();
+    }catch(err){
+      console.error(err);
+      showToast('הטעינה הסתיימה עם שגיאה בחלק מהקבצים',true);
+    }
+  }
+
   async function handleDataFile(file){
     try {
       const name = file.name.toLowerCase();
@@ -7184,9 +7526,9 @@ function renderAll(){
       '<div class="topbar">'+
         '<div class="brand">'+
           '<div class="brand-mark">IML</div>'+
-          '<div><h1>IML Production Dashboard <span class="app-version-badge">V4.7.9</span></h1><p><span id="entryCount">טוען נתונים…</span> <span id="storageStatusBadge" class="storage-status"></span></p><p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;"><span id="dataStatusLine">בודק נתונים…</span></p><div id="fileSourcesPanel" style="display:none"></div></div>'+
+          '<div><h1>IML Production Dashboard <span class="app-version-badge">V4.8.16</span></h1><p><span id="entryCount">טוען נתונים…</span> <span id="storageStatusBadge" class="storage-status"></span></p><p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;"><span id="dataStatusLine">בודק נתונים…</span></p><div class="load-health" id="loadHealth"><span class="load-health-chip missing">כמויות —</span><span class="load-health-chip missing">איכות —</span><span class="load-health-chip missing">יעדים —</span></div><div id="fileSourcesPanel" style="display:none"></div></div>'+
         '</div>'+
-        '<div class="topbar-actions"><span id="roleBadge" class="role-badge viewer">👁 צפייה בלבד</span><button class="tab-btn" id="adminLoginBtn" style="background:rgba(255,255,255,0.06);color:var(--text);font-size:12px;padding:6px 14px;">🔐 כניסת מנהל</button><button class="tab-btn" id="refreshSharedBtn" style="background:rgba(20,184,166,0.12);color:var(--teal);font-size:12px;padding:6px 14px;">🔄 רענן נתונים</button><button class="tab-btn" id="addEventTopBtn" style="background:rgba(139,183,255,0.12);color:#8BB7FF;font-size:12px;padding:6px 14px;">+ הוסף אירוע</button><button class="tab-btn" id="advancedDashboardBtn" style="background:var(--teal-soft);color:var(--green);font-size:12px;padding:6px 14px;">📊 דשבורד חדש</button><button class="tab-btn" id="excelAnalyzedExportBtn" style="background:rgba(124,217,146,0.12);color:#7CD992;font-size:12px;padding:6px 14px;">📥 ייצוא ניתוח לאקסל</button><button class="tab-btn" id="dailyFormulationExportBtn" style="background:rgba(255,183,77,0.14);color:#FFB74D;font-size:12px;padding:6px 14px;">📋 ייצוא דיווח יומי</button><label for="qualityFileInput" class="tab-btn admin-only" style="background:rgba(239,68,68,0.12);color:var(--red);font-size:12px;padding:6px 14px;cursor:pointer;">🧪 טעינת איכות (קובץ אחד או שניים)</label><button class="tab-btn" id="whatsappExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📲 WhatsApp טקסט</button><button class="tab-btn" id="whatsappImageExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📸 צילום דשבורד</button><button class="tab-btn admin-only" id="targetsProdBtn" style="background:var(--amber-soft);color:var(--amber);font-size:12px;padding:6px 14px;">⚙ יעדי ייצור</button><button class="tab-btn admin-only" id="targetsBtn" style="background:var(--teal-soft);color:var(--teal);font-size:12px;padding:6px 14px;">⚙ יעדי אריזה</button><button class="tab-btn admin-only" id="resetBtn" style="background:rgba(255,255,255,0.05);color:var(--text-muted);font-size:12px;padding:6px 14px;">איפוס</button></div>'+
+        '<div class="topbar-actions"><span id="roleBadge" class="role-badge viewer">👁 צפייה בלבד</span><button class="tab-btn" id="adminLoginBtn" style="background:rgba(255,255,255,0.06);color:var(--text);font-size:12px;padding:6px 14px;">🔐 כניסת מנהל</button><button class="tab-btn" id="refreshSharedBtn" style="background:rgba(20,184,166,0.12);color:var(--teal);font-size:12px;padding:6px 14px;">🔄 רענן נתונים</button><button class="tab-btn" id="addEventTopBtn" style="background:rgba(139,183,255,0.12);color:#8BB7FF;font-size:12px;padding:6px 14px;">+ הוסף אירוע</button><button class="tab-btn" id="advancedDashboardBtn" style="background:var(--teal-soft);color:var(--green);font-size:12px;padding:6px 14px;">📊 דשבורד חדש</button><button class="tab-btn" id="excelAnalyzedExportBtn" style="background:rgba(124,217,146,0.12);color:#7CD992;font-size:12px;padding:6px 14px;">📥 ייצוא ניתוח לאקסל</button><button class="tab-btn" id="dailyFormulationExportBtn" style="background:rgba(255,183,77,0.14);color:#FFB74D;font-size:12px;padding:6px 14px;">📋 ייצוא דיווח יומי</button><label for="qualityFileInput" class="tab-btn admin-only" style="background:rgba(239,68,68,0.12);color:var(--red);font-size:12px;padding:6px 14px;cursor:pointer;">🧪 טעינת איכות (קובץ אחד או שניים)</label><button class="tab-btn" id="whatsappExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📲 WhatsApp טקסט</button><button class="tab-btn" id="whatsappImageExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📸 צילום דשבורד</button><label for="unifiedFileInput" class="tab-btn admin-only" id="unifiedFileBtn" style="background:rgba(45,212,191,0.14);color:var(--teal);font-size:12px;padding:6px 14px;cursor:pointer;">📥 טען נתונים</label><label for="targetsFileInput" class="tab-btn admin-only" id="targetsFileBtn" style="background:rgba(167,139,250,0.13);color:var(--purple);font-size:12px;padding:6px 14px;cursor:pointer;">🎯 טעינת קובץ יעדים</label><button class="tab-btn" id="targetsTemplateBtn" style="background:rgba(167,139,250,0.08);color:var(--purple);font-size:12px;padding:6px 14px;">⬇ תבנית יעדים</button><button class="tab-btn admin-only" id="targetsProdBtn" style="background:var(--amber-soft);color:var(--amber);font-size:12px;padding:6px 14px;">⚙ יעדי ייצור</button><button class="tab-btn admin-only" id="targetsBtn" style="background:var(--teal-soft);color:var(--teal);font-size:12px;padding:6px 14px;">⚙ יעדי אריזה</button><button class="tab-btn admin-only" id="resetBtn" style="background:rgba(255,255,255,0.05);color:var(--text-muted);font-size:12px;padding:6px 14px;">איפוס</button></div>'+
       '</div>'+
       '<div class="tabs">'+
         '<button class="tab-btn" data-tab="day">יום אחרון</button>'+
@@ -7199,6 +7541,7 @@ function renderAll(){
       '<div class="facility-bar" id="facilityBar"></div>'+
       '<div class="filter-bar" id="filterBar"></div>'+
       '<div class="print-only" id="printHeader" style="margin-bottom:12px;"></div>'+
+      '<div id="controlRoom"></div>'+
       '<div class="advanced-summary" id="advancedDashboard"></div><div class="kpi-grid" id="kpiGrid"></div><div id="facilityTargetGauges"></div>'+
       '<div id="outputSummaryPanel"></div>'+
       '<div id="packagingTypeBreakdown"></div>'+
@@ -7334,6 +7677,219 @@ function renderAll(){
       '<div class="toast" id="toast"></div>'+
     '<div class="facility-drilldown-overlay" id="facilityDrilldownOverlay"></div>';
 
+  /* ── V4.8.5 DATA-family + routing mapping ── */
+  function _v482TargetMonth(view){
+    const months=[...new Set(targetFileRows.map(r=>r.month).filter(Boolean))].sort();
+    if(months.length===1) return months[0];
+    const dates=(view.filtered||[]).map(e=>e.date).filter(Boolean).sort();
+    const viewYm=tab==='month'?effectiveMonth():(dates.length?dates[dates.length-1].slice(0,7):todayISO().slice(0,7));
+    return months.includes(viewYm)?viewYm:(months.length?months[months.length-1]:viewYm);
+  }
+  function _v482Label(r){ return String(r&&r.sourceLabel||'').trim() || (r.packagingType||('מתקן '+(r.facility||''))); }
+  function _v482PackMatch(a,b){
+    if(!b)return true; a=String(a||'').toLowerCase(); b=String(b||'').toLowerCase();
+    if(a===b)return true;
+    if(b.includes('1 ליטר'))return /(?:^|\D)1(?:\D|$)/.test(a)&&!/10|20/.test(a);
+    if(b.includes('5 ליטר'))return /(?:^|\D)5(?:\D|$)/.test(a);
+    if(b.includes('10/20'))return /10|20/.test(a);
+    return false;
+  }
+  /* ── V4.8.3: business mapping between target rows and production records ── */
+  function _v483Norm(v){return String(v||'').toUpperCase().replace(/[^A-Z0-9]+/g,' ').trim();}
+  function _v4810StationFamily(v){
+    const f=String(v||'').replace(/\.0$/,'').trim();
+    const explicit={
+      '1141':'1541',
+      '1142':'1542',
+      '1123':'1523',
+      '1125':'1525',
+      '1128':'1528',
+      '1119':'1519',
+      '1140':'1540',
+      '1124':'1524'
+    };
+    return explicit[f] || f;
+  }
+  function _v485EntryMaterial(e){return String(e&&e.materialCode||e&&e.material||'').replace(/\.0$/,'').trim();}
+  function _v485MaterialMatch(e,g){
+    const mats=Array.isArray(g.materials)?g.materials:[];
+    if(!mats.length)return null;
+    const code=_v485EntryMaterial(e); if(!code)return false;
+    return mats.some(x=>String(x||'').replace(/\.0$/,'').trim()===code);
+  }
+  function _v483TargetMatch(e,g){
+    const fac=String(e.facility||'').replace(/\.0$/,'').trim(), tf=String(g.facility||'').replace(/\.0$/,'').trim(), label=_v483Norm(g.label), line=_v483Norm(e.line), pack=_v483Norm(e.packagingType), mat=_v483Norm(e.materialName);
+    const facFamily=_v4810StationFamily(fac), targetFamily=_v4810StationFamily(tf);
+    const materialHit=_v485MaterialMatch(e,g);
+    // Facility 42 — same routing rules used by IML CONTROL, with packaging-text fallback for legacy files.
+    if(tf==='1542'){
+      // IMPORTANT: exact routing tokens. `LQ P 1` must NOT match `LQ P 10`.
+      const route1 = /(^| )42 P 02($| )/.test(line) || /(^| )LQ P 1($| )/.test(line) || line.includes('LIQUID 1 LITER');
+      const route5 = /(^| )42 P 03($| )/.test(line) || /(^| )LQ P 5($| )/.test(line) || line.includes('LIQUID 5 LITER');
+      const route1020 = /(^| )42 P 04($| )/.test(line) || /(^| )LQ P 10($| )/.test(line) || /(^| )LQ P 20($| )/.test(line);
+      const pack1020 = /(^| )(10|20)( |$)/.test(pack) || pack.includes('10/20');
+      const pack5 = /(^| )5( |$)/.test(pack);
+      const pack1 = /(^| )1( |$)/.test(pack) && !pack1020;
+      if(label.includes('LQ 1LT')||label.includes('LQ 1 LT')) return fac==='1542' && (route1 || (!line && pack1));
+      if(label.includes('LQ 5')) return fac==='1542' && (route5 || (!line && pack5));
+      if(label.includes('LQ 10')||label.includes('10 20')) return fac==='1542' && (route1020 || (!line && pack1020));
+      return fac==='1542';
+    }
+    // Facility 19 — dedicated small-pack resources from the working IML CONTROL mapping.
+    if(tf==='1519'){
+      const compact=line.replace(/ /g,''), small=['19PWG01','19PWG05','19PWG15'].some(code=>compact.includes(code));
+      if(label.includes('SMALL PACK')) return fac==='1519' && small;
+      if(label.startsWith('WG 19')||label==='WG 19') return fac==='1519' && !small;
+      return fac==='1519';
+    }
+    // Product-family targets: prefer exact Item Code membership from DATA sheet.
+    if(tf==='1540'||tf==='1541'||tf==='1524'){
+      // V4.8.11: station-family expansion is intentionally NOT global.
+      // Only NANA uses the verified 1141 crude-production exception.
+      if(tf==='1541' && label.includes('NANA')){
+        const code=_v485EntryMaterial(e), route=_v483Norm(e.line);
+        return (fac==='1541' || fac==='1141') &&
+               (code==='50000000075' || mat.includes('NAA CRUDE') ||
+                (route.includes('25601000') && mat.includes('NAA')));
+      }
+      if(fac!==tf)return false;
+      if(materialHit!==null)return materialHit;
+      if(tf==='1524'){
+        const all=_v483Norm([e.line,e.packagingType,e.materialName,e.materialCode].join(' ')), is128=all.includes('24F128')||all.includes('24 F 128')||all.includes('F128');
+        if(label.includes('24F128'))return is128;
+        if(label==='24F'||label.startsWith('24F '))return !is128;
+      }
+      if(label.includes('DIURON')) return mat.includes('DIURON');
+      if(label.includes('TOLUREX')) return mat.includes('TOLUREX');
+      if(label.includes('METAZACHLOR')) return mat.includes('METAZACHLOR')||mat.includes('METAZACHLOR');
+      if(label.includes('ATRALONE')) return mat.includes('ATRALONE');
+      if(label.includes('NANA')){
+        // V4.8.9: verified against the actual quantities workbook (17082026.xlsx).
+        // NANA production is reported in SAP as NAA CRUDE ISO, material 50000000075,
+        // at storage 1141 / routing 25601000. Keep this rule isolated from other facility-41 products.
+        const code=_v485EntryMaterial(e);
+        const route=_v483Norm(e.line);
+        return code==='50000000075' || mat.includes('NAA CRUDE') ||
+               (fac==='1141' && route.includes('25601000') && mat.includes('NAA'));
+      }
+      if(label.includes('DAMASCONE')) return mat.includes('DAMASCONE');
+      return true;
+    }
+    return fac===tf;
+  }
+  function _v483ActualForTarget(monthEntries,g){
+    const er=monthEntries.filter(e=>_v483TargetMatch(e,g));
+    const isPackaging=['1542','1543','1519'].includes(String(g.facility||''));
+    return er.reduce((sum,e)=>sum+(isPackaging?numberValue(e.packaging):facilityActualAmount(e)),0);
+  }
+  function _v482Model(view){
+    const ym=_v482TargetMonth(view), dim=new Date(+ym.slice(0,4),+ym.slice(5,7),0).getDate();
+    let targetBaseEntries=entries;
+    if(selectedFacilities!==null){
+      // Exact selected storages, plus the one verified NANA source (1141) when facility 41 is selected.
+      const selectedExact=new Set([...selectedFacilities].map(v=>String(v)));
+      targetBaseEntries=targetBaseEntries.filter(e=>{
+        const f=String(e.facility||'');
+        return selectedExact.has(f) || (selectedExact.has('1541') && f==='1141');
+      });
+    }
+    if(selectedMaterials!==null && selectedMaterials.size){
+      targetBaseEntries=targetBaseEntries.filter(e=>selectedMaterials.has(materialLabel(e)));
+    }
+    const monthEntries=targetBaseEntries.filter(e=>e.date&&e.date.slice(0,7)===ym);
+    const dates=monthEntries.map(e=>e.date).filter(Boolean).sort(), latest=dates.length?dates[dates.length-1]:ym+'-01';
+    const elapsed=Math.max(1,Math.min(dim,+latest.slice(8,10)||1));
+    let rows=targetFileRows.filter(r=>(!r.month||r.month===ym)&&r.facility&&((r.monthlyTarget||0)>0||(r.dailyTarget||0)>0));
+    if(selectedFacilities!==null)rows=rows.filter(r=>selectedFacilities.has(r.facility));
+    const groups=new Map();
+    rows.forEach(r=>{ const key=[r.facility,r.packagingType||'',_v482Label(r)].join('|'); if(!groups.has(key))groups.set(key,{facility:r.facility,packagingType:r.packagingType||'',label:_v482Label(r),monthly:0,materials:[]}); const g=groups.get(key); g.monthly+=(r.monthlyTarget>0?r.monthlyTarget:r.dailyTarget*dim); (r.materials||[]).forEach(code=>{if(!g.materials.includes(code))g.materials.push(code);}); });
+    const cards=[...groups.values()].map(g=>{
+      const actual=_v483ActualForTarget(monthEntries,g);
+      const paceTarget=g.monthly*elapsed/dim, pacePct=paceTarget>0?actual/paceTarget*100:0, forecast=elapsed?actual/elapsed*dim:0;
+      const remainingDays=Math.max(0,dim-elapsed), remainingGap=Math.max(0,g.monthly-actual);
+      const requiredPerDay=remainingDays>0?remainingGap/remainingDays:remainingGap;
+      const status=pacePct>=100?'green':pacePct>=75?'yellow':'red';
+      return {...g,actual,paceTarget,pacePct,forecast,remainingDays,remainingGap,requiredPerDay,status,score:Math.max(0,Math.min(100,Math.round(pacePct)))};
+    });
+    cards.sort((a,b)=>{
+      const rank={red:0,yellow:1,green:2};
+      return (rank[a.status]-rank[b.status]) || (a.pacePct-b.pacePct) || a.label.localeCompare(b.label);
+    });
+    return {ym,dim,elapsed,monthEntries,cards};
+  }
+  targetMonthForView=_v482TargetMonth;
+  facilityMonthlyTarget=function(fac,view){return _v482Model(view).cards.filter(x=>x.facility===fac).reduce((s,x)=>s+x.monthly,0);};
+  function exportControlRoomExcel(view){
+    try{
+      if(typeof XLSX==='undefined'){showToast('ספריית Excel לא נטענה',true);return;}
+      const m=_v482Model(view), cards=m.cards;
+      if(!cards.length){showToast('אין נתוני יעדים לייצוא',true);return;}
+      const totalTarget=cards.reduce((a,x)=>a+x.monthly,0);
+      const totalActual=cards.reduce((a,x)=>a+x.actual,0);
+      const totalForecast=cards.reduce((a,x)=>a+x.forecast,0);
+      const toDate=cards.reduce((a,x)=>a+x.paceTarget,0);
+      const overallPace=toDate?totalActual/toDate*100:0;
+      const summary=[
+        ['IML – דוח מנהלים חדר בקרה'],
+        ['חודש',m.ym],
+        ['יום בחודש',m.elapsed],
+        ['ביצוע בפועל',Math.round(totalActual)],
+        ['יעד חודשי',Math.round(totalTarget)],
+        ['עמידה בקצב',Math.round(overallPace)/100],
+        ['תחזית סוף חודש',Math.round(totalForecast)],
+        ['פער תחזית מול יעד',Math.round(totalForecast-totalTarget)],
+        ['יעדים בקצב',cards.filter(x=>x.status==='green').length],
+        ['דורשים מעקב',cards.filter(x=>x.status==='yellow').length],
+        ['בפיגור',cards.filter(x=>x.status==='red').length],
+        ['קובץ יעדים',targetFileMeta.fileName||'']
+      ];
+      const detail=[['סטטוס','מתקן','יעד / קו','בפועל','יעד חודשי','% ביצוע מהיעד','% קצב','תחזית','פער ליעד','נדרש ליום']];
+      cards.forEach(x=>detail.push([
+        x.status==='green'?'בקצב':x.status==='yellow'?'מעקב':'בפיגור',
+        x.facility,x.label,Math.round(x.actual),Math.round(x.monthly),
+        x.monthly?x.actual/x.monthly:0,x.pacePct/100,Math.round(x.forecast),
+        Math.round(x.remainingGap),Math.round(x.requiredPerDay)
+      ]));
+      const wb=XLSX.utils.book_new();
+      const ws1=XLSX.utils.aoa_to_sheet(summary), ws2=XLSX.utils.aoa_to_sheet(detail);
+      ws1['!cols']=[{wch:28},{wch:24}];
+      ws2['!cols']=[{wch:12},{wch:10},{wch:24},{wch:14},{wch:14},{wch:16},{wch:12},{wch:14},{wch:14},{wch:14}];
+      ['B6'].forEach(c=>{if(ws1[c])ws1[c].z='0%';});
+      const range=XLSX.utils.decode_range(ws2['!ref']);
+      for(let r=1;r<=range.e.r;r++){
+        ['F','G'].forEach(col=>{const c=ws2[col+(r+1)];if(c)c.z='0%';});
+      }
+      XLSX.utils.book_append_sheet(wb,ws1,'סיכום מנהלים');
+      XLSX.utils.book_append_sheet(wb,ws2,'יעדים וביצוע');
+      XLSX.writeFile(wb,'IML_Management_'+m.ym+'.xlsx');
+      showToast('דוח המנהלים יוצא לאקסל');
+    }catch(e){console.error(e);showToast('שגיאה ביצוא דוח המנהלים',true);}
+  }
+
+  renderControlRoom=function(view){
+    const c=root.querySelector('#controlRoom');if(!c)return; const m=_v482Model(view),cards=m.cards;
+    const totalTarget=cards.reduce((s,x)=>s+x.monthly,0),totalActual=cards.reduce((s,x)=>s+x.actual,0),toDate=cards.reduce((s,x)=>s+x.paceTarget,0),pace=toDate?totalActual/toDate*100:0,forecast=cards.reduce((s,x)=>s+x.forecast,0),gap=forecast-totalTarget;
+    const onPace=cards.filter(x=>x.pacePct>=100).length, warning=cards.filter(x=>x.pacePct>=75&&x.pacePct<100).length, critical=cards.filter(x=>x.pacePct<75).length;
+    const monthAchievement=totalTarget?totalActual/totalTarget*100:0;
+    const openOrders=m.monthEntries.filter(e=>String(e.status||e.systemStatus||'').toUpperCase().includes('REL')&&!String(e.status||e.systemStatus||'').toUpperCase().includes('DLV')).length;
+    const events=(eventsEntries||[]).filter(e=>!e.status||String(e.status).toLowerCase()!=='closed').length, att=[];
+    cards.filter(x=>x.pacePct<75).forEach(x=>att.push('🔴 '+x.label+' בקצב '+Math.round(x.pacePct)+'% מהנדרש לחודש.'));
+    cards.filter(x=>x.forecast<x.monthly&&x.pacePct>=75).forEach(x=>att.push('🟡 '+x.label+' צפוי לסיים מתחת ליעד בכ־'+fmt(x.monthly-x.forecast)+'.'));
+    if(openOrders)att.push('🟠 '+fmt(openOrders)+' רשומות של הזמנות פתוחות/בתהליך בחודש היעדים.'); if(events)att.push('⚠️ '+fmt(events)+' אירועים פתוחים/ללא סטטוס סגירה.'); if(Number(targetFileMeta.unmapped||0)>0)att.push('ℹ️ '+fmt(targetFileMeta.unmapped)+' שורות יעד משותפות/לא ממופות נשמרו לעיון ואינן נספרות פעמיים.');
+    const fileText=targetFileMeta.fileName?('🎯 '+escapeHtml(targetFileMeta.fileName)+' · '+targetFileRows.length+' יעדים · '+(targetFileMeta.mapped||0)+' ממופים'):'🎯 אין קובץ יעדים';
+    c.innerHTML='<div class="panel control-room"><div class="control-room-head"><div><div class="control-room-title">🎛 חדר בקרה ניהולי</div><div class="control-room-sub">מצב מול יעד, קצב נדרש ותחזית סוף חודש · חודש היעדים '+m.ym+'</div><div class="control-room-note">הכרטיסים מסודרים אוטומטית: אדום → צהוב → ירוק</div></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;"><button class="tab-btn" id="controlExcelBtn" style="font-size:11px;padding:6px 10px;">📊 Excel מנהלים</button><button class="tab-btn" id="controlPrintBtn" style="font-size:11px;padding:6px 10px;">🖨 הדפסה</button><div class="target-file-badge">'+fileText+'</div></div></div><div class="control-kpis">'+
+    '<div class="control-kpi"><div class="label">ביצוע בפועל</div><div class="value">'+fmt(totalActual)+'</div><div class="sub">לפי קובץ היעדים</div></div><div class="control-kpi"><div class="label">יעד חודשי</div><div class="value">'+fmt(totalTarget)+'</div><div class="sub">Plan מגיליון Sum</div></div><div class="control-kpi"><div class="label">עמידה בקצב</div><div class="value" style="color:'+(pace>=100?'var(--green)':pace>=75?'var(--yellow)':'var(--red)')+'">'+(totalTarget?Math.round(pace)+'%':'אין יעד')+'</div><div class="sub">מול יעד עד יום '+m.elapsed+'</div></div><div class="control-kpi"><div class="label">תחזית סוף חודש</div><div class="value">'+(totalTarget?fmt(forecast):'—')+'</div><div class="sub">'+(totalTarget?(gap>=0?'▲ '+fmt(gap)+' מעל היעד':'▼ חסרים '+fmt(Math.abs(gap))):'אין יעד להשוואה')+'</div></div><div class="control-kpi"><div class="label">הזמנות פתוחות</div><div class="value">'+fmt(openOrders)+'</div><div class="sub">בחודש היעדים</div></div><div class="control-kpi"><div class="label">אירועים פתוחים</div><div class="value">'+fmt(events)+'</div><div class="sub">איכות / בטיחות / סביבה</div></div></div><div class="management-strip"><div class="management-card"><div class="mc-label">יעדים בקצב</div><div class="mc-value" style="color:var(--green)">'+onPace+' / '+cards.length+'</div><div class="mc-sub">100% ומעלה מהקצב הנדרש</div></div><div class="management-card"><div class="mc-label">דורשים מעקב</div><div class="mc-value" style="color:var(--yellow)">'+warning+'</div><div class="mc-sub">75%–99% מהקצב</div></div><div class="management-card"><div class="mc-label">בפיגור</div><div class="mc-value" style="color:var(--red)">'+critical+'</div><div class="mc-sub">פחות מ־75% מהקצב</div></div><div class="management-card"><div class="mc-label">ביצוע מהיעד החודשי</div><div class="mc-value">'+Math.round(monthAchievement)+'%</div><div class="mc-sub">'+fmt(totalActual)+' מתוך '+fmt(totalTarget)+'</div></div></div><div class="attention-box"><div class="attention-title">⚠️ דורש טיפול</div>'+(att.length?att.slice(0,8).map(x=>'<div class="attention-item">'+escapeHtml(x)+'</div>').join(''):'<div class="attention-item">🟢 אין כרגע חריגות מרכזיות.</div>')+'</div><div class="facility-score-grid">'+cards.map(x=>{
+      const statusText=x.status==='green'?'בקצב':x.status==='yellow'?'מעקב':'בפיגור';
+      const statusColor=x.status==='green'?'var(--green)':x.status==='yellow'?'var(--yellow)':'var(--red)';
+      return '<div class="facility-score status-'+x.status+'" data-control-fac="'+escapeHtml(x.facility)+'"><div class="facility-status-badge '+x.status+'">'+statusText+'</div><div class="facility-score-head"><div class="facility-score-name">'+escapeHtml(x.label)+'</div><div class="facility-score-value" style="color:'+statusColor+'">'+x.score+'/100</div></div><div class="facility-score-line"><span>בפועל '+fmt(x.actual)+'</span><span>יעד '+fmt(x.monthly)+'</span></div><div class="mini-progress"><span style="width:'+Math.min(100,Math.max(0,x.pacePct))+'%;background:'+statusColor+'"></span></div><div class="facility-score-line"><span>קצב '+Math.round(x.pacePct)+'%</span><span>תחזית '+fmt(x.forecast)+'</span></div><div class="facility-score-line"><span>פער ליעד '+fmt(x.remainingGap)+'</span><span>נדרש/יום '+fmt(x.requiredPerDay)+'</span></div></div>';
+    }).join('')+'</div></div>';
+    c.querySelectorAll('[data-control-fac]').forEach(el=>el.onclick=()=>{selectedFacilities=new Set([el.dataset.controlFac]);renderAll();});
+  };
+  renderFacilityTargetGauges=function(view){
+    const c=root.querySelector('#facilityTargetGauges');if(!c)return;
+    if(targetFileRows.length){const m=_v482Model(view),rows=m.cards;if(!rows.length){c.innerHTML='';return;}let h='<div class="panel"><div class="panel-head"><div><div class="panel-title">מחווני יעדים לפי קובץ היעדים</div><div class="kpi-sub">חודש '+m.ym+' · Plan מול ביצוע בפועל. קווי מתקן 42 מוצגים בנפרד.</div></div></div><div class="summary-grid">'; rows.forEach(r=>{h+='<div class="kpi-card gauge-card clickable-gauge" data-facility="'+escapeHtml(r.facility)+'">'+buildGaugeSVG(r.pacePct,'var(--teal)')+'<div class="gauge-name">'+escapeHtml(r.label)+'</div><div class="gauge-sub mono">'+fmt(r.actual)+' / '+fmt(r.monthly)+'</div><div class="kpi-sub">קצב עד יום '+m.elapsed+' · '+Math.round(r.pacePct)+'%</div><div class="gauge-delta" style="color:'+gaugeColor(r.pacePct)+';">תחזית '+fmt(r.forecast)+'</div><div class="kpi-sub" style="color:var(--amber);font-weight:700;margin-top:4px;">🔍 לחץ לסינון →</div></div>';}); h+='</div></div>';c.innerHTML=h;c.querySelectorAll('.clickable-gauge').forEach(x=>x.onclick=()=>{selectedFacilities=new Set([x.dataset.facility]);renderAll();});return;}
+    const rows=facilityTargetRowsForView(view).concat(packagingFacilityTargetRowsForView(view)).filter(r=>r.target>0||r.actual>0); if(!rows.length){c.innerHTML='';return;} let h='<div class="panel"><div class="panel-head"><div><div class="panel-title">מחווני יעדים לפי מתקן</div><div class="kpi-sub">לא נטען קובץ יעדים — מוצגים היעדים הידניים.</div></div></div><div class="summary-grid">'; rows.forEach(r=>{const has=r.target>0,pct=has?r.actual/r.target*100:0;h+='<div class="kpi-card gauge-card"><div>'+buildGaugeSVG(pct,r.kind==='packaging'?'var(--teal)':'var(--amber)')+'</div><div class="gauge-name">מתקן '+escapeHtml(r.facility)+'</div><div class="gauge-sub mono">'+fmt(r.actual)+' / '+(has?fmt(r.target):'אין יעד')+'</div></div>';});c.innerHTML=h+'</div></div>';
+  };
   /* ---------------- wire static events ---------------- */
   root.querySelectorAll('.tabs .tab-btn').forEach(b=>{
     b.onclick = ()=>{ tab = b.dataset.tab; renderAll(); };
@@ -7439,6 +7995,7 @@ function renderAll(){
         loadQualityTestResults().catch(()=>{}),
         loadDatasetSources().catch(()=>{}),
         loadTargets().catch(()=>{}),
+        loadTargetFile().catch(()=>{}),
         loadProductionTargets().catch(()=>{}),
         loadPeriodPackagingTargets().catch(()=>{}),
         loadEventsEntries().catch(()=>{})
@@ -7485,6 +8042,17 @@ function renderAll(){
   root.querySelector('#targetsProdTable').addEventListener('input', (e)=>{
     if(e.target.classList.contains('tgtp-input')) recalcProdTargetsTotal(e.target.dataset.fac);
   });
+  const unifiedInput=document.getElementById('unifiedFileInput');
+  if(unifiedInput) unifiedInput.onchange=async(e)=>{
+    if(!requireAdmin()){e.target.value='';return;}
+    const files=e.target.files;
+    if(files&&files.length) await handleUnifiedFiles(files);
+    e.target.value='';
+  };
+
+  const targetInput=document.getElementById('targetsFileInput');
+  if(targetInput) targetInput.onchange=(e)=>{ if(!requireAdmin()){e.target.value='';return;} if(e.target.files[0])handleTargetFile(e.target.files[0]); e.target.value=''; };
+  const targetTplBtn=root.querySelector('#targetsTemplateBtn'); if(targetTplBtn) targetTplBtn.onclick=downloadTargetsTemplate;
   root.querySelector('#csvInput').onchange = (e)=>{ if(!requireAdmin()){e.target.value='';return;} if(e.target.files[0]) handleDataFile(e.target.files[0]); e.target.value=''; };
   root.querySelector('#templateBtn').onclick = downloadTemplate;
 root.querySelector('#printBtn').onclick = ()=> window.print();
@@ -7533,16 +8101,31 @@ root.querySelector('#printBtn').onclick = ()=> window.print();
     if(tr) openQualityResultsModal(tr.dataset.qualityBatch||'', tr.dataset.qualityMaterial||'');
   });
 
+  function updateLoadHealth(){
+    const el=root.querySelector('#loadHealth'); if(!el)return;
+    const prod=(datasetSources.production||[]);
+    const quality=[...(datasetSources.qualitySummary||[]),...(datasetSources.qualityResults||[])];
+    const targetOk=!!targetFileMeta.fileName && targetFileRows.length>0;
+    const chip=(label,ok,detail)=>'<span class="load-health-chip '+(ok?'ok':'missing')+'" title="'+escapeHtml(detail||'')+'">'+(ok?'✓ ':'')+label+(ok&&detail?' · '+escapeHtml(detail):' —')+'</span>';
+    const prodDetail=prod.length?(prod.length+' קבצים'):'';
+    const qualNames=new Set(quality.map(x=>x.name));
+    const qualDetail=qualNames.size?(qualNames.size+' קבצים'):'';
+    const targetDetail=targetOk?targetFileMeta.fileName:'';
+    el.innerHTML=chip('כמויות',entries.length>0,prodDetail)+chip('איכות',qualityEntries.length>0||qualityTestResults.length>0,qualDetail)+chip('יעדים',targetOk,targetDetail);
+  }
+
   /* ---------------- init ---------------- */
   (async function init(){
     const statusLine = ()=>{
       const el = root.querySelector('#dataStatusLine');
       if(el) el.textContent = 'ייצור: '+entries.length+' | איכות: '+qualityEntries.length+' מנות · '+qualityTestResults.length+' חריגות | '+(_netlifyAvailable?'🟢 Netlify':'🟡 מקומי');
+      updateLoadHealth();
     };
 
     await loadEntries(); statusLine();
     // Load targets from localStorage immediately (non-blocking)
     try { await Promise.race([ loadTargets(), new Promise(r=>setTimeout(r,3000)) ]); } catch(e){}
+    try { await Promise.race([ loadTargetFile(), new Promise(r=>setTimeout(r,2000)) ]); } catch(e){}
     try { await Promise.race([ loadProductionTargets(), new Promise(r=>setTimeout(r,2000)) ]); } catch(e){}
     try { await Promise.race([ loadPeriodPackagingTargets(), new Promise(r=>setTimeout(r,2000)) ]); } catch(e){}
     try { await Promise.race([ loadEventsEntries(), new Promise(r=>setTimeout(r,2000)) ]); } catch(e){}
