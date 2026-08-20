@@ -5213,6 +5213,198 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     }
   }
 
+  /* ==========================================================================
+   * ייצוא "דיווח יומי פורמולציות" — לפי המתקנים הנבחרים בפילטר
+   * מבנה: B=מקט C=מתקן(ממוזג) D=קו יצור E=חומר F=סטטוס מכונה
+   *        G=תפוקה H=סה"כ תפוקה(SUM ממוזג) I=הערות(ריק) J=קמפיין
+   * ========================================================================*/
+
+  function dfrDateLabel(v){
+    const m = String(v||'').match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return m ? m[3]+'.'+m[2]+'.'+m[1].slice(2) : String(v||'');
+  }
+  function dfrMaterialCode(e){
+    const name = String(e.materialName||'').trim();
+    return name ? name.split(/\s+/)[0] : '';
+  }
+  function dfrLine(e){
+    const pack = String(e.packagingType||'').trim();
+    if(pack) return pack.replace(/^קו אריזה\s*/, '').trim();
+    return String(e.line||'').trim() || 'כללי';
+  }
+  function dfrMachineStatus(e){
+    const out = numberValue(e.production) + numberValue(e.packaging);
+    if(out === 0) return 'ריק';
+    if(pendingPackagingQty(e) > 0) return 'מנה בהכנה';
+    const sys = String(e.systemStatus||'').toUpperCase();
+    if(sys.indexOf('PCNF') !== -1) return 'מנה בהכנה';
+    if(sys.indexOf('CNF')  !== -1) return 'מנה מוכנה';
+    return 'מנה בהכנה';
+  }
+  function dfrCampaign(e){
+    const out = numberValue(e.production) + numberValue(e.packaging);
+    const tgt = getProductionTarget(e) + getPackagingTarget(e);
+    if(tgt > 0) return 'דווחו ' + Math.round(out).toLocaleString('en-US') + ' מתוך ' +
+                       Math.round(tgt).toLocaleString('en-US') + ' (' + Math.round(out/tgt*100) + '%)';
+    if(out > 0) return 'דווחו ' + Math.round(out).toLocaleString('en-US') + ' (ללא יעד מוגדר)';
+    return '';
+  }
+
+  function exportDailyFormulationReport(){
+    try{
+      if(typeof XLSX === 'undefined'){
+        showToast('ספריית Excel לא נטענה. נסה לרענן את העמוד.', true);
+        return;
+      }
+      const view = getView();
+      const rows = view.filtered || [];
+      if(!rows.length){ showToast('אין נתונים בטווח שנבחר', true); return; }
+
+      const evs = typeof filteredEventsForView === 'function' ? filteredEventsForView(view) : [];
+      const nQ = evs.filter(ev=>ev.type==='quality').length;
+      const nE = evs.filter(ev=>ev.type==='environment').length;
+      const nS = evs.filter(ev=>ev.type==='safety').length;
+
+      /* המתקנים הנבחרים בפילטר — זה ה"לפי מתקנים נבחרים" */
+      let facilities = selectedFacilities === null
+        ? FACILITY_OPTIONS.slice().sort()
+        : Array.from(selectedFacilities).sort();
+
+      const byFac = {};
+      rows.forEach(e=>{
+        const f = String(e.facility || 'לא מוגדר').trim();
+        (byFac[f] = byFac[f] || []).push(e);
+      });
+      Object.keys(byFac).forEach(f=>{ if(facilities.indexOf(f) === -1) facilities.push(f); });
+      Object.keys(byFac).forEach(f=>{
+        byFac[f].sort((a,b)=> dfrLine(a).localeCompare(dfrLine(b),'he') ||
+          String(a.materialName||'').localeCompare(String(b.materialName||''),'he'));
+      });
+
+      const BD  = {style:'thin', color:{rgb:'000000'}};
+      const BOX = {top:BD, bottom:BD, left:BD, right:BD};
+      const ST = {
+        title : {font:{name:'Arial', sz:16, bold:true}},
+        label : {font:{name:'Arial', sz:11, bold:true}},
+        banner: {font:{name:'Arial', sz:11, bold:true}, fill:{fgColor:{rgb:'FFFF00'}},
+                 alignment:{horizontal:'center', vertical:'center', wrapText:true}, border:BOX},
+        head  : {font:{name:'Arial', sz:11, bold:true}, fill:{fgColor:{rgb:'D9D9D9'}},
+                 alignment:{horizontal:'center', vertical:'center', wrapText:true}, border:BOX},
+        cell  : {font:{name:'Arial', sz:11},
+                 alignment:{horizontal:'center', vertical:'center', wrapText:true}, border:BOX},
+        text  : {font:{name:'Arial', sz:11},
+                 alignment:{horizontal:'right', vertical:'center', wrapText:true}, border:BOX},
+        total : {font:{name:'Arial', sz:11, bold:true}, fill:{fgColor:{rgb:'D9D9D9'}},
+                 alignment:{horizontal:'center', vertical:'center'}, border:BOX}
+      };
+      const C = {A:0,B:1,C:2,D:3,E:4,F:5,G:6,H:7,I:8,J:9};
+      const ws = {}, merges = [];
+      const at  = (r,c)=> XLSX.utils.encode_cell({r:r-1, c:c});
+      const put = (r,c,v,st,z)=>{
+        const ref = at(r,c), isN = typeof v === 'number';
+        ws[ref] = {t: isN ? 'n' : 's', v: isN ? v : String(v==null?'':v)};
+        if(st) ws[ref].s = st;
+        if(z)  ws[ref].z = z;
+      };
+      const putF = (r,c,f,st)=>{ const ref = at(r,c); ws[ref] = {t:'n', f:f, z:'#,##0'}; if(st) ws[ref].s = st; };
+
+      const dLabel = dfrDateLabel(view.rangeLabel);
+
+      put(2, C.B, 'דיווח יומי — פורמולציות', ST.title);
+      merges.push({s:{r:1,c:C.B}, e:{r:1,c:C.E}});
+      put(3, C.B, 'תאריך דיווח', ST.label);
+      put(3, C.C, dLabel);
+      put(3, C.D, 'מתקנים נבחרים', ST.label);
+      put(3, C.E, facilities.join(', '));
+      merges.push({s:{r:2,c:C.E}, e:{r:2,c:C.I}});
+
+      const tx = n => n === 0 ? 'אין' : String(n);
+      put(5, C.C, 'אירוע איכות - '+tx(nQ)+' .   סביבה - '+tx(nE)+' .   בטיחות - '+tx(nS)+' .', ST.banner);
+      for(let c=C.D;c<=C.I;c++) put(5,c,'',ST.banner);
+      merges.push({s:{r:4,c:C.C}, e:{r:4,c:C.I}});
+      put(6, C.C, '', ST.banner);
+      for(let c=C.D;c<=C.I;c++) put(6,c,'',ST.banner);
+      merges.push({s:{r:5,c:C.C}, e:{r:5,c:C.I}});
+
+      ['מקט', dLabel, 'קו יצור', 'חומר', 'סטטוס מכונה', 'תפוקה', 'סה"כ תפוקה', 'הערות', 'קמפיין / דיווח מול יעד']
+        .forEach((h,i)=> put(7, C.B+i, h, ST.head));
+
+      let r = 8;
+      facilities.forEach(fac=>{
+        const list = byFac[fac] || [], start = r;
+        if(!list.length){
+          put(r, C.B, '',     ST.cell);
+          put(r, C.D, 'כללי', ST.cell);
+          put(r, C.E, '',     ST.text);
+          put(r, C.F, 'ריק',  ST.cell);
+          put(r, C.G, 0,      ST.cell, '#,##0');
+          put(r, C.I, '',     ST.text);
+          put(r, C.J, 'לא דווחו נתונים בתאריך זה', ST.text);
+          r++;
+        } else {
+          list.forEach(e=>{
+            put(r, C.B, dfrMaterialCode(e),                          ST.cell);
+            put(r, C.D, dfrLine(e),                                  ST.cell);
+            put(r, C.E, String(e.materialName||''),                  ST.text);
+            put(r, C.F, dfrMachineStatus(e),                         ST.cell);
+            put(r, C.G, Math.round(numberValue(e.production) + numberValue(e.packaging)), ST.cell, '#,##0');
+            put(r, C.I, '',                                          ST.text);   /* הערות — ריק למילוי ידני */
+            put(r, C.J, dfrCampaign(e),                              ST.text);
+            r++;
+          });
+        }
+        const end = r - 1;
+        if(end < start) return;
+        put(start, C.C, /^\d+$/.test(fac) ? Number(fac) : fac, ST.cell);
+        putF(start, C.H, 'SUM(G'+start+':G'+end+')', ST.cell);
+        for(let rr=start+1; rr<=end; rr++){ put(rr,C.C,'',ST.cell); put(rr,C.H,'',ST.cell); }
+        if(end > start){
+          merges.push({s:{r:start-1,c:C.C}, e:{r:end-1,c:C.C}});
+          merges.push({s:{r:start-1,c:C.H}, e:{r:end-1,c:C.H}});
+        }
+      });
+
+      const last = r - 1, totalRow = last + 1;
+      for(let c=C.C;c<=C.I;c++) put(totalRow, c, '', ST.total);
+      put(totalRow, C.F, 'סה"כ כללי', ST.total);
+      putF(totalRow, C.G, 'SUM(G8:G'+last+')', ST.total);
+      putF(totalRow, C.H, 'SUM(G8:G'+last+')', ST.total);
+
+      ws['!ref']    = XLSX.utils.encode_range({s:{r:0,c:0}, e:{r:totalRow-1, c:C.J}});
+      ws['!merges'] = merges;
+      ws['!cols']   = [{wch:3},{wch:16},{wch:12},{wch:13},{wch:42},{wch:22},{wch:11},{wch:12},{wch:46},{wch:34}];
+
+      const wb = XLSX.utils.book_new();
+      wb.Workbook = {Views:[{RTL:true}]};
+      XLSX.utils.book_append_sheet(wb, ws, 'Template');
+
+      const legend = XLSX.utils.aoa_to_sheet([
+        ['שדה','מקור / דרך הגזירה'],
+        ['מקט','קוד החומר הקצר (המילה הראשונה בשם החומר). מק"ט SAP מלא אינו קיים בנתוני הדשבורד.'],
+        ['מתקן','לפי המתקנים המסומנים בסנן המתקנים. שורה אחת לכל מתקן, ממוזגת על פני שורות הקבוצה.'],
+        ['קו יצור','סוג האריזה כשקיים (למשל 5 ליטר), אחרת עמודת הקו.'],
+        ['סטטוס מכונה','תפוקה 0 ← ריק; ממתין לאריזה/הוצאה או PCNF ← מנה בהכנה; CNF ← מנה מוכנה.'],
+        ['תפוקה','ייצור + אריזה של אותה שורה.'],
+        ['סה"כ תפוקה','נוסחת SUM על שורות התפוקה של אותו מתקן — מתעדכנת אוטומטית.'],
+        ['הערות','נשארת ריקה למילוי ידני.'],
+        ['קמפיין','דווחו X מתוך Y (%) לפי יעד ייצור + יעד אריזה.'],
+        ['שורת האירועים','אירועי איכות / סביבה / בטיחות שהוזנו בדשבורד לטווח הנבחר.'],
+        ['',''],
+        ['הערה','שדות שאינם קיימים בנתוני הדשבורד נגזרים לפי הכללים שלעיל ודורשים אימות ידני.']
+      ]);
+      legend['!cols'] = [{wch:24},{wch:95}];
+      XLSX.utils.book_append_sheet(wb, legend, 'מקרא והנחות');
+
+      const fileName = 'daily_formulation_report_' + (view.rangeLabel || todayISO()) + '.xlsx';
+      writeWorkbookForMobile(wb, fileName);
+      showToast('דוח יומי נוצר — ניתן להוריד או לשתף מהחלון שנפתח');
+    } catch(err){
+      console.error('Daily formulation export error:', err);
+      showToast('שגיאה ביצוא הדיווח היומי', true);
+    }
+  }
+
+
 
   function buildWhatsAppSnapshotElement(view, summary){
     const shot = document.createElement('div');
@@ -6979,7 +7171,7 @@ function renderAll(){
           '<div class="brand-mark">IML</div>'+
           '<div><h1>IML Production Dashboard <span class="app-version-badge">V4.7.9</span></h1><p><span id="entryCount">טוען נתונים…</span> <span id="storageStatusBadge" class="storage-status"></span></p><p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;"><span id="dataStatusLine">בודק נתונים…</span></p><div id="fileSourcesPanel" style="display:none"></div></div>'+
         '</div>'+
-        '<div class="topbar-actions"><span id="roleBadge" class="role-badge viewer">👁 צפייה בלבד</span><button class="tab-btn" id="adminLoginBtn" style="background:rgba(255,255,255,0.06);color:var(--text);font-size:12px;padding:6px 14px;">🔐 כניסת מנהל</button><button class="tab-btn" id="refreshSharedBtn" style="background:rgba(20,184,166,0.12);color:var(--teal);font-size:12px;padding:6px 14px;">🔄 רענן נתונים</button><button class="tab-btn" id="addEventTopBtn" style="background:rgba(139,183,255,0.12);color:#8BB7FF;font-size:12px;padding:6px 14px;">+ הוסף אירוע</button><button class="tab-btn" id="advancedDashboardBtn" style="background:var(--teal-soft);color:var(--green);font-size:12px;padding:6px 14px;">📊 דשבורד חדש</button><button class="tab-btn" id="excelAnalyzedExportBtn" style="background:rgba(124,217,146,0.12);color:#7CD992;font-size:12px;padding:6px 14px;">📥 ייצוא ניתוח לאקסל</button><label for="qualityFileInput" class="tab-btn admin-only" style="background:rgba(239,68,68,0.12);color:var(--red);font-size:12px;padding:6px 14px;cursor:pointer;">🧪 טעינת איכות (קובץ אחד או שניים)</label><button class="tab-btn" id="whatsappExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📲 WhatsApp טקסט</button><button class="tab-btn" id="whatsappImageExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📸 צילום דשבורד</button><button class="tab-btn admin-only" id="targetsProdBtn" style="background:var(--amber-soft);color:var(--amber);font-size:12px;padding:6px 14px;">⚙ יעדי ייצור</button><button class="tab-btn admin-only" id="targetsBtn" style="background:var(--teal-soft);color:var(--teal);font-size:12px;padding:6px 14px;">⚙ יעדי אריזה</button><button class="tab-btn admin-only" id="resetBtn" style="background:rgba(255,255,255,0.05);color:var(--text-muted);font-size:12px;padding:6px 14px;">איפוס</button></div>'+
+        '<div class="topbar-actions"><span id="roleBadge" class="role-badge viewer">👁 צפייה בלבד</span><button class="tab-btn" id="adminLoginBtn" style="background:rgba(255,255,255,0.06);color:var(--text);font-size:12px;padding:6px 14px;">🔐 כניסת מנהל</button><button class="tab-btn" id="refreshSharedBtn" style="background:rgba(20,184,166,0.12);color:var(--teal);font-size:12px;padding:6px 14px;">🔄 רענן נתונים</button><button class="tab-btn" id="addEventTopBtn" style="background:rgba(139,183,255,0.12);color:#8BB7FF;font-size:12px;padding:6px 14px;">+ הוסף אירוע</button><button class="tab-btn" id="advancedDashboardBtn" style="background:var(--teal-soft);color:var(--green);font-size:12px;padding:6px 14px;">📊 דשבורד חדש</button><button class="tab-btn" id="excelAnalyzedExportBtn" style="background:rgba(124,217,146,0.12);color:#7CD992;font-size:12px;padding:6px 14px;">📥 ייצוא ניתוח לאקסל</button><button class="tab-btn" id="dailyFormulationExportBtn" style="background:rgba(255,183,77,0.14);color:#FFB74D;font-size:12px;padding:6px 14px;">📋 ייצוא דיווח יומי</button><label for="qualityFileInput" class="tab-btn admin-only" style="background:rgba(239,68,68,0.12);color:var(--red);font-size:12px;padding:6px 14px;cursor:pointer;">🧪 טעינת איכות (קובץ אחד או שניים)</label><button class="tab-btn" id="whatsappExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📲 WhatsApp טקסט</button><button class="tab-btn" id="whatsappImageExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📸 צילום דשבורד</button><button class="tab-btn admin-only" id="targetsProdBtn" style="background:var(--amber-soft);color:var(--amber);font-size:12px;padding:6px 14px;">⚙ יעדי ייצור</button><button class="tab-btn admin-only" id="targetsBtn" style="background:var(--teal-soft);color:var(--teal);font-size:12px;padding:6px 14px;">⚙ יעדי אריזה</button><button class="tab-btn admin-only" id="resetBtn" style="background:rgba(255,255,255,0.05);color:var(--text-muted);font-size:12px;padding:6px 14px;">איפוס</button></div>'+
       '</div>'+
       '<div class="tabs">'+
         '<button class="tab-btn" data-tab="day">יום אחרון</button>'+
@@ -7254,6 +7446,8 @@ function renderAll(){
   }
   root.querySelector('#advancedDashboardBtn').onclick = ()=>{ showAdvancedDashboard = !showAdvancedDashboard; root.querySelector('#advancedDashboardBtn').textContent = showAdvancedDashboard ? '📊 הסתר דשבורד חדש' : '📊 דשבורד חדש'; renderAll(); if(showAdvancedDashboard){ const el = root.querySelector('#advancedDashboard'); if(el) el.scrollIntoView({behavior:'smooth', block:'start'}); } };
   root.querySelector('#excelAnalyzedExportBtn').onclick = exportAnalyzedDataToExcel;
+  const dailyFormBtn = root.querySelector('#dailyFormulationExportBtn');
+  if(dailyFormBtn) dailyFormBtn.onclick = exportDailyFormulationReport;
   root.querySelector('#modalCancel').onclick = closeModal;
   root.querySelector('#modalSave').onclick = saveEntryFromModal;
   root.querySelector('#modalOverlay').onclick = (e)=>{ if(e.target.id==='modalOverlay') closeModal(); };
