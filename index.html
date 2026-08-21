@@ -1702,18 +1702,43 @@ html, body { margin:0; padding:0; background:#0A0D12; }
         if(manifestRes?.value){
           const manifest = JSON.parse(manifestRes.value);
           const keys = Array.isArray(manifest.keys) ? manifest.keys : [];
-          const rows = await cachedRows('quality_summary', manifestSignature(manifest), async ()=>{
+          const sig=manifestSignature(manifest);
+          const expectedRows=Number(manifest.totalRows||0);
+          const fetchQualitySummaryFresh=async ()=>{
             const out=[];
             setLoadStatus('מוריד סיכום איכות מהשרת...');
-            const chunkPairs = await _dashStorage.getMany(keys);
-            chunkPairs.forEach(pair=>{
-              const res = pair && pair.result;
-              if(!res?.value) return;
-              const part = JSON.parse(res.value);
-              if(Array.isArray(part)) appendAll(out, part);
-            });
+            const chunkPairs = await _dashStorage.getMany(keys,{fresh:true});
+            for(const pair of chunkPairs){
+              let raw=pair&&pair.result&&pair.result.value!=null?pair.result.value:null;
+              // If a batch read returned a missing chunk, retry that chunk individually.
+              if(raw==null && pair && pair.key){
+                try{
+                  const one=await _dashStorage.get(pair.key,{fresh:true});
+                  raw=one&&one.value!=null?one.value:null;
+                }catch(e){}
+              }
+              if(raw==null) continue;
+              try{
+                const part=JSON.parse(raw);
+                if(Array.isArray(part)) appendAll(out,part);
+              }catch(e){}
+            }
             return out;
-          });
+          };
+          let rows = await cachedRows('quality_summary', sig, fetchQualitySummaryFresh);
+          // V4.8.22: never trust an empty/partial IndexedDB cache when the cloud
+          // manifest explicitly says more rows exist. This repairs a PC that once
+          // cached an incomplete download under an otherwise valid manifest.
+          if(expectedRows>0 && rows.length!==expectedRows){
+            console.warn('quality summary cache mismatch:',rows.length,'expected',expectedRows,'— forcing cloud reload');
+            _cacheClear();
+            rows=await fetchQualitySummaryFresh();
+            if(rows.length===expectedRows){
+              await idbSet('quality_summary',{sig,rows,at:new Date().toISOString()});
+            }else{
+              console.warn('quality summary cloud reload still partial:',rows.length,'expected',expectedRows);
+            }
+          }
           qualityEntries = rows;
           qualityBestByKey = {};
           rows.forEach(q=>{ if(q.batch) qualityBestByKey[String(q.batch).replace(/^0+/,'').trim()] = q; });
@@ -1808,15 +1833,30 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       if(mres?.value){
         const m=JSON.parse(mres.value);
         const keys=Array.isArray(m.keys)?m.keys:[];
-        qualityTestResults = await cachedRows('quality_results', manifestSignature(m), async ()=>{
+        const rsig=manifestSignature(m), expectedResults=Number(m.totalRows||0);
+        const fetchResultsFresh=async ()=>{
           const rows=[];
           setLoadStatus('מוריד תוצאות איכות מהשרת ('+keys.length+' מקטעים)...');
-          const pairs=await _dashStorage.getMany(keys);
-          pairs.forEach(pair=>{ try{ const part=JSON.parse(pair?.result?.value||'[]'); if(Array.isArray(part)) appendAll(rows, part); }catch(e){} });
+          const pairs=await _dashStorage.getMany(keys,{fresh:true});
+          for(const pair of pairs){
+            let raw=pair&&pair.result&&pair.result.value!=null?pair.result.value:null;
+            if(raw==null && pair&&pair.key){
+              try{const one=await _dashStorage.get(pair.key,{fresh:true});raw=one&&one.value!=null?one.value:null;}catch(e){}
+            }
+            try{const part=JSON.parse(raw||'[]');if(Array.isArray(part))appendAll(rows,part);}catch(e){}
+          }
           return rows;
-        }, (source,count)=>{
+        };
+        qualityTestResults = await cachedRows('quality_results', rsig, fetchResultsFresh, (source,count)=>{
           if(source==='cache') setLoadStatus('תוצאות איכות מהמטמון המקומי ('+count.toLocaleString('he-IL')+' שורות)');
         });
+        if(expectedResults>0 && qualityTestResults.length!==expectedResults){
+          console.warn('quality results cache mismatch:',qualityTestResults.length,'expected',expectedResults,'— forcing cloud reload');
+          qualityTestResults=await fetchResultsFresh();
+          if(qualityTestResults.length===expectedResults){
+            await idbSet('quality_results',{sig:rsig,rows:qualityTestResults,at:new Date().toISOString()});
+          }
+        }
       }
     }catch(e){ console.error('loadQualityTestResults:',e); }
     setLoadStatus('');
@@ -7578,7 +7618,7 @@ function renderAll(){
       '<div class="topbar">'+
         '<div class="brand">'+
           '<div class="brand-mark">IML</div>'+
-          '<div><h1>IML Production Dashboard <span class="app-version-badge">V4.8.21</span></h1><p><span id="entryCount">טוען נתונים…</span> <span id="storageStatusBadge" class="storage-status"></span></p><p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;"><span id="dataStatusLine">בודק נתונים…</span></p><div class="load-health" id="loadHealth"><span class="load-health-chip missing">כמויות —</span><span class="load-health-chip missing">איכות —</span><span class="load-health-chip missing">יעדים —</span></div><div id="fileSourcesPanel" style="display:none"></div></div>'+
+          '<div><h1>IML Production Dashboard <span class="app-version-badge">V4.8.22</span></h1><p><span id="entryCount">טוען נתונים…</span> <span id="storageStatusBadge" class="storage-status"></span></p><p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;"><span id="dataStatusLine">בודק נתונים…</span></p><div class="load-health" id="loadHealth"><span class="load-health-chip missing">כמויות —</span><span class="load-health-chip missing">איכות —</span><span class="load-health-chip missing">יעדים —</span></div><div id="fileSourcesPanel" style="display:none"></div></div>'+
         '</div>'+
         '<div class="topbar-actions"><span id="roleBadge" class="role-badge viewer">👁 צפייה בלבד</span><button class="tab-btn" id="adminLoginBtn" style="background:rgba(255,255,255,0.06);color:var(--text);font-size:12px;padding:6px 14px;">🔐 כניסת מנהל</button><button class="tab-btn" id="refreshSharedBtn" style="background:rgba(20,184,166,0.12);color:var(--teal);font-size:12px;padding:6px 14px;">🔄 רענן נתונים</button><button class="tab-btn" id="addEventTopBtn" style="background:rgba(139,183,255,0.12);color:#8BB7FF;font-size:12px;padding:6px 14px;">+ הוסף אירוע</button><button class="tab-btn" id="advancedDashboardBtn" style="background:var(--teal-soft);color:var(--green);font-size:12px;padding:6px 14px;">📊 דשבורד חדש</button><button class="tab-btn" id="excelAnalyzedExportBtn" style="background:rgba(124,217,146,0.12);color:#7CD992;font-size:12px;padding:6px 14px;">📥 ייצוא ניתוח לאקסל</button><button class="tab-btn" id="dailyFormulationExportBtn" style="background:rgba(255,183,77,0.14);color:#FFB74D;font-size:12px;padding:6px 14px;">📋 ייצוא דיווח יומי</button><label for="qualityFileInput" class="tab-btn admin-only" style="background:rgba(239,68,68,0.12);color:var(--red);font-size:12px;padding:6px 14px;cursor:pointer;">🧪 טעינת איכות (קובץ אחד או שניים)</label><button class="tab-btn" id="whatsappExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📲 WhatsApp טקסט</button><button class="tab-btn" id="whatsappImageExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📸 צילום דשבורד</button><label for="unifiedFileInput" class="tab-btn admin-only" id="unifiedFileBtn" style="background:rgba(45,212,191,0.14);color:var(--teal);font-size:12px;padding:6px 14px;cursor:pointer;">📥 טען נתונים</label><label for="targetsFileInput" class="tab-btn admin-only" id="targetsFileBtn" style="background:rgba(167,139,250,0.13);color:var(--purple);font-size:12px;padding:6px 14px;cursor:pointer;">🎯 טעינת קובץ יעדים</label><button class="tab-btn" id="targetsTemplateBtn" style="background:rgba(167,139,250,0.08);color:var(--purple);font-size:12px;padding:6px 14px;">⬇ תבנית יעדים</button><button class="tab-btn admin-only" id="targetsProdBtn" style="background:var(--amber-soft);color:var(--amber);font-size:12px;padding:6px 14px;">⚙ יעדי ייצור</button><button class="tab-btn admin-only" id="targetsBtn" style="background:var(--teal-soft);color:var(--teal);font-size:12px;padding:6px 14px;">⚙ יעדי אריזה</button><button class="tab-btn admin-only" id="resetBtn" style="background:rgba(255,255,255,0.05);color:var(--text-muted);font-size:12px;padding:6px 14px;">איפוס</button></div>'+
       '</div>'+
