@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 
-const FUNCTION_VERSION = '4.8.19';
+const FUNCTION_VERSION = '4.8.20';
 const TOKEN_TTL_MS = 8 * 60 * 60 * 1000;
 const STORE_NAME = 'production-dashboard';
 const MAX_GET_MANY_KEYS = 30;
@@ -125,14 +125,14 @@ exports.handler = async (event) => {
     const store = await openStore();
 
     if (action === 'get') {
-      const storedValue = await store.get(key, { type: 'text' });
+      const storedValue = await store.get(key, { type: 'text', consistency: 'strong' });
       return response(200, { value: storedValue, backend: 'netlify-blobs-sdk', version: FUNCTION_VERSION });
     }
 
     if (action === 'getMany') {
       const keys = Array.from(new Set(value));
       const rows = await mapWithConcurrency(keys, READ_CONCURRENCY, async k => {
-        const storedValue = await store.get(k, { type: 'text' });
+        const storedValue = await store.get(k, { type: 'text', consistency: 'strong' });
         return [k, storedValue];
       });
       const values = Object.fromEntries(rows);
@@ -142,8 +142,10 @@ exports.handler = async (event) => {
     if (action === 'set') {
       await store.set(key, String(value == null ? '' : value));
       const verification = await store.get(key, { type: 'text', consistency: 'strong' });
-      if (verification === null) throw new Error('WRITE_VERIFICATION_FAILED');
-      return response(200, { ok: true, verified: true, backend: 'netlify-blobs-sdk', version: FUNCTION_VERSION });
+      if (verification === null || verification !== String(value == null ? '' : value)) {
+        throw new Error('WRITE_VERIFICATION_FAILED');
+      }
+      return response(200, { ok: true, verified: true, bytes: verification.length, backend: 'netlify-blobs-sdk', version: FUNCTION_VERSION });
     }
 
     if (action === 'appendEvent') {
