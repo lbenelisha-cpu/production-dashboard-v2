@@ -1,9 +1,9 @@
 {
-  "id": "./?app=iml-production-dashboard-v4.8.0",
+  "id": "./?app=iml-production-dashboard-v4.8.19",
   "name": "IML Production Dashboard",
   "short_name": "IML Dashboard",
   "description": "Production, quality, safety and environment dashboard",
-  "start_url": "./?app=iml-production-dashboard-v4.8.0",
+  "start_url": "./?app=iml-production-dashboard-v4.8.19",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
@@ -12,17 +12,7 @@
   "lang": "he",
   "dir": "rtl",
   "icons": [
-    {
-      "src": "icons/iml-icon-192-v4.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "icons/iml-icon-512-v4.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
-    }
+    {"src":"icons/iml-icon-192-v4.png","sizes":"192x192","type":"image/png","purpose":"any maskable"},
+    {"src":"icons/iml-icon-512-v4.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}
   ]
 }
