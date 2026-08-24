@@ -1003,6 +1003,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   // localStorage משמש רק כאשר פותחים את index.html ישירות מהמחשב (file://).
   const STORAGE_API_URL = '/.netlify/functions/storage';
   const CLOUD_SYNC_VERSION_KEY = 'dashboard_sync_version_v1';
+  const PRODUCTION_SYNC_VERSION_KEY = 'production_sync_version_v1';
   let _lastSeenCloudSyncVersion = '';
   let _silentCloudSyncRunning = false;
   const IS_LOCAL_FILE = location.protocol === 'file:';
@@ -3178,16 +3179,15 @@ html, body { margin:0; padding:0; background:#0A0D12; }
           // V4.8.20: month names alone are NOT a data version. If rows change inside
           // an existing month, the old IndexedDB cache would otherwise remain valid
           // on another PC. Include the cloud sync version in the cache signature.
-          let cloudVersion='';
+          let productionVersion='';
           try{
-            const vr=await _dashStorage.get(CLOUD_SYNC_VERSION_KEY,{fresh:true});
-            cloudVersion=vr&&vr.value?String(vr.value):'';
-            if(cloudVersion) _lastSeenCloudSyncVersion=cloudVersion;
+            const vr=await _dashStorage.get(PRODUCTION_SYNC_VERSION_KEY,{fresh:true});
+            productionVersion=vr&&vr.value?String(vr.value):'';
           }catch(e){}
-          entries = await cachedRows('production_entries', 'months:'+months.join(',')+'|cloud:'+cloudVersion, async ()=>{
+          entries = await cachedRows('production_entries', 'months:'+months.join(',')+'|production:'+productionVersion, async ()=>{
             const out=[];
             setLoadStatus('מוריד נתוני ייצור מהשרת...');
-            const pairs = await _dashStorage.getMany(months.map(m => ENTRIES_KEY_PREFIX + m));
+            const pairs = await _dashStorage.getMany(months.map(m => ENTRIES_KEY_PREFIX + m),{fresh:true});
             pairs.forEach(pair=>{
               const r = pair && pair.result;
               if(r && r.value){ try { appendAll(out, JSON.parse(r.value)); } catch(e){} }
@@ -3878,6 +3878,25 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       const legacyClear = _dashStorage.delete(STORAGE_KEY).catch(()=>null);
 
       await Promise.all([...writes, indexWrite, legacyClear, ...deletes]);
+
+      // V4.8.24: publish a dedicated production version only after all month chunks
+      // and the month index were written successfully.
+      const productionVersion=JSON.stringify({at:Date.now(),rows:entries.length,months:monthsNow});
+      await _dashStorage.set(PRODUCTION_SYNC_VERSION_KEY,productionVersion);
+
+      // Verify cloud row count immediately from the just-written month blobs.
+      const verifyPairs=await _dashStorage.getMany(monthsNow.map(m=>ENTRIES_KEY_PREFIX+m),{fresh:true});
+      let cloudRows=0;
+      verifyPairs.forEach(pair=>{
+        try{
+          const part=JSON.parse(pair&&pair.result&&pair.result.value||'[]');
+          if(Array.isArray(part))cloudRows+=part.length;
+        }catch(e){}
+      });
+      if(cloudRows!==entries.length){
+        throw new Error('אימות כמויות בענן נכשל: מקומי '+entries.length+' מול ענן '+cloudRows);
+      }
+      await idbSet('production_entries',{sig:'months:'+monthsNow.join(',')+'|production:'+productionVersion,rows:entries,at:new Date().toISOString()});
       return true;
     } catch(e){
       // Check if it's a quota error
@@ -7696,7 +7715,7 @@ function renderAll(){
       '<div class="topbar">'+
         '<div class="brand">'+
           '<div class="brand-mark">IML</div>'+
-          '<div><h1>IML Production Dashboard <span class="app-version-badge">V4.8.23</span></h1><p><span id="entryCount">טוען נתונים…</span> <span id="storageStatusBadge" class="storage-status"></span></p><p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;"><span id="dataStatusLine">בודק נתונים…</span></p><div class="load-health" id="loadHealth"><span class="load-health-chip missing">כמויות —</span><span class="load-health-chip missing">איכות —</span><span class="load-health-chip missing">יעדים —</span></div><div id="fileSourcesPanel" style="display:none"></div></div>'+
+          '<div><h1>IML Production Dashboard <span class="app-version-badge">V4.8.24</span></h1><p><span id="entryCount">טוען נתונים…</span> <span id="storageStatusBadge" class="storage-status"></span></p><p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;"><span id="dataStatusLine">בודק נתונים…</span></p><div class="load-health" id="loadHealth"><span class="load-health-chip missing">כמויות —</span><span class="load-health-chip missing">איכות —</span><span class="load-health-chip missing">יעדים —</span></div><div id="fileSourcesPanel" style="display:none"></div></div>'+
         '</div>'+
         '<div class="topbar-actions"><span id="roleBadge" class="role-badge viewer">👁 צפייה בלבד</span><button class="tab-btn" id="adminLoginBtn" style="background:rgba(255,255,255,0.06);color:var(--text);font-size:12px;padding:6px 14px;">🔐 כניסת מנהל</button><button class="tab-btn" id="refreshSharedBtn" style="background:rgba(20,184,166,0.12);color:var(--teal);font-size:12px;padding:6px 14px;">🔄 רענן נתונים</button><button class="tab-btn" id="addEventTopBtn" style="background:rgba(139,183,255,0.12);color:#8BB7FF;font-size:12px;padding:6px 14px;">+ הוסף אירוע</button><button class="tab-btn" id="advancedDashboardBtn" style="background:var(--teal-soft);color:var(--green);font-size:12px;padding:6px 14px;">📊 דשבורד חדש</button><button class="tab-btn" id="excelAnalyzedExportBtn" style="background:rgba(124,217,146,0.12);color:#7CD992;font-size:12px;padding:6px 14px;">📥 ייצוא ניתוח לאקסל</button><button class="tab-btn" id="dailyFormulationExportBtn" style="background:rgba(255,183,77,0.14);color:#FFB74D;font-size:12px;padding:6px 14px;">📋 ייצוא דיווח יומי</button><button class="tab-btn" id="dailyFormulationLoadBtn" style="background:rgba(255,183,77,0.08);color:#FFD08A;font-size:12px;padding:6px 14px;">📂 דוח יומי שמור</button><label for="qualityFileInput" class="tab-btn admin-only" style="background:rgba(239,68,68,0.12);color:var(--red);font-size:12px;padding:6px 14px;cursor:pointer;">🧪 טעינת איכות (קובץ אחד או שניים)</label><button class="tab-btn" id="whatsappExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📲 WhatsApp טקסט</button><button class="tab-btn" id="whatsappImageExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📸 צילום דשבורד</button><label for="unifiedFileInput" class="tab-btn admin-only" id="unifiedFileBtn" style="background:rgba(45,212,191,0.14);color:var(--teal);font-size:12px;padding:6px 14px;cursor:pointer;">📥 טען נתונים</label><label for="targetsFileInput" class="tab-btn admin-only" id="targetsFileBtn" style="background:rgba(167,139,250,0.13);color:var(--purple);font-size:12px;padding:6px 14px;cursor:pointer;">🎯 טעינת קובץ יעדים</label><button class="tab-btn" id="targetsTemplateBtn" style="background:rgba(167,139,250,0.08);color:var(--purple);font-size:12px;padding:6px 14px;">⬇ תבנית יעדים</button><button class="tab-btn admin-only" id="targetsProdBtn" style="background:var(--amber-soft);color:var(--amber);font-size:12px;padding:6px 14px;">⚙ יעדי ייצור</button><button class="tab-btn admin-only" id="targetsBtn" style="background:var(--teal-soft);color:var(--teal);font-size:12px;padding:6px 14px;">⚙ יעדי אריזה</button><button class="tab-btn admin-only" id="resetBtn" style="background:rgba(255,255,255,0.05);color:var(--text-muted);font-size:12px;padding:6px 14px;">איפוס</button></div>'+
       '</div>'+
@@ -8294,18 +8313,23 @@ root.querySelector('#printBtn').onclick = ()=> window.print();
     el.innerHTML=chip('כמויות',entries.length>0,prodDetail)+chip('איכות',qualityEntries.length>0||qualityTestResults.length>0,qualDetail)+chip('יעדים',targetOk,targetDetail);
   }
 
+  let _lastSeenProductionSyncVersion='';
   async function checkForCloudChanges(){
     if(IS_LOCAL_FILE || _silentCloudSyncRunning || document.hidden) return;
     try{
-      const res=await _dashStorage.get(CLOUD_SYNC_VERSION_KEY,{fresh:true});
+      const [res,prodRes]=await Promise.all([
+        _dashStorage.get(CLOUD_SYNC_VERSION_KEY,{fresh:true}),
+        _dashStorage.get(PRODUCTION_SYNC_VERSION_KEY,{fresh:true})
+      ]);
       const version=res&&res.value?String(res.value):'';
+      const productionVersion=prodRes&&prodRes.value?String(prodRes.value):'';
+      const productionChanged=!!(_lastSeenProductionSyncVersion && productionVersion && productionVersion!==_lastSeenProductionSyncVersion);
+      if(productionVersion)_lastSeenProductionSyncVersion=productionVersion;
       if(!_lastSeenCloudSyncVersion){
         _lastSeenCloudSyncVersion=version;
-        // Initial page load already uses this version in the production cache signature.
-        // No extra reload is required here.
-        return;
+        if(!productionChanged) return;
       }
-      if(version && version!==_lastSeenCloudSyncVersion){
+      if((version && version!==_lastSeenCloudSyncVersion) || productionChanged){
         _silentCloudSyncRunning=true;
         _lastSeenCloudSyncVersion=version;
         _cacheClear();
@@ -8375,7 +8399,7 @@ root.querySelector('#printBtn').onclick = ()=> window.print();
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   window.addEventListener('load', async () => {
     try {
-      const reg = await navigator.serviceWorker.register('./service-worker.js?v=4.7.1', { updateViaCache: 'none' });
+      const reg = await navigator.serviceWorker.register('./service-worker.js?v=4.8.24', { updateViaCache: 'none' });
       await reg.update();
       let reloading = false;
       navigator.serviceWorker.addEventListener('controllerchange', () => {
