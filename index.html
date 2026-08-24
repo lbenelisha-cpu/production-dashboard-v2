@@ -5603,25 +5603,81 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     return '';
   }
 
-  function exportDailyFormulationReport(){
+  const DAILY_REPORT_INDEX_KEY='daily_formulation_snapshots_v1_index';
+  const DAILY_REPORT_PREFIX='daily_formulation_snapshot_v1_';
+
+  function dailyReportISODate(view){
+    const candidates=(view&&view.filtered||[]).map(e=>String(e.date||'')).filter(d=>/^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
+    if(candidates.length)return candidates[candidates.length-1];
+    const raw=String(view&&view.rangeLabel||'');
+    const m=raw.match(/(\d{4})-(\d{2})-(\d{2})/);
+    return m?m[0]:todayISO();
+  }
+
+  async function saveDailyFormulationSnapshot(view, rows, facilities, evs){
+    if(!isAdmin || !adminToken) return false;
+    const date=dailyReportISODate(view);
+    const snapshot={
+      version:1,date,savedAt:new Date().toISOString(),
+      sourceFiles:{
+        production:(datasetSources.production||[]).map(x=>({name:x.name,at:x.at,rows:x.rows})),
+        qualitySummary:(datasetSources.qualitySummary||[]).map(x=>({name:x.name,at:x.at,rows:x.rows})),
+        qualityResults:(datasetSources.qualityResults||[]).map(x=>({name:x.name,at:x.at,rows:x.rows})),
+        targets:targetFileMeta.fileName?{name:targetFileMeta.fileName,at:targetFileMeta.loadedAt}:null
+      },
+      facilities:[...(facilities||[])],
+      rows:(rows||[]).map(e=>({...e})),
+      events:(evs||[]).map(e=>({...e}))
+    };
+    await _dashStorage.set(DAILY_REPORT_PREFIX+date,JSON.stringify(snapshot));
+    let index=[];
+    try{
+      const res=await _dashStorage.get(DAILY_REPORT_INDEX_KEY,{fresh:true});
+      index=res&&res.value?JSON.parse(res.value):[];
+      if(!Array.isArray(index))index=[];
+    }catch(e){}
+    index=index.filter(x=>x&&x.date!==date);
+    index.push({date,savedAt:snapshot.savedAt,rowCount:snapshot.rows.length,facilities:snapshot.facilities});
+    index.sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+    await _dashStorage.set(DAILY_REPORT_INDEX_KEY,JSON.stringify(index.slice(0,730)));
+    return true;
+  }
+
+  async function loadSavedDailyFormulationReport(){
+    try{
+      const idxRes=await _dashStorage.get(DAILY_REPORT_INDEX_KEY,{fresh:true});
+      let index=idxRes&&idxRes.value?JSON.parse(idxRes.value):[];
+      if(!Array.isArray(index)||!index.length){showToast('עדיין לא נשמרו דוחות יומיים בענן',true);return;}
+      const recent=index.slice(0,20).map(x=>x.date).join(', ');
+      const date=prompt('הזן תאריך דוח בפורמט YYYY-MM-DD\\nתאריכים אחרונים: '+recent,index[0].date);
+      if(!date)return;
+      const res=await _dashStorage.get(DAILY_REPORT_PREFIX+date,{fresh:true});
+      if(!res||!res.value){showToast('לא נמצא דוח שמור לתאריך '+date,true);return;}
+      const snapshot=JSON.parse(res.value);
+      await exportDailyFormulationReport(snapshot);
+    }catch(e){console.error(e);showToast('שגיאה בטעינת דוח יומי שמור: '+(e.message||e),true);}
+  }
+
+  async function exportDailyFormulationReport(snapshotOverride){
     try{
       if(typeof XLSX === 'undefined'){
         showToast('ספריית Excel לא נטענה. נסה לרענן את העמוד.', true);
         return;
       }
-      const view = getView();
+      const liveView = getView();
+      const view = snapshotOverride ? {filtered:snapshotOverride.rows||[],rangeLabel:snapshotOverride.date||'',from:snapshotOverride.date||'',to:snapshotOverride.date||''} : liveView;
       const rows = view.filtered || [];
       if(!rows.length){ showToast('אין נתונים בטווח שנבחר', true); return; }
 
-      const evs = typeof filteredEventsForView === 'function' ? filteredEventsForView(view) : [];
+      const evs = snapshotOverride ? (snapshotOverride.events||[]) : (typeof filteredEventsForView === 'function' ? filteredEventsForView(view) : []);
       const nQ = evs.filter(ev=>ev.type==='quality').length;
       const nE = evs.filter(ev=>ev.type==='environment').length;
       const nS = evs.filter(ev=>ev.type==='safety').length;
 
       /* המתקנים הנבחרים בפילטר — זה ה"לפי מתקנים נבחרים" */
-      let facilities = selectedFacilities === null
-        ? FACILITY_OPTIONS.slice().sort()
-        : Array.from(selectedFacilities).sort();
+      let facilities = snapshotOverride && Array.isArray(snapshotOverride.facilities)
+        ? snapshotOverride.facilities.slice().sort()
+        : (selectedFacilities === null ? FACILITY_OPTIONS.slice().sort() : Array.from(selectedFacilities).sort());
 
       const byFac = {};
       rows.forEach(e=>{
@@ -5670,19 +5726,27 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       put(3, C.D, 'מתקנים נבחרים', ST.label);
       put(3, C.E, facilities.join(', '));
       merges.push({s:{r:2,c:C.E}, e:{r:2,c:C.I}});
+      const latestStamp=items=>{const x=(items||[]).slice().sort((a,b)=>String(b.at||'').localeCompare(String(a.at||'')))[0];return x?formatLoadStamp(x.at):'—';};
+      const snapSources=snapshotOverride&&snapshotOverride.sourceFiles;
+      const loadInfo=snapSources
+        ? 'טעינת כמויות: '+(snapSources.production&&snapSources.production.length?formatLoadStamp(snapSources.production.slice().sort((a,b)=>String(b.at||'').localeCompare(String(a.at||'')))[0].at):'—')+
+          ' | איכות: '+(snapSources.qualitySummary&&snapSources.qualitySummary.length?formatLoadStamp(snapSources.qualitySummary.slice().sort((a,b)=>String(b.at||'').localeCompare(String(a.at||'')))[0].at):'—')
+        : 'טעינת כמויות: '+latestStamp(datasetSources.production)+' | איכות: '+latestStamp([...(datasetSources.qualitySummary||[]),...(datasetSources.qualityResults||[])])+' | יעדים: '+(targetFileMeta.loadedAt?formatLoadStamp(targetFileMeta.loadedAt):'—');
+      put(4,C.B,loadInfo,ST.label);
+      merges.push({s:{r:3,c:C.B},e:{r:3,c:C.J}});
 
       const tx = n => n === 0 ? 'אין' : String(n);
-      put(5, C.C, 'אירוע איכות - '+tx(nQ)+' .   סביבה - '+tx(nE)+' .   בטיחות - '+tx(nS)+' .', ST.banner);
-      for(let c=C.D;c<=C.I;c++) put(5,c,'',ST.banner);
-      merges.push({s:{r:4,c:C.C}, e:{r:4,c:C.I}});
-      put(6, C.C, '', ST.banner);
+      put(6, C.C, 'אירוע איכות - '+tx(nQ)+' .   סביבה - '+tx(nE)+' .   בטיחות - '+tx(nS)+' .', ST.banner);
       for(let c=C.D;c<=C.I;c++) put(6,c,'',ST.banner);
       merges.push({s:{r:5,c:C.C}, e:{r:5,c:C.I}});
+      put(7, C.C, '', ST.banner);
+      for(let c=C.D;c<=C.I;c++) put(7,c,'',ST.banner);
+      merges.push({s:{r:6,c:C.C}, e:{r:6,c:C.I}});
 
       ['מק״ט מוצר', dLabel, 'קו יצור', 'חומר', 'סטטוס מכונה', 'תפוקה', 'סה"כ תפוקה', 'הערות', 'קמפיין / דיווח מול יעד']
-        .forEach((h,i)=> put(7, C.B+i, h, ST.head));
+        .forEach((h,i)=> put(8, C.B+i, h, ST.head));
 
-      let r = 8;
+      let r = 9;
       facilities.forEach(fac=>{
         const list = byFac[fac] || [], start = r;
         if(!list.length){
@@ -5721,8 +5785,8 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       const last = r - 1, totalRow = last + 1;
       for(let c=C.C;c<=C.I;c++) put(totalRow, c, '', ST.total);
       put(totalRow, C.F, 'סה"כ כללי', ST.total);
-      putF(totalRow, C.G, 'SUM(G8:G'+last+')', ST.total);
-      putF(totalRow, C.H, 'SUM(G8:G'+last+')', ST.total);
+      putF(totalRow, C.G, 'SUM(G9:G'+last+')', ST.total);
+      putF(totalRow, C.H, 'SUM(G9:G'+last+')', ST.total);
 
       ws['!ref']    = XLSX.utils.encode_range({s:{r:0,c:0}, e:{r:totalRow-1, c:C.J}});
       ws['!merges'] = merges;
@@ -5730,9 +5794,9 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 
       /* גובה שורות — כדי ששם החומר הגולש ייראה במלואו, כמו בדיווח הידני */
       const rowsH = [];
-      rowsH[4] = {hpt:26};   /* באנר האירועים */
-      rowsH[6] = {hpt:30};   /* שורת הכותרות */
-      for(let rr=8; rr<=totalRow; rr++){
+      rowsH[5] = {hpt:26};   /* באנר האירועים */
+      rowsH[7] = {hpt:30};   /* שורת הכותרות */
+      for(let rr=9; rr<=totalRow; rr++){
         const matCell = ws[at(rr, C.E)];
         const len = matCell && matCell.v != null ? String(matCell.v).length : 0;
         rowsH[rr-1] = {hpt: len > 56 ? 46 : (len > 28 ? 32 : 20)};
@@ -5761,8 +5825,13 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       XLSX.utils.book_append_sheet(wb, legend, 'מקרא והנחות');
 
       const fileName = 'daily_formulation_report_' + (view.rangeLabel || todayISO()) + '.xlsx';
+      if(!snapshotOverride && isAdmin && adminToken){
+        try{
+          await saveDailyFormulationSnapshot(view,rows,facilities,evs);
+        }catch(e){console.warn('daily snapshot save failed',e);}
+      }
       writeWorkbookForMobile(wb, fileName);
-      showToast('דוח יומי נוצר — ניתן להוריד או לשתף מהחלון שנפתח');
+      showToast(snapshotOverride?'דוח יומי שמור נטען ויוצא לאקסל':'דוח יומי נוצר ונשמר בארכיון היומי');
     } catch(err){
       console.error('Daily formulation export error:', err);
       showToast('שגיאה ביצוא הדיווח היומי', true);
@@ -7582,9 +7651,18 @@ function renderAll(){
 
       const importedKeys = new Set(rows.map(sapIdentity));
       const beforeCount = entries.length;
-      // הסר רק רשומות שמתאימות לרשומות שבקובץ החדש, ואז הכנס את הגרסה המעודכנת.
-      // רשומות ידניות/היסטוריות שאינן נמצאות בקובץ נשמרות.
-      entries = entries.filter(e => !importedKeys.has(sapIdentity(e)));
+      // V4.8.23: קובץ הכמויות הוא מקור האמת לטווח התאריכים שהוא מכסה.
+      // כך לא נשארות רשומות SAP ישנות מאותו טווח לאחר טעינה של קובץ מצטבר חדש.
+      // נתונים מחוץ לטווח נשמרים, וגם רשומות ידניות נשמרות.
+      const uploadDates=rows.map(r=>String(r.date||'')).filter(d=>/^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
+      const minUploadDate=uploadDates[0]||'', maxUploadDate=uploadDates[uploadDates.length-1]||'';
+      const isManualEntry=e=>String(e.source||e.entrySource||'').toLowerCase()==='manual' || String(e.notes||'').includes('[ידני]');
+      entries = entries.filter(e=>{
+        if(isManualEntry(e)) return true;
+        const d=String(e.date||'');
+        if(minUploadDate && maxUploadDate && d>=minUploadDate && d<=maxUploadDate) return false;
+        return !importedKeys.has(sapIdentity(e));
+      });
       const replaced = beforeCount - entries.length;
       entries = entries.concat(rows);
       const ok = await persist();
@@ -7618,9 +7696,9 @@ function renderAll(){
       '<div class="topbar">'+
         '<div class="brand">'+
           '<div class="brand-mark">IML</div>'+
-          '<div><h1>IML Production Dashboard <span class="app-version-badge">V4.8.22</span></h1><p><span id="entryCount">טוען נתונים…</span> <span id="storageStatusBadge" class="storage-status"></span></p><p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;"><span id="dataStatusLine">בודק נתונים…</span></p><div class="load-health" id="loadHealth"><span class="load-health-chip missing">כמויות —</span><span class="load-health-chip missing">איכות —</span><span class="load-health-chip missing">יעדים —</span></div><div id="fileSourcesPanel" style="display:none"></div></div>'+
+          '<div><h1>IML Production Dashboard <span class="app-version-badge">V4.8.23</span></h1><p><span id="entryCount">טוען נתונים…</span> <span id="storageStatusBadge" class="storage-status"></span></p><p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;"><span id="dataStatusLine">בודק נתונים…</span></p><div class="load-health" id="loadHealth"><span class="load-health-chip missing">כמויות —</span><span class="load-health-chip missing">איכות —</span><span class="load-health-chip missing">יעדים —</span></div><div id="fileSourcesPanel" style="display:none"></div></div>'+
         '</div>'+
-        '<div class="topbar-actions"><span id="roleBadge" class="role-badge viewer">👁 צפייה בלבד</span><button class="tab-btn" id="adminLoginBtn" style="background:rgba(255,255,255,0.06);color:var(--text);font-size:12px;padding:6px 14px;">🔐 כניסת מנהל</button><button class="tab-btn" id="refreshSharedBtn" style="background:rgba(20,184,166,0.12);color:var(--teal);font-size:12px;padding:6px 14px;">🔄 רענן נתונים</button><button class="tab-btn" id="addEventTopBtn" style="background:rgba(139,183,255,0.12);color:#8BB7FF;font-size:12px;padding:6px 14px;">+ הוסף אירוע</button><button class="tab-btn" id="advancedDashboardBtn" style="background:var(--teal-soft);color:var(--green);font-size:12px;padding:6px 14px;">📊 דשבורד חדש</button><button class="tab-btn" id="excelAnalyzedExportBtn" style="background:rgba(124,217,146,0.12);color:#7CD992;font-size:12px;padding:6px 14px;">📥 ייצוא ניתוח לאקסל</button><button class="tab-btn" id="dailyFormulationExportBtn" style="background:rgba(255,183,77,0.14);color:#FFB74D;font-size:12px;padding:6px 14px;">📋 ייצוא דיווח יומי</button><label for="qualityFileInput" class="tab-btn admin-only" style="background:rgba(239,68,68,0.12);color:var(--red);font-size:12px;padding:6px 14px;cursor:pointer;">🧪 טעינת איכות (קובץ אחד או שניים)</label><button class="tab-btn" id="whatsappExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📲 WhatsApp טקסט</button><button class="tab-btn" id="whatsappImageExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📸 צילום דשבורד</button><label for="unifiedFileInput" class="tab-btn admin-only" id="unifiedFileBtn" style="background:rgba(45,212,191,0.14);color:var(--teal);font-size:12px;padding:6px 14px;cursor:pointer;">📥 טען נתונים</label><label for="targetsFileInput" class="tab-btn admin-only" id="targetsFileBtn" style="background:rgba(167,139,250,0.13);color:var(--purple);font-size:12px;padding:6px 14px;cursor:pointer;">🎯 טעינת קובץ יעדים</label><button class="tab-btn" id="targetsTemplateBtn" style="background:rgba(167,139,250,0.08);color:var(--purple);font-size:12px;padding:6px 14px;">⬇ תבנית יעדים</button><button class="tab-btn admin-only" id="targetsProdBtn" style="background:var(--amber-soft);color:var(--amber);font-size:12px;padding:6px 14px;">⚙ יעדי ייצור</button><button class="tab-btn admin-only" id="targetsBtn" style="background:var(--teal-soft);color:var(--teal);font-size:12px;padding:6px 14px;">⚙ יעדי אריזה</button><button class="tab-btn admin-only" id="resetBtn" style="background:rgba(255,255,255,0.05);color:var(--text-muted);font-size:12px;padding:6px 14px;">איפוס</button></div>'+
+        '<div class="topbar-actions"><span id="roleBadge" class="role-badge viewer">👁 צפייה בלבד</span><button class="tab-btn" id="adminLoginBtn" style="background:rgba(255,255,255,0.06);color:var(--text);font-size:12px;padding:6px 14px;">🔐 כניסת מנהל</button><button class="tab-btn" id="refreshSharedBtn" style="background:rgba(20,184,166,0.12);color:var(--teal);font-size:12px;padding:6px 14px;">🔄 רענן נתונים</button><button class="tab-btn" id="addEventTopBtn" style="background:rgba(139,183,255,0.12);color:#8BB7FF;font-size:12px;padding:6px 14px;">+ הוסף אירוע</button><button class="tab-btn" id="advancedDashboardBtn" style="background:var(--teal-soft);color:var(--green);font-size:12px;padding:6px 14px;">📊 דשבורד חדש</button><button class="tab-btn" id="excelAnalyzedExportBtn" style="background:rgba(124,217,146,0.12);color:#7CD992;font-size:12px;padding:6px 14px;">📥 ייצוא ניתוח לאקסל</button><button class="tab-btn" id="dailyFormulationExportBtn" style="background:rgba(255,183,77,0.14);color:#FFB74D;font-size:12px;padding:6px 14px;">📋 ייצוא דיווח יומי</button><button class="tab-btn" id="dailyFormulationLoadBtn" style="background:rgba(255,183,77,0.08);color:#FFD08A;font-size:12px;padding:6px 14px;">📂 דוח יומי שמור</button><label for="qualityFileInput" class="tab-btn admin-only" style="background:rgba(239,68,68,0.12);color:var(--red);font-size:12px;padding:6px 14px;cursor:pointer;">🧪 טעינת איכות (קובץ אחד או שניים)</label><button class="tab-btn" id="whatsappExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📲 WhatsApp טקסט</button><button class="tab-btn" id="whatsappImageExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📸 צילום דשבורד</button><label for="unifiedFileInput" class="tab-btn admin-only" id="unifiedFileBtn" style="background:rgba(45,212,191,0.14);color:var(--teal);font-size:12px;padding:6px 14px;cursor:pointer;">📥 טען נתונים</label><label for="targetsFileInput" class="tab-btn admin-only" id="targetsFileBtn" style="background:rgba(167,139,250,0.13);color:var(--purple);font-size:12px;padding:6px 14px;cursor:pointer;">🎯 טעינת קובץ יעדים</label><button class="tab-btn" id="targetsTemplateBtn" style="background:rgba(167,139,250,0.08);color:var(--purple);font-size:12px;padding:6px 14px;">⬇ תבנית יעדים</button><button class="tab-btn admin-only" id="targetsProdBtn" style="background:var(--amber-soft);color:var(--amber);font-size:12px;padding:6px 14px;">⚙ יעדי ייצור</button><button class="tab-btn admin-only" id="targetsBtn" style="background:var(--teal-soft);color:var(--teal);font-size:12px;padding:6px 14px;">⚙ יעדי אריזה</button><button class="tab-btn admin-only" id="resetBtn" style="background:rgba(255,255,255,0.05);color:var(--text-muted);font-size:12px;padding:6px 14px;">איפוס</button></div>'+
       '</div>'+
       '<div class="tabs">'+
         '<button class="tab-btn" data-tab="day">יום אחרון</button>'+
@@ -8118,6 +8196,8 @@ function renderAll(){
   root.querySelector('#excelAnalyzedExportBtn').onclick = exportAnalyzedDataToExcel;
   const dailyFormBtn = root.querySelector('#dailyFormulationExportBtn');
   if(dailyFormBtn) dailyFormBtn.onclick = exportDailyFormulationReport;
+  const dailyLoadBtn = root.querySelector('#dailyFormulationLoadBtn');
+  if(dailyLoadBtn) dailyLoadBtn.onclick = loadSavedDailyFormulationReport;
   root.querySelector('#modalCancel').onclick = closeModal;
   root.querySelector('#modalSave').onclick = saveEntryFromModal;
   root.querySelector('#modalOverlay').onclick = (e)=>{ if(e.target.id==='modalOverlay') closeModal(); };
@@ -8205,10 +8285,12 @@ root.querySelector('#printBtn').onclick = ()=> window.print();
     const quality=[...(datasetSources.qualitySummary||[]),...(datasetSources.qualityResults||[])];
     const targetOk=!!targetFileMeta.fileName && targetFileRows.length>0;
     const chip=(label,ok,detail)=>'<span class="load-health-chip '+(ok?'ok':'missing')+'" title="'+escapeHtml(detail||'')+'">'+(ok?'✓ ':'')+label+(ok&&detail?' · '+escapeHtml(detail):' —')+'</span>';
-    const prodDetail=prod.length?(prod.length+' קבצים'):'';
-    const qualNames=new Set(quality.map(x=>x.name));
-    const qualDetail=qualNames.size?(qualNames.size+' קבצים'):'';
-    const targetDetail=targetOk?targetFileMeta.fileName:'';
+    const latestItem=items=>(items||[]).slice().sort((a,b)=>String(b.at||'').localeCompare(String(a.at||'')))[0]||null;
+    const prodLast=latestItem(prod);
+    const qualLast=latestItem(quality);
+    const prodDetail=prodLast?(prodLast.name+' · '+formatLoadStamp(prodLast.at)):'';
+    const qualDetail=qualLast?(qualLast.name+' · '+formatLoadStamp(qualLast.at)):'';
+    const targetDetail=targetOk?(targetFileMeta.fileName+' · '+formatLoadStamp(targetFileMeta.loadedAt)):'';
     el.innerHTML=chip('כמויות',entries.length>0,prodDetail)+chip('איכות',qualityEntries.length>0||qualityTestResults.length>0,qualDetail)+chip('יעדים',targetOk,targetDetail);
   }
 

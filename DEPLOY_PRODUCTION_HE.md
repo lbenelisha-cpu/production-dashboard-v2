@@ -1,4 +1,4 @@
-# IML Production Dashboard V4.8.22 – תיקון סנכרון
+# IML Production Dashboard V4.8.23 – תיקון סנכרון
 
 יש להעלות את כל תוכן החבילה ל-GitHub, כולל `netlify/functions/storage.js`.
 
