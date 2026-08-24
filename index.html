@@ -956,6 +956,12 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 @media(max-width:1000px){#prod-dash-root .control-kpis{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:650px){#prod-dash-root .control-kpis{grid-template-columns:repeat(2,1fr)}#prod-dash-root .facility-score-grid{grid-template-columns:1fr}}
 
+
+#prod-dash-root .event-severity{display:inline-flex;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:900;white-space:nowrap}
+#prod-dash-root .event-severity.sev-low{background:rgba(34,197,94,.13);color:#86efac}
+#prod-dash-root .event-severity.sev-medium{background:rgba(245,158,11,.14);color:#fcd34d}
+#prod-dash-root .event-severity.sev-high{background:rgba(249,115,22,.15);color:#fdba74}
+#prod-dash-root .event-severity.sev-critical{background:rgba(239,68,68,.18);color:#fca5a5}
 </style>
 </head>
 <body>
@@ -2651,7 +2657,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       html += '<div class="panel-head" style="margin-top:8px;"><div class="panel-title">'+title+' — פירוט</div><button class="panel-toggle-btn" id="closeEventsDetails">סגור פירוט</button></div>'+
         '<div class="table-scroll"><table><thead><tr><th>תאריך</th><th>סוג</th><th>מתקן</th><th>קו/אזור</th><th>פקודה</th><th>Batch</th><th>חומרה</th><th>תיאור</th><th>פעולה מתקנת</th></tr></thead><tbody>';
       detailRows.forEach(ev=>{
-        html += '<tr><td class="mono">'+escapeHtml(ev.date||'')+'</td><td class="'+eventTypeClass(ev.type)+'">'+eventTypeLabel(ev.type)+'</td><td class="mono">'+escapeHtml(ev.facility||'—')+'</td><td>'+escapeHtml(ev.area||'—')+'</td><td class="mono">'+escapeHtml(ev.workOrder||'—')+'</td><td class="mono">'+escapeHtml(ev.batch||'—')+'</td><td>'+escapeHtml(ev.severity||'—')+'</td><td>'+escapeHtml(ev.description||'—')+'</td><td>'+escapeHtml(ev.action||'—')+'</td></tr>';
+        html += '<tr><td class="mono">'+escapeHtml(ev.date||'')+'</td><td class="'+eventTypeClass(ev.type)+'">'+eventTypeLabel(ev.type)+'</td><td class="mono">'+escapeHtml(ev.facility||'—')+'</td><td>'+escapeHtml(ev.area||'—')+'</td><td class="mono">'+escapeHtml(ev.workOrder||'—')+'</td><td class="mono">'+escapeHtml(ev.batch||'—')+'</td><td><span class="event-severity sev-'+severityClass(ev.severity)+'">'+escapeHtml(ev.severity||'—')+'</span></td><td>'+escapeHtml(ev.description||'—')+'</td><td>'+escapeHtml(ev.action||'—')+'</td></tr>';
       });
       html += '</tbody></table></div>';
     }
@@ -2666,14 +2672,22 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     if(closeBtn) closeBtn.onclick = ()=>{ eventsDetailMode = null; renderAll(); };
   }
 
+  function severityClass(v){
+    const x=String(v||'').trim();
+    if(x.includes('קריט'))return 'critical';
+    if(x.includes('גבוה'))return 'high';
+    if(x.includes('בינ'))return 'medium';
+    return 'low';
+  }
+
   function openEventModal(){
     root.querySelector('#ev_date').value = effectiveDay ? effectiveDay() : todayISO();
-    root.querySelector('#ev_type').value = 'quality';
+    ['quality','environment','safety'].forEach(t=>{const el=root.querySelector('#ev_type_'+t);if(el)el.checked=false;});
     root.querySelector('#ev_facility').value = selectedFacilities && selectedFacilities.size === 1 ? Array.from(selectedFacilities)[0] : '';
     root.querySelector('#ev_area').value = '';
     root.querySelector('#ev_workorder').value = '';
     root.querySelector('#ev_batch').value = '';
-    root.querySelector('#ev_severity').value = 'בינוני';
+    root.querySelector('#ev_severity').value = 'בינונית';
     root.querySelector('#ev_desc').value = '';
     root.querySelector('#ev_action').value = '';
     root.querySelector('#eventOverlay').classList.add('open');
@@ -2682,12 +2696,12 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   async function saveEventFromModal(){
     const saveBtn = root.querySelector('#eventSave');
     const date = root.querySelector('#ev_date').value;
-    const type = root.querySelector('#ev_type').value;
+    const types=['quality','environment','safety'].filter(t=>{const el=root.querySelector('#ev_type_'+t);return el&&el.checked;});
     const desc = root.querySelector('#ev_desc').value.trim();
-    if(!date || !desc){ showToast('חובה להזין תאריך ותיאור אירוע', true); return; }
+    if(!date || !types.length || !desc){ showToast('חובה לבחור סוג אירוע ולהזין תאריך ותיאור', true); return; }
 
-    const eventData = {
-      id: genId(), date, type,
+    const baseEvent = {
+      date,
       facility: root.querySelector('#ev_facility').value,
       area: root.querySelector('#ev_area').value.trim(),
       workOrder: root.querySelector('#ev_workorder').value.trim(),
@@ -2701,11 +2715,14 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 
     if(saveBtn){ saveBtn.disabled = true; saveBtn.textContent = 'שומר...'; }
     try {
-      const result = await _dashStorage.appendEvent(STORAGE_KEY_EVENTS, eventData);
-      const savedEvent = result && result.event ? result.event : eventData;
-      if(!eventsEntries.some(ev=>ev.id === savedEvent.id)) eventsEntries.push(savedEvent);
+      for(const type of types){
+        const eventData={...baseEvent,id:genId(),type};
+        const result = await _dashStorage.appendEvent(STORAGE_KEY_EVENTS, eventData);
+        const savedEvent = result && result.event ? result.event : eventData;
+        if(!eventsEntries.some(ev=>ev.id === savedEvent.id)) eventsEntries.push(savedEvent);
+      }
       root.querySelector('#eventOverlay').classList.remove('open');
-      showToast('האירוע נשמר');
+      showToast(types.length===1?'האירוע נשמר':types.length+' אירועים נשמרו');
       renderAll();
     } catch(e){
       console.error('Event save failed:', e);
@@ -6000,6 +6017,25 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       }
       XLSX.utils.book_append_sheet(wb,ws2,'סיכום לפי מתקן');
 
+      const monthEvents=[];
+      snapshots.forEach(snap=>(snap.events||[]).forEach(ev=>monthEvents.push({...ev,reportDate:snap.date||ev.date||''})));
+      if(monthEvents.length){
+        monthEvents.sort((a,b)=>String(a.reportDate).localeCompare(String(b.reportDate)));
+        const evAOA=[
+          ['אירועים חודשיים — איכות / סביבה / בטיחות',month],
+          [],
+          ['תאריך','סוג','מתקן','קו / אזור','פקודת עבודה','מספר אצווה','חומרה','תיאור','פעולה מתקנת / הערות']
+        ];
+        monthEvents.forEach(ev=>evAOA.push([
+          ev.reportDate||ev.date||'',eventTypeLabel(ev.type),ev.facility||'',ev.area||'',ev.workOrder||'',ev.batch||'',
+          ev.severity||'',ev.description||'',ev.action||''
+        ]));
+        const evWs=XLSX.utils.aoa_to_sheet(evAOA);
+        evWs['!cols']=[{wch:13},{wch:16},{wch:12},{wch:22},{wch:18},{wch:18},{wch:15},{wch:55},{wch:55}];
+        evWs['!views']=[{rightToLeft:true}];
+        XLSX.utils.book_append_sheet(wb,evWs,'אירועים חודשיים');
+      }
+
       writeWorkbookForMobile(wb,'monthly_formulation_report_'+month+'.xlsx');
       showToast('דוח חודשי נוצר: '+snapshots.length+' ימים · '+Object.keys(byFac).length+' מתקנים');
     }catch(e){
@@ -6177,6 +6213,22 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       ]);
       legend['!cols'] = [{wch:24},{wch:95}];
       XLSX.utils.book_append_sheet(wb, legend, 'מקרא והנחות');
+
+      if(evs.length){
+        const evAOA=[
+          ['אירועי איכות / סביבה / בטיחות',view.rangeLabel||''],
+          [],
+          ['תאריך','סוג אירוע','מתקן','קו / אזור','פקודת עבודה','מספר אצווה','דרגת חומרה','תיאור האירוע','פעולה מתקנת / הערות']
+        ];
+        evs.forEach(ev=>evAOA.push([
+          ev.date||'',eventTypeLabel(ev.type),ev.facility||'',ev.area||'',ev.workOrder||'',ev.batch||'',
+          ev.severity||'',ev.description||'',ev.action||''
+        ]));
+        const evWs=XLSX.utils.aoa_to_sheet(evAOA);
+        evWs['!cols']=[{wch:13},{wch:16},{wch:12},{wch:22},{wch:18},{wch:18},{wch:16},{wch:55},{wch:55}];
+        evWs['!views']=[{rightToLeft:true}];
+        XLSX.utils.book_append_sheet(wb,evWs,'אירועים');
+      }
 
       const fileName = 'daily_formulation_report_' + (view.rangeLabel || todayISO()) + '.xlsx';
       if(!isSavedSnapshot && isAdmin && adminToken){
@@ -8051,7 +8103,7 @@ function renderAll(){
       '<div class="topbar">'+
         '<div class="brand">'+
           '<div class="brand-mark">IML</div>'+
-          '<div><h1>IML Production Dashboard <span class="app-version-badge">V4.8.29</span></h1><p><span id="entryCount">טוען נתונים…</span> <span id="storageStatusBadge" class="storage-status"></span></p><p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;"><span id="dataStatusLine">בודק נתונים…</span></p><div class="load-health" id="loadHealth"><span class="load-health-chip missing">כמויות —</span><span class="load-health-chip missing">איכות —</span><span class="load-health-chip missing">יעדים —</span></div><div id="fileSourcesPanel" style="display:none"></div></div>'+
+          '<div><h1>IML Production Dashboard <span class="app-version-badge">V4.8.30</span></h1><p><span id="entryCount">טוען נתונים…</span> <span id="storageStatusBadge" class="storage-status"></span></p><p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;"><span id="dataStatusLine">בודק נתונים…</span></p><div class="load-health" id="loadHealth"><span class="load-health-chip missing">כמויות —</span><span class="load-health-chip missing">איכות —</span><span class="load-health-chip missing">יעדים —</span></div><div id="fileSourcesPanel" style="display:none"></div></div>'+
         '</div>'+
         '<div class="topbar-actions"><span id="roleBadge" class="role-badge viewer">👁 צפייה בלבד</span><button class="tab-btn" id="adminLoginBtn" style="background:rgba(255,255,255,0.06);color:var(--text);font-size:12px;padding:6px 14px;">🔐 כניסת מנהל</button><button class="tab-btn" id="refreshSharedBtn" style="background:rgba(20,184,166,0.12);color:var(--teal);font-size:12px;padding:6px 14px;">🔄 רענן נתונים</button><button class="tab-btn" id="addEventTopBtn" style="background:rgba(139,183,255,0.12);color:#8BB7FF;font-size:12px;padding:6px 14px;">+ הוסף אירוע</button><button class="tab-btn" id="advancedDashboardBtn" style="background:var(--teal-soft);color:var(--green);font-size:12px;padding:6px 14px;">📊 דשבורד חדש</button><button class="tab-btn" id="excelAnalyzedExportBtn" style="background:rgba(124,217,146,0.12);color:#7CD992;font-size:12px;padding:6px 14px;">📥 ייצוא ניתוח לאקסל</button><button class="tab-btn" id="dailyFormulationExportBtn" style="background:rgba(255,183,77,0.14);color:#FFB74D;font-size:12px;padding:6px 14px;">📋 ייצוא דיווח יומי</button><button class="tab-btn" id="dailyFormulationLoadBtn" style="background:rgba(255,183,77,0.08);color:#FFD08A;font-size:12px;padding:6px 14px;">📂 דוח יומי שמור</button><button class="tab-btn" id="monthlyFormulationReportBtn" style="background:rgba(52,211,153,0.10);color:#6EE7B7;font-size:12px;padding:6px 14px;">📊 דוח חודשי מרכז</button><label for="dailyFormulationImportInput" class="tab-btn admin-only" style="background:rgba(96,165,250,0.12);color:#93C5FD;font-size:12px;padding:6px 14px;cursor:pointer;">📤 טעינת דוח יומי מעודכן</label><input id="dailyFormulationImportInput" type="file" accept=".xlsx,.xls" style="display:none"><label for="qualityFileInput" class="tab-btn admin-only" style="background:rgba(239,68,68,0.12);color:var(--red);font-size:12px;padding:6px 14px;cursor:pointer;">🧪 טעינת איכות (קובץ אחד או שניים)</label><button class="tab-btn" id="whatsappExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📲 WhatsApp טקסט</button><button class="tab-btn" id="whatsappImageExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📸 צילום דשבורד</button><label for="unifiedFileInput" class="tab-btn admin-only" id="unifiedFileBtn" style="background:rgba(45,212,191,0.14);color:var(--teal);font-size:12px;padding:6px 14px;cursor:pointer;">📥 טען נתונים</label><label for="targetsFileInput" class="tab-btn admin-only" id="targetsFileBtn" style="background:rgba(167,139,250,0.13);color:var(--purple);font-size:12px;padding:6px 14px;cursor:pointer;">🎯 טעינת קובץ יעדים</label><button class="tab-btn" id="targetsTemplateBtn" style="background:rgba(167,139,250,0.08);color:var(--purple);font-size:12px;padding:6px 14px;">⬇ תבנית יעדים</button><button class="tab-btn admin-only" id="targetsProdBtn" style="background:var(--amber-soft);color:var(--amber);font-size:12px;padding:6px 14px;">⚙ יעדי ייצור</button><button class="tab-btn admin-only" id="targetsBtn" style="background:var(--teal-soft);color:var(--teal);font-size:12px;padding:6px 14px;">⚙ יעדי אריזה</button><button class="tab-btn admin-only" id="resetBtn" style="background:rgba(255,255,255,0.05);color:var(--text-muted);font-size:12px;padding:6px 14px;">איפוס</button></div>'+
       '</div>'+
@@ -8119,15 +8171,15 @@ function renderAll(){
     '</div>'+
     '<div class="modal-overlay" id="eventOverlay">'+
       '<div class="modal" style="max-width:560px;">'+
-        '<h3>הוספת אירוע איכות / סביבה</h3>'+
+        '<h3>הוספת אירוע איכות / סביבה / בטיחות</h3>'+
         '<div class="modal-grid">'+
           '<div class="field"><label>תאריך *</label><input type="date" id="ev_date"></div>'+
-          '<div class="field"><label>סוג אירוע *</label><select id="ev_type"><option value="quality">אירוע איכות</option><option value="environment">אירוע סביבה</option><option value="safety">אירוע בטיחות</option></select></div>'+
+          '<div class="field full"><label>סוג אירוע *</label><div id="ev_type_checks" style="display:flex;gap:18px;flex-wrap:wrap;padding:8px 0;"><label style="display:flex;gap:7px;align-items:center;cursor:pointer;"><input type="checkbox" id="ev_type_quality" value="quality"> איכות</label><label style="display:flex;gap:7px;align-items:center;cursor:pointer;"><input type="checkbox" id="ev_type_environment" value="environment"> סביבה</label><label style="display:flex;gap:7px;align-items:center;cursor:pointer;"><input type="checkbox" id="ev_type_safety" value="safety"> בטיחות</label></div></div>'+
           '<div class="field"><label>מתקן</label><select id="ev_facility"><option value="">ללא / כללי</option>'+FACILITY_OPTIONS.map(f=>'<option value="'+f+'">'+f+'</option>').join('')+'</select></div>'+
           '<div class="field"><label>קו / אזור</label><input type="text" id="ev_area" placeholder="לדוגמה: קו 5 ליטר"></div>'+
           '<div class="field"><label>פקודת עבודה</label><input type="text" id="ev_workorder"></div>'+
           '<div class="field"><label>Batch</label><input type="text" id="ev_batch"></div>'+
-          '<div class="field"><label>חומרה</label><select id="ev_severity"><option>נמוך</option><option selected>בינוני</option><option>גבוה</option></select></div>'+
+          '<div class="field"><label>דרגת חומרה *</label><select id="ev_severity"><option>נמוכה</option><option selected>בינונית</option><option>גבוהה</option><option>קריטית</option></select></div>'+
           '<div class="field"></div>'+
           '<div class="field full"><label>תיאור האירוע *</label><textarea id="ev_desc" placeholder="מה קרה?"></textarea></div>'+
           '<div class="field full"><label>פעולה מתקנת / הערות</label><textarea id="ev_action" placeholder="מה בוצע או מה נדרש לבצע?"></textarea></div>'+
@@ -8764,7 +8816,7 @@ root.querySelector('#printBtn').onclick = ()=> window.print();
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   window.addEventListener('load', async () => {
     try {
-      const reg = await navigator.serviceWorker.register('./service-worker.js?v=4.8.29', { updateViaCache: 'none' });
+      const reg = await navigator.serviceWorker.register('./service-worker.js?v=4.8.30', { updateViaCache: 'none' });
       await reg.update();
       let reloading = false;
       navigator.serviceWorker.addEventListener('controllerchange', () => {
