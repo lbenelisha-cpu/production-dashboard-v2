@@ -66,7 +66,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   min-height: 100%;
   line-height: 1.5;
 }
-#prod-dash-root .wrap { padding: 20px 24px; max-width: 1200px; margin: 0 auto; }
+#prod-dash-root .wrap { width:100%; padding: clamp(12px, 1.5vw, 24px); max-width: 1920px; margin: 0 auto; }
 
 /* ── Topbar ─────────────────────────────────────── */
 #prod-dash-root .topbar {
@@ -752,6 +752,61 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   #prod-dash-root .shift-grid { grid-template-columns: repeat(2, 1fr); }
 }
 
+
+/* ═══════════════════════════════════════════════════
+   V4.8.33 — iPhone focused view
+   Special simplified layout is activated by JS only on iPhone/iPod.
+   Desktop/Windows uses normal responsive layout according to resolution.
+   ═══════════════════════════════════════════════════ */
+#prod-dash-root.iphone-mode .wrap { padding: 10px 10px 18px; max-width:100%; }
+#prod-dash-root.iphone-mode .topbar { gap:8px; margin-bottom:10px; padding-bottom:10px; }
+#prod-dash-root.iphone-mode .brand h1 { font-size:16px; }
+#prod-dash-root.iphone-mode .load-health { display:none !important; }
+#prod-dash-root.iphone-mode #fileSourcesPanel { display:block !important; width:100%; margin-top:8px; }
+#prod-dash-root.iphone-mode #fileSourcesPanel .ds-cards { grid-template-columns:1fr !important; gap:8px; }
+#prod-dash-root.iphone-mode #fileSourcesPanel .ds-card { padding:10px 12px; }
+#prod-dash-root.iphone-mode #fileSourcesPanel .file-source-groups { display:none !important; }
+#prod-dash-root.iphone-mode .topbar-actions > * { display:none !important; }
+#prod-dash-root.iphone-mode .topbar-actions #dailyFormulationExportBtn { display:inline-flex !important; width:100%; justify-content:center; min-height:44px; font-size:14px !important; }
+#prod-dash-root.iphone-mode .topbar-actions { display:flex !important; width:100%; overflow:visible; padding:0; }
+#prod-dash-root.iphone-mode .tabs { width:100%; overflow-x:auto; flex-wrap:nowrap; margin-bottom:10px; }
+#prod-dash-root.iphone-mode .tabs .tab-btn[data-tab="quality"] { display:none !important; }
+#prod-dash-root.iphone-mode .facility-bar { flex-wrap:nowrap; overflow-x:auto; margin-bottom:10px; }
+#prod-dash-root.iphone-mode .filter-bar { display:flex !important; margin-bottom:12px; }
+#prod-dash-root.iphone-mode #kpiGrid { display:grid !important; }
+#prod-dash-root.iphone-mode #outputSummaryPanel { display:block !important; }
+#prod-dash-root.iphone-mode #qualityPanel { display:block !important; }
+#prod-dash-root.iphone-mode #controlRoom,
+#prod-dash-root.iphone-mode #advancedDashboard,
+#prod-dash-root.iphone-mode #facilityTargetGauges,
+#prod-dash-root.iphone-mode #packagingTypeBreakdown,
+#prod-dash-root.iphone-mode #shiftComparisonPanel,
+#prod-dash-root.iphone-mode #operationalInsights,
+#prod-dash-root.iphone-mode #notesPanel,
+#prod-dash-root.iphone-mode #eventsPanel,
+#prod-dash-root.iphone-mode .panel:has(#chartWrap),
+#prod-dash-root.iphone-mode .panel:has(#tableWrap),
+#prod-dash-root.iphone-mode .actions-row,
+#prod-dash-root.iphone-mode .shared-note { display:none !important; }
+#prod-dash-root.iphone-mode .kpi-grid,
+#prod-dash-root.iphone-mode .kpi-grid.mode-2col,
+#prod-dash-root.iphone-mode .insight-stats,
+#prod-dash-root.iphone-mode .summary-grid,
+#prod-dash-root.iphone-mode .summary-grid.three { grid-template-columns:1fr !important; max-width:100%; }
+#prod-dash-root.iphone-mode .target-compare-card { min-height:0; padding:14px; }
+#prod-dash-root.iphone-mode .panel { padding:12px; margin-bottom:12px; }
+#prod-dash-root.iphone-mode .panel-head { gap:6px; }
+#prod-dash-root.iphone-mode .table-scroll { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+#prod-dash-root.iphone-mode .quality-detail-table { min-width:980px; }
+
+/* Desktop resolution adaptation */
+@media (min-width: 769px) {
+  #prod-dash-root:not(.iphone-mode) .topbar-actions { justify-content:flex-start; }
+  #prod-dash-root:not(.iphone-mode) .kpi-grid { grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); }
+  #prod-dash-root:not(.iphone-mode) .insight-stats { grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); }
+  #prod-dash-root:not(.iphone-mode) .summary-grid { grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); }
+}
+
 @media print {
   html, body { background: #fff !important; }
   #prod-dash-root { --bg: #fff; --panel: #fff; --panel-2: #f3f3f3; --border: #ccc; --text: #111; --text-muted: #555; }
@@ -974,6 +1029,9 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 <script>
 (function(){
   const root = document.getElementById('prod-dash-root');
+  const IS_IPHONE = /iPhone|iPod/i.test(navigator.userAgent || '');
+  if(IS_IPHONE) root.classList.add('iphone-mode');
+  else root.classList.add('desktop-mode');
   let adminToken = sessionStorage.getItem('dashboard_admin_token') || (location.protocol === 'file:' ? 'local-preview' : '');
   let isAdmin = !!adminToken;
   function requireAdmin(){
@@ -1211,6 +1269,12 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   const toISO = d => d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate());
   const parseISO = s => { const [y,m,d] = s.split('-').map(Number); return new Date(y, m-1, d); };
   const todayISO = () => toISO(new Date());
+  const deviceYesterdayISO = () => {
+    const d = new Date();
+    d.setHours(12,0,0,0);
+    d.setDate(d.getDate()-1);
+    return toISO(d);
+  };
   const fmt = n => Math.round(n).toLocaleString('en-US');
   const genId = () => 'e_' + Date.now() + '_' + Math.random().toString(36).slice(2,8);
   const monthsShort = ['ינו','פבר','מרץ','אפר','מאי','יונ','יול','אוג','ספט','אוק','נוב','דצמ'];
@@ -2986,7 +3050,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   let loaded = false;
   let tab = 'day';
   const filters = {
-    day: null,            // null = auto (latest date with data)
+    day: deviceYesterdayISO(), // V4.8.33: every new app entry opens on yesterday according to the displaying device
     periodStart: null, periodEnd: null,
     month: null,          // 'YYYY-MM'
     qYear: null, qQuarter: null,
@@ -3931,7 +3995,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       } catch(e){ prevMonths = []; }
       const monthsToDelete = prevMonths.filter(m => !monthsNow.includes(m));
 
-      // V4.8.32: production used to fire every month blob + index + deletes at once.
+      // V4.8.33: production used to fire every month blob + index + deletes at once.
       // Large quantity files could overload the Netlify function and intermittently fail.
       // Save only two month blobs at a time; _callStorageApi already retries transient
       // 429/5xx/network errors with exponential backoff.
@@ -4250,7 +4314,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     if(tab==='day'){
       fb.innerHTML =
         '<div class="field"><label>תאריך</label><input type="date" id="f_day" value="'+effectiveDay()+'"></div>'+
-        '<button class="small-link-btn" id="f_latest">⏮ היום האחרון עם נתונים</button>';
+        '<button class="small-link-btn" id="f_latest">⏮ תאריך אחרון עם נתונים</button>';
       fb.querySelector('#f_day').onchange = e=>{ filters.day = e.target.value; renderAll(); };
       fb.querySelector('#f_latest').onclick = ()=>{ filters.day = null; renderAll(); };
     } else if(tab==='period'){
@@ -7419,6 +7483,7 @@ function exportToWhatsApp(){
   }
 
 function renderAll(){
+    if(IS_IPHONE && tab === 'quality') tab = 'day';
     updateLoadHealth();
     if(!loaded) return;
     applyRoleUI();
@@ -8130,7 +8195,7 @@ function renderAll(){
       '<div class="topbar">'+
         '<div class="brand">'+
           '<div class="brand-mark">IML</div>'+
-          '<div><h1>IML Production Dashboard <span class="app-version-badge">V4.8.32</span></h1><p><span id="entryCount">טוען נתונים…</span> <span id="storageStatusBadge" class="storage-status"></span></p><p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;"><span id="dataStatusLine">בודק נתונים…</span></p><div class="load-health" id="loadHealth"><span class="load-health-chip missing">כמויות —</span><span class="load-health-chip missing">איכות —</span><span class="load-health-chip missing">החלטת שימוש —</span><span class="load-health-chip missing">יעדים —</span></div><div id="fileSourcesPanel" style="display:none"></div></div>'+
+          '<div><h1>IML Production Dashboard <span class="app-version-badge">V4.8.33</span></h1><p><span id="entryCount">טוען נתונים…</span> <span id="storageStatusBadge" class="storage-status"></span></p><p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;"><span id="dataStatusLine">בודק נתונים…</span></p><div class="load-health" id="loadHealth"><span class="load-health-chip missing">כמויות —</span><span class="load-health-chip missing">איכות —</span><span class="load-health-chip missing">החלטת שימוש —</span><span class="load-health-chip missing">יעדים —</span></div><div id="fileSourcesPanel" style="display:none"></div></div>'+
         '</div>'+
         '<div class="topbar-actions"><span id="roleBadge" class="role-badge viewer">👁 צפייה בלבד</span><button class="tab-btn" id="adminLoginBtn" style="background:rgba(255,255,255,0.06);color:var(--text);font-size:12px;padding:6px 14px;">🔐 כניסת מנהל</button><button class="tab-btn" id="refreshSharedBtn" style="background:rgba(20,184,166,0.12);color:var(--teal);font-size:12px;padding:6px 14px;">🔄 רענן נתונים</button><button class="tab-btn" id="addEventTopBtn" style="background:rgba(139,183,255,0.12);color:#8BB7FF;font-size:12px;padding:6px 14px;">+ הוסף אירוע</button><button class="tab-btn" id="advancedDashboardBtn" style="background:var(--teal-soft);color:var(--green);font-size:12px;padding:6px 14px;">📊 דשבורד חדש</button><button class="tab-btn" id="excelAnalyzedExportBtn" style="background:rgba(124,217,146,0.12);color:#7CD992;font-size:12px;padding:6px 14px;">📥 ייצוא ניתוח לאקסל</button><button class="tab-btn" id="dailyFormulationExportBtn" style="background:rgba(255,183,77,0.14);color:#FFB74D;font-size:12px;padding:6px 14px;">📋 ייצוא דיווח יומי</button><button class="tab-btn" id="dailyFormulationLoadBtn" style="background:rgba(255,183,77,0.08);color:#FFD08A;font-size:12px;padding:6px 14px;">📂 דוח יומי שמור</button><button class="tab-btn" id="monthlyFormulationReportBtn" style="background:rgba(52,211,153,0.10);color:#6EE7B7;font-size:12px;padding:6px 14px;">📊 דוח חודשי מרכז</button><label for="dailyFormulationImportInput" class="tab-btn admin-only" style="background:rgba(96,165,250,0.12);color:#93C5FD;font-size:12px;padding:6px 14px;cursor:pointer;">📤 טעינת דוח יומי מעודכן</label><input id="dailyFormulationImportInput" type="file" accept=".xlsx,.xls" style="display:none"><label for="qualityFileInput" class="tab-btn admin-only" id="qualityFileBtn" style="background:rgba(239,68,68,0.12);color:var(--red);font-size:12px;padding:6px 14px;cursor:pointer;">🧪 טעינת איכות</label><label for="usageDecisionFileInput" class="tab-btn admin-only" id="usageDecisionFileBtn" style="background:rgba(251,191,36,0.12);color:var(--yellow);font-size:12px;padding:6px 14px;cursor:pointer;">✅ טעינת החלטת שימוש</label><button class="tab-btn" id="whatsappExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📲 WhatsApp טקסט</button><button class="tab-btn" id="whatsappImageExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📸 צילום דשבורד</button><label for="quantityFileInput" class="tab-btn admin-only" id="quantityFileBtn" style="background:rgba(45,212,191,0.14);color:var(--teal);font-size:12px;padding:6px 14px;cursor:pointer;">📦 טעינת כמות</label><label for="targetsFileInput" class="tab-btn admin-only" id="targetsFileBtn" style="background:rgba(167,139,250,0.13);color:var(--purple);font-size:12px;padding:6px 14px;cursor:pointer;">🎯 טעינת קובץ יעדים</label><button class="tab-btn" id="targetsTemplateBtn" style="background:rgba(167,139,250,0.08);color:var(--purple);font-size:12px;padding:6px 14px;">⬇ תבנית יעדים</button><button class="tab-btn admin-only" id="targetsProdBtn" style="background:var(--amber-soft);color:var(--amber);font-size:12px;padding:6px 14px;">⚙ יעדי ייצור</button><button class="tab-btn admin-only" id="targetsBtn" style="background:var(--teal-soft);color:var(--teal);font-size:12px;padding:6px 14px;">⚙ יעדי אריזה</button><button class="tab-btn admin-only" id="resetBtn" style="background:rgba(255,255,255,0.05);color:var(--text-muted);font-size:12px;padding:6px 14px;">איפוס</button></div>'+
       '</div>'+
@@ -8165,9 +8230,6 @@ function renderAll(){
       '</div>'+
       '<div class="actions-row">'+
         '<button class="btn primary admin-only" id="addBtn">+ הזנת נתון</button>'+
-        '<label class="btn secondary admin-only" for="csvInput" style="cursor:pointer;">ייבוא קובץ CSV / Excel</label>'+
-        '<input type="file" id="csvInput" accept=".csv,.xlsx,.xls,.txt" style="position:absolute; width:1px; height:1px; opacity:0; overflow:hidden;">'+
-        '<span class="file-hint">תומך בקבצי CSV ואקסל (xlsx/xls). לא בטוחים מה הפורמט? <button id="templateBtn">הורידו תבנית לדוגמה</button></span>'+
         '<button class="btn secondary" id="printBtn">🖨 הדפסת דוח</button>'+
       '</div>'+
       '<div class="shared-note">⚠ הנתונים בלוח זה משותפים לכל המשתמשים שפותחים את הלוח הזה.</div>'+
@@ -8711,8 +8773,10 @@ function renderAll(){
   const targetInput=document.getElementById('targetsFileInput');
   if(targetInput) targetInput.onchange=(e)=>{ if(!requireAdmin()){e.target.value='';return;} if(e.target.files[0])handleTargetFile(e.target.files[0]); e.target.value=''; };
   const targetTplBtn=root.querySelector('#targetsTemplateBtn'); if(targetTplBtn) targetTplBtn.onclick=downloadTargetsTemplate;
-  root.querySelector('#csvInput').onchange = (e)=>{ if(!requireAdmin()){e.target.value='';return;} if(e.target.files[0]) handleDataFile(e.target.files[0]); e.target.value=''; };
-  root.querySelector('#templateBtn').onclick = downloadTemplate;
+  const legacyCsvInput = root.querySelector('#csvInput');
+  if(legacyCsvInput) legacyCsvInput.onchange = (e)=>{ if(!requireAdmin()){e.target.value='';return;} if(e.target.files[0]) handleDataFile(e.target.files[0]); e.target.value=''; };
+  const legacyTemplateBtn = root.querySelector('#templateBtn');
+  if(legacyTemplateBtn) legacyTemplateBtn.onclick = downloadTemplate;
 root.querySelector('#printBtn').onclick = ()=> window.print();
   root.querySelector('#resetBtn').onclick = async ()=>{
     if(!requireAdmin()) return;
