@@ -3912,6 +3912,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   }
 
   async function persist(){
+    let saveStage='הכנת נתוני הכמויות';
     try {
       const byMonth = {};
       entries.forEach(e=>{
@@ -3919,52 +3920,73 @@ html, body { margin:0; padding:0; background:#0A0D12; }
         if(!byMonth[mk]) byMonth[mk] = [];
         byMonth[mk].push(e);
       });
-      const monthsNow = Object.keys(byMonth).map(k => k.slice(ENTRIES_KEY_PREFIX.length));
+      const monthKeys = Object.keys(byMonth).sort();
+      const monthsNow = monthKeys.map(k => k.slice(ENTRIES_KEY_PREFIX.length));
 
       let prevMonths = [];
       try {
-        const idxRes = await _dashStorage.get(ENTRIES_INDEX_KEY);
+        const idxRes = await _dashStorage.get(ENTRIES_INDEX_KEY,{fresh:true});
         prevMonths = (idxRes && idxRes.value) ? JSON.parse(idxRes.value) : [];
+        if(!Array.isArray(prevMonths)) prevMonths=[];
       } catch(e){ prevMonths = []; }
       const monthsToDelete = prevMonths.filter(m => !monthsNow.includes(m));
 
-      const writes = Object.keys(byMonth).map(mk =>
-        _dashStorage.set(mk, JSON.stringify(byMonth[mk]))
-      );
-      const deletes = monthsToDelete.map(m =>
-        _dashStorage.delete(ENTRIES_KEY_PREFIX + m).catch(()=>null)
-      );
-      const indexWrite = _dashStorage.set(ENTRIES_INDEX_KEY, JSON.stringify(monthsNow));
-      const legacyClear = _dashStorage.delete(STORAGE_KEY).catch(()=>null);
+      // V4.8.32: production used to fire every month blob + index + deletes at once.
+      // Large quantity files could overload the Netlify function and intermittently fail.
+      // Save only two month blobs at a time; _callStorageApi already retries transient
+      // 429/5xx/network errors with exponential backoff.
+      saveStage='שמירת חודשי הכמות בענן';
+      let savedMonths=0;
+      await mapWithConcurrency(monthKeys, 2, async mk=>{
+        await _dashStorage.set(mk, JSON.stringify(byMonth[mk]));
+        savedMonths++;
+        if(monthKeys.length>1) setQualityLoadProgress('שומר כמויות בענן · '+savedMonths+' / '+monthKeys.length+' חודשים');
+      });
 
-      await Promise.all([...writes, indexWrite, legacyClear, ...deletes]);
+      // Remove obsolete month blobs only after every current month was saved.
+      saveStage='ניקוי חודשי כמות ישנים';
+      await mapWithConcurrency(monthsToDelete, 2, async m=>{
+        try{ await _dashStorage.delete(ENTRIES_KEY_PREFIX + m); }catch(err){ console.warn('old production month delete failed',m,err); }
+      });
 
-      // V4.8.24: publish a dedicated production version only after all month chunks
-      // and the month index were written successfully.
-      const productionVersion=JSON.stringify({at:Date.now(),rows:entries.length,months:monthsNow});
-      await _dashStorage.set(PRODUCTION_SYNC_VERSION_KEY,productionVersion);
+      // Publish the index only after all blobs are present. A reader can therefore
+      // never receive an index that points at a month which has not finished saving.
+      saveStage='שמירת אינדקס הכמויות';
+      await _dashStorage.set(ENTRIES_INDEX_KEY, JSON.stringify(monthsNow));
+      try{ await _dashStorage.delete(STORAGE_KEY); }catch(e){}
 
-      // Verify cloud row count immediately from the just-written month blobs.
+      // Verify cloud row count before publishing the sync version.
+      saveStage='אימות הכמויות בענן';
+      setQualityLoadProgress('מאמת שמירת כמויות בענן');
       const verifyPairs=await _dashStorage.getMany(monthsNow.map(m=>ENTRIES_KEY_PREFIX+m),{fresh:true});
-      let cloudRows=0;
+      let cloudRows=0, missingMonths=[];
       verifyPairs.forEach(pair=>{
         try{
           const part=JSON.parse(pair&&pair.result&&pair.result.value||'[]');
-          if(Array.isArray(part))cloudRows+=part.length;
-        }catch(e){}
+          if(Array.isArray(part)) cloudRows+=part.length;
+          else missingMonths.push(String(pair&&pair.key||''));
+        }catch(e){ missingMonths.push(String(pair&&pair.key||'')); }
       });
       if(cloudRows!==entries.length){
-        throw new Error('אימות כמויות בענן נכשל: מקומי '+entries.length+' מול ענן '+cloudRows);
+        throw new Error('אימות כמויות בענן נכשל: מקומי '+entries.length+' מול ענן '+cloudRows+(missingMonths.length?' · חסר: '+missingMonths.join(', '):''));
       }
-      await idbSet('production_entries',{sig:'months:'+monthsNow.join(',')+'|production:'+productionVersion,rows:entries,at:new Date().toISOString()});
+
+      saveStage='פרסום גרסת הכמויות';
+      const productionVersion=JSON.stringify({at:Date.now(),rows:entries.length,months:monthsNow});
+      await _dashStorage.set(PRODUCTION_SYNC_VERSION_KEY,productionVersion);
+
+      try{ await idbSet('production_entries',{sig:'months:'+monthsNow.join(',')+'|production:'+productionVersion,rows:entries,at:new Date().toISOString()}); }catch(e){ console.warn('production idb cache save failed',e); }
+      setQualityLoadProgress('');
       return true;
     } catch(e){
+      setQualityLoadProgress('');
+      console.error('production persist failed at stage:',saveStage,e);
       // Check if it's a quota error
       if(e && (e.name === 'QuotaExceededError' || (e.message && e.message.toLowerCase().includes('quota')))){
         showToast('אחסון הדפדפן מלא. הנתונים נשמרו בזיכרון הזמני — בדף הבא הם יאבדו. מומלץ לייצא גיבוי עכשיו.', true);
-        return true; // data is in memory even if not saved
+        return true;
       }
-      showToast('שגיאה בשמירת הנתונים.', true);
+      showToast('שגיאה בשמירת הכמויות · '+saveStage+': '+((e&&e.message)||'שגיאה לא ידועה'), true);
       return false;
     }
   }
@@ -8108,7 +8130,7 @@ function renderAll(){
       '<div class="topbar">'+
         '<div class="brand">'+
           '<div class="brand-mark">IML</div>'+
-          '<div><h1>IML Production Dashboard <span class="app-version-badge">V4.8.31</span></h1><p><span id="entryCount">טוען נתונים…</span> <span id="storageStatusBadge" class="storage-status"></span></p><p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;"><span id="dataStatusLine">בודק נתונים…</span></p><div class="load-health" id="loadHealth"><span class="load-health-chip missing">כמויות —</span><span class="load-health-chip missing">איכות —</span><span class="load-health-chip missing">החלטת שימוש —</span><span class="load-health-chip missing">יעדים —</span></div><div id="fileSourcesPanel" style="display:none"></div></div>'+
+          '<div><h1>IML Production Dashboard <span class="app-version-badge">V4.8.32</span></h1><p><span id="entryCount">טוען נתונים…</span> <span id="storageStatusBadge" class="storage-status"></span></p><p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;"><span id="dataStatusLine">בודק נתונים…</span></p><div class="load-health" id="loadHealth"><span class="load-health-chip missing">כמויות —</span><span class="load-health-chip missing">איכות —</span><span class="load-health-chip missing">החלטת שימוש —</span><span class="load-health-chip missing">יעדים —</span></div><div id="fileSourcesPanel" style="display:none"></div></div>'+
         '</div>'+
         '<div class="topbar-actions"><span id="roleBadge" class="role-badge viewer">👁 צפייה בלבד</span><button class="tab-btn" id="adminLoginBtn" style="background:rgba(255,255,255,0.06);color:var(--text);font-size:12px;padding:6px 14px;">🔐 כניסת מנהל</button><button class="tab-btn" id="refreshSharedBtn" style="background:rgba(20,184,166,0.12);color:var(--teal);font-size:12px;padding:6px 14px;">🔄 רענן נתונים</button><button class="tab-btn" id="addEventTopBtn" style="background:rgba(139,183,255,0.12);color:#8BB7FF;font-size:12px;padding:6px 14px;">+ הוסף אירוע</button><button class="tab-btn" id="advancedDashboardBtn" style="background:var(--teal-soft);color:var(--green);font-size:12px;padding:6px 14px;">📊 דשבורד חדש</button><button class="tab-btn" id="excelAnalyzedExportBtn" style="background:rgba(124,217,146,0.12);color:#7CD992;font-size:12px;padding:6px 14px;">📥 ייצוא ניתוח לאקסל</button><button class="tab-btn" id="dailyFormulationExportBtn" style="background:rgba(255,183,77,0.14);color:#FFB74D;font-size:12px;padding:6px 14px;">📋 ייצוא דיווח יומי</button><button class="tab-btn" id="dailyFormulationLoadBtn" style="background:rgba(255,183,77,0.08);color:#FFD08A;font-size:12px;padding:6px 14px;">📂 דוח יומי שמור</button><button class="tab-btn" id="monthlyFormulationReportBtn" style="background:rgba(52,211,153,0.10);color:#6EE7B7;font-size:12px;padding:6px 14px;">📊 דוח חודשי מרכז</button><label for="dailyFormulationImportInput" class="tab-btn admin-only" style="background:rgba(96,165,250,0.12);color:#93C5FD;font-size:12px;padding:6px 14px;cursor:pointer;">📤 טעינת דוח יומי מעודכן</label><input id="dailyFormulationImportInput" type="file" accept=".xlsx,.xls" style="display:none"><label for="qualityFileInput" class="tab-btn admin-only" id="qualityFileBtn" style="background:rgba(239,68,68,0.12);color:var(--red);font-size:12px;padding:6px 14px;cursor:pointer;">🧪 טעינת איכות</label><label for="usageDecisionFileInput" class="tab-btn admin-only" id="usageDecisionFileBtn" style="background:rgba(251,191,36,0.12);color:var(--yellow);font-size:12px;padding:6px 14px;cursor:pointer;">✅ טעינת החלטת שימוש</label><button class="tab-btn" id="whatsappExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📲 WhatsApp טקסט</button><button class="tab-btn" id="whatsappImageExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📸 צילום דשבורד</button><label for="quantityFileInput" class="tab-btn admin-only" id="quantityFileBtn" style="background:rgba(45,212,191,0.14);color:var(--teal);font-size:12px;padding:6px 14px;cursor:pointer;">📦 טעינת כמות</label><label for="targetsFileInput" class="tab-btn admin-only" id="targetsFileBtn" style="background:rgba(167,139,250,0.13);color:var(--purple);font-size:12px;padding:6px 14px;cursor:pointer;">🎯 טעינת קובץ יעדים</label><button class="tab-btn" id="targetsTemplateBtn" style="background:rgba(167,139,250,0.08);color:var(--purple);font-size:12px;padding:6px 14px;">⬇ תבנית יעדים</button><button class="tab-btn admin-only" id="targetsProdBtn" style="background:var(--amber-soft);color:var(--amber);font-size:12px;padding:6px 14px;">⚙ יעדי ייצור</button><button class="tab-btn admin-only" id="targetsBtn" style="background:var(--teal-soft);color:var(--teal);font-size:12px;padding:6px 14px;">⚙ יעדי אריזה</button><button class="tab-btn admin-only" id="resetBtn" style="background:rgba(255,255,255,0.05);color:var(--text-muted);font-size:12px;padding:6px 14px;">איפוס</button></div>'+
       '</div>'+
