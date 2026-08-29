@@ -967,7 +967,9 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 <body>
 <div id="prod-dash-root" dir="rtl" lang="he"></div>
 <input type="file" id="targetsFileInput" accept=".xlsx,.xls,.csv" style="position:fixed;top:-100px;left:-100px;width:1px;height:1px;opacity:0;">
+<input type="file" id="quantityFileInput" accept=".xlsx,.xls,.csv,.txt" style="position:fixed;top:-100px;left:-100px;width:1px;height:1px;opacity:0;">
 <input type="file" id="qualityFileInput" accept=".xlsx,.xls,.csv" multiple style="position:fixed;top:-100px;left:-100px;width:1px;height:1px;opacity:0;">
+<input type="file" id="usageDecisionFileInput" accept=".xlsx,.xls,.csv" multiple style="position:fixed;top:-100px;left:-100px;width:1px;height:1px;opacity:0;">
 <input type="file" id="unifiedFileInput" accept=".xlsx,.xls,.csv,.txt" multiple style="position:fixed;top:-100px;left:-100px;width:1px;height:1px;opacity:0;">
 <script>
 (function(){
@@ -1002,7 +1004,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     const loginBtn = root.querySelector('#adminLoginBtn');
     if(loginBtn) loginBtn.textContent = isAdmin ? 'יציאה ממנהל' : '🔐 כניסת מנהל';
     ['#targetsProdBtn','#targetsBtn','#resetBtn','#addBtn'].forEach(sel=>{ const el=root.querySelector(sel); if(el) el.classList.add('admin-only'); });
-    root.querySelectorAll('label[for="qualityFileInput"], label[for="targetsFileInput"], label[for="unifiedFileInput"], label[for="csvInput"], .row-del, #f_period_pack_target, #f_save_period_target, #f_clear_period_target').forEach(el=>el.classList.add('admin-only'));
+    root.querySelectorAll('label[for="quantityFileInput"], label[for="qualityFileInput"], label[for="usageDecisionFileInput"], label[for="targetsFileInput"], label[for="unifiedFileInput"], label[for="csvInput"], .row-del, #f_period_pack_target, #f_save_period_target, #f_clear_period_target').forEach(el=>el.classList.add('admin-only'));
   }
 
   // אחסון משותף אמיתי: באתר החי כל קריאה ושמירה מתבצעת דרך Netlify Blobs.
@@ -1242,7 +1244,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   // ---- יומן טעינות: שם קובץ, כמות שורות ומתי נטען, לכל קובץ בנפרד ----
   const DATASET_SOURCES_KEY = 'dataset_sources_v1';
   const DATASET_LAST_LOADS_KEY = 'dataset_last_loads_v1';
-  let datasetLastLoads = { production:null, quality:null, targets:null };
+  let datasetLastLoads = { production:null, quality:null, usageDecision:null, targets:null };
 
   async function persistDatasetLastLoads(){
     try{
@@ -1262,6 +1264,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
         datasetLastLoads={
           production:parsed.production||null,
           quality:parsed.quality||null,
+          usageDecision:parsed.usageDecision||null,
           targets:parsed.targets||null
         };
       }
@@ -2168,14 +2171,15 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   const QUALITY_WORKER_MAIN = [
     "self.onmessage = function(e){",
     "  var buf = e.data.buf;",
+    "  var forcedMode = e.data.mode || \"auto\";",
     "  try {",
     "    self.postMessage({type:'progress', pct:0, message:'קורא את הקובץ'});",
     "    // dense:true חובה כאן. בלעדיו SheetJS בונה אובייקט עם ~9.5 מיליון מפתחות",
     "    // מחרוזת (אחד לכל תא) והקריאה נמשכת דקות ארוכות במקום שניות.",
     "    var wb = XLSX.read(new Uint8Array(buf), {type:'array', cellDates:false, dense:true});",
     "    var cls = classifyQualityWorkbook(wb);",
-    "    var runSummary = cls.hasSummary || (!cls.hasSummary && !cls.hasResults);",
-    "    var runResults = cls.hasResults || (!cls.hasSummary && !cls.hasResults);",
+    "    var runSummary = forcedMode === 'summary' || (forcedMode === 'auto' && (cls.hasSummary || (!cls.hasSummary && !cls.hasResults)));",
+    "    var runResults = forcedMode === 'results' || (forcedMode === 'auto' && (cls.hasResults || (!cls.hasSummary && !cls.hasResults)));",
     "    if(runSummary){",
     "      var summary = processQualitySummaryWorkbook(wb) || [];",
     "      if(summary.length) self.postMessage({type:'summary', rows:summary});",
@@ -2218,7 +2222,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     "};"
   ].join("\n");
 
-  function parseQualityFileInWorker(file, onProgress){
+  function parseQualityFileInWorker(file, onProgress, forcedMode){
     return new Promise(function(resolve, reject){
       var worker;
       try { worker = new Worker(buildQualityWorkerUrl()); }
@@ -2242,7 +2246,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
         finish(reject, Object.assign(new Error(ev && ev.message || 'WORKER_CRASHED'), {code:'WORKER_CRASHED'}));
       };
       file.arrayBuffer().then(function(buf){
-        worker.postMessage({buf: buf}, [buf]);
+        worker.postMessage({buf: buf, mode: forcedMode||'auto'}, [buf]);
       }, function(err){ finish(reject, err); });
     });
   }
@@ -2254,7 +2258,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     else if(el.dataset.busy){ delete el.dataset.busy; renderAll(); }
   }
 
-  async function handleQualityFiles(fileList){
+  async function handleQualityFiles(fileList, forcedMode){
     try{
       const files=Array.from(fileList||[]);
       // הוסרה מגבלת שני קבצים: ייצוא איכות גדול מ-SAP חייב להיות מפוצל
@@ -2281,7 +2285,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
             const out = await parseQualityFileInWorker(file, p=>{
               const pct = (p && typeof p.pct==='number') ? ' '+p.pct+'%' : '';
               setQualityLoadProgress(file.name+pct+(p&&p.message?' · '+p.message:''));
-            });
+            }, forcedMode||'auto');
             foundSummary = out.summaryRows || [];
             foundResults = out.resultRows || [];
             parsedInWorker = true;
@@ -2300,8 +2304,9 @@ html, body { margin:0; padding:0; background:#0A0D12; }
           const wb=XLSX.read(await file.arrayBuffer(),{type:'array',cellDates:false,dense:true});
           // Classify the file first (cheap header probe) and run ONLY the relevant parser.
           const cls=classifyQualityWorkbook(wb);
-          const runSummary = cls.hasSummary || (!cls.hasSummary && !cls.hasResults);
-          const runResults = cls.hasResults || (!cls.hasSummary && !cls.hasResults);
+          const mode=forcedMode||'auto';
+          const runSummary = mode==='summary' || (mode==='auto' && (cls.hasSummary || (!cls.hasSummary && !cls.hasResults)));
+          const runResults = mode==='results' || (mode==='auto' && (cls.hasResults || (!cls.hasSummary && !cls.hasResults)));
           foundSummary=runSummary ? processQualitySummaryWorkbook(wb) : [];
           foundResults=runResults ? processQualityResultsWorkbook(wb) : [];
         }
@@ -2332,7 +2337,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
             Math.round(files.reduce((n,f)=>n+(f.size||0),0)/1048576) + 'MB). ' +
             'פצלו את הייצוא מ-SAP לפי חודש וטענו את החלקים יחד — ניתן לבחור כמה קבצים בבת אחת.');
         }
-        throw new Error('הקובץ לא זוהה כקובץ סיכום איכות או כקובץ תוצאות בדיקה');
+        throw new Error(forcedMode==='summary' ? 'לא נמצאו נתוני החלטת שימוש בקובץ שנבחר' : forcedMode==='results' ? 'לא נמצאו תוצאות בדיקות איכות בקובץ שנבחר' : 'הקובץ לא זוהה כקובץ סיכום איכות או כקובץ תוצאות בדיקה');
       }
 
       // Remove accidental duplicates when the same sheet/data was included twice.
@@ -2382,7 +2387,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       if(!(okSummary&&okResults)) return false;
 
       await persistDatasetSources();
-      await recordSharedLastLoad('quality',sourceNames,summaryRows.length+resultRows.length);
+      await recordSharedLastLoad(forcedMode==='summary'?'usageDecision':'quality',sourceNames,summaryRows.length+resultRows.length);
       renderAll();
 
       // אזהרה על קבצים שלא תרמו כלום, גם כשקבצים אחרים באותה בחירה הצליחו.
@@ -8103,9 +8108,9 @@ function renderAll(){
       '<div class="topbar">'+
         '<div class="brand">'+
           '<div class="brand-mark">IML</div>'+
-          '<div><h1>IML Production Dashboard <span class="app-version-badge">V4.8.30</span></h1><p><span id="entryCount">טוען נתונים…</span> <span id="storageStatusBadge" class="storage-status"></span></p><p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;"><span id="dataStatusLine">בודק נתונים…</span></p><div class="load-health" id="loadHealth"><span class="load-health-chip missing">כמויות —</span><span class="load-health-chip missing">איכות —</span><span class="load-health-chip missing">יעדים —</span></div><div id="fileSourcesPanel" style="display:none"></div></div>'+
+          '<div><h1>IML Production Dashboard <span class="app-version-badge">V4.8.31</span></h1><p><span id="entryCount">טוען נתונים…</span> <span id="storageStatusBadge" class="storage-status"></span></p><p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;"><span id="dataStatusLine">בודק נתונים…</span></p><div class="load-health" id="loadHealth"><span class="load-health-chip missing">כמויות —</span><span class="load-health-chip missing">איכות —</span><span class="load-health-chip missing">החלטת שימוש —</span><span class="load-health-chip missing">יעדים —</span></div><div id="fileSourcesPanel" style="display:none"></div></div>'+
         '</div>'+
-        '<div class="topbar-actions"><span id="roleBadge" class="role-badge viewer">👁 צפייה בלבד</span><button class="tab-btn" id="adminLoginBtn" style="background:rgba(255,255,255,0.06);color:var(--text);font-size:12px;padding:6px 14px;">🔐 כניסת מנהל</button><button class="tab-btn" id="refreshSharedBtn" style="background:rgba(20,184,166,0.12);color:var(--teal);font-size:12px;padding:6px 14px;">🔄 רענן נתונים</button><button class="tab-btn" id="addEventTopBtn" style="background:rgba(139,183,255,0.12);color:#8BB7FF;font-size:12px;padding:6px 14px;">+ הוסף אירוע</button><button class="tab-btn" id="advancedDashboardBtn" style="background:var(--teal-soft);color:var(--green);font-size:12px;padding:6px 14px;">📊 דשבורד חדש</button><button class="tab-btn" id="excelAnalyzedExportBtn" style="background:rgba(124,217,146,0.12);color:#7CD992;font-size:12px;padding:6px 14px;">📥 ייצוא ניתוח לאקסל</button><button class="tab-btn" id="dailyFormulationExportBtn" style="background:rgba(255,183,77,0.14);color:#FFB74D;font-size:12px;padding:6px 14px;">📋 ייצוא דיווח יומי</button><button class="tab-btn" id="dailyFormulationLoadBtn" style="background:rgba(255,183,77,0.08);color:#FFD08A;font-size:12px;padding:6px 14px;">📂 דוח יומי שמור</button><button class="tab-btn" id="monthlyFormulationReportBtn" style="background:rgba(52,211,153,0.10);color:#6EE7B7;font-size:12px;padding:6px 14px;">📊 דוח חודשי מרכז</button><label for="dailyFormulationImportInput" class="tab-btn admin-only" style="background:rgba(96,165,250,0.12);color:#93C5FD;font-size:12px;padding:6px 14px;cursor:pointer;">📤 טעינת דוח יומי מעודכן</label><input id="dailyFormulationImportInput" type="file" accept=".xlsx,.xls" style="display:none"><label for="qualityFileInput" class="tab-btn admin-only" style="background:rgba(239,68,68,0.12);color:var(--red);font-size:12px;padding:6px 14px;cursor:pointer;">🧪 טעינת איכות (קובץ אחד או שניים)</label><button class="tab-btn" id="whatsappExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📲 WhatsApp טקסט</button><button class="tab-btn" id="whatsappImageExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📸 צילום דשבורד</button><label for="unifiedFileInput" class="tab-btn admin-only" id="unifiedFileBtn" style="background:rgba(45,212,191,0.14);color:var(--teal);font-size:12px;padding:6px 14px;cursor:pointer;">📥 טען נתונים</label><label for="targetsFileInput" class="tab-btn admin-only" id="targetsFileBtn" style="background:rgba(167,139,250,0.13);color:var(--purple);font-size:12px;padding:6px 14px;cursor:pointer;">🎯 טעינת קובץ יעדים</label><button class="tab-btn" id="targetsTemplateBtn" style="background:rgba(167,139,250,0.08);color:var(--purple);font-size:12px;padding:6px 14px;">⬇ תבנית יעדים</button><button class="tab-btn admin-only" id="targetsProdBtn" style="background:var(--amber-soft);color:var(--amber);font-size:12px;padding:6px 14px;">⚙ יעדי ייצור</button><button class="tab-btn admin-only" id="targetsBtn" style="background:var(--teal-soft);color:var(--teal);font-size:12px;padding:6px 14px;">⚙ יעדי אריזה</button><button class="tab-btn admin-only" id="resetBtn" style="background:rgba(255,255,255,0.05);color:var(--text-muted);font-size:12px;padding:6px 14px;">איפוס</button></div>'+
+        '<div class="topbar-actions"><span id="roleBadge" class="role-badge viewer">👁 צפייה בלבד</span><button class="tab-btn" id="adminLoginBtn" style="background:rgba(255,255,255,0.06);color:var(--text);font-size:12px;padding:6px 14px;">🔐 כניסת מנהל</button><button class="tab-btn" id="refreshSharedBtn" style="background:rgba(20,184,166,0.12);color:var(--teal);font-size:12px;padding:6px 14px;">🔄 רענן נתונים</button><button class="tab-btn" id="addEventTopBtn" style="background:rgba(139,183,255,0.12);color:#8BB7FF;font-size:12px;padding:6px 14px;">+ הוסף אירוע</button><button class="tab-btn" id="advancedDashboardBtn" style="background:var(--teal-soft);color:var(--green);font-size:12px;padding:6px 14px;">📊 דשבורד חדש</button><button class="tab-btn" id="excelAnalyzedExportBtn" style="background:rgba(124,217,146,0.12);color:#7CD992;font-size:12px;padding:6px 14px;">📥 ייצוא ניתוח לאקסל</button><button class="tab-btn" id="dailyFormulationExportBtn" style="background:rgba(255,183,77,0.14);color:#FFB74D;font-size:12px;padding:6px 14px;">📋 ייצוא דיווח יומי</button><button class="tab-btn" id="dailyFormulationLoadBtn" style="background:rgba(255,183,77,0.08);color:#FFD08A;font-size:12px;padding:6px 14px;">📂 דוח יומי שמור</button><button class="tab-btn" id="monthlyFormulationReportBtn" style="background:rgba(52,211,153,0.10);color:#6EE7B7;font-size:12px;padding:6px 14px;">📊 דוח חודשי מרכז</button><label for="dailyFormulationImportInput" class="tab-btn admin-only" style="background:rgba(96,165,250,0.12);color:#93C5FD;font-size:12px;padding:6px 14px;cursor:pointer;">📤 טעינת דוח יומי מעודכן</label><input id="dailyFormulationImportInput" type="file" accept=".xlsx,.xls" style="display:none"><label for="qualityFileInput" class="tab-btn admin-only" id="qualityFileBtn" style="background:rgba(239,68,68,0.12);color:var(--red);font-size:12px;padding:6px 14px;cursor:pointer;">🧪 טעינת איכות</label><label for="usageDecisionFileInput" class="tab-btn admin-only" id="usageDecisionFileBtn" style="background:rgba(251,191,36,0.12);color:var(--yellow);font-size:12px;padding:6px 14px;cursor:pointer;">✅ טעינת החלטת שימוש</label><button class="tab-btn" id="whatsappExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📲 WhatsApp טקסט</button><button class="tab-btn" id="whatsappImageExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📸 צילום דשבורד</button><label for="quantityFileInput" class="tab-btn admin-only" id="quantityFileBtn" style="background:rgba(45,212,191,0.14);color:var(--teal);font-size:12px;padding:6px 14px;cursor:pointer;">📦 טעינת כמות</label><label for="targetsFileInput" class="tab-btn admin-only" id="targetsFileBtn" style="background:rgba(167,139,250,0.13);color:var(--purple);font-size:12px;padding:6px 14px;cursor:pointer;">🎯 טעינת קובץ יעדים</label><button class="tab-btn" id="targetsTemplateBtn" style="background:rgba(167,139,250,0.08);color:var(--purple);font-size:12px;padding:6px 14px;">⬇ תבנית יעדים</button><button class="tab-btn admin-only" id="targetsProdBtn" style="background:var(--amber-soft);color:var(--amber);font-size:12px;padding:6px 14px;">⚙ יעדי ייצור</button><button class="tab-btn admin-only" id="targetsBtn" style="background:var(--teal-soft);color:var(--teal);font-size:12px;padding:6px 14px;">⚙ יעדי אריזה</button><button class="tab-btn admin-only" id="resetBtn" style="background:rgba(255,255,255,0.05);color:var(--text-muted);font-size:12px;padding:6px 14px;">איפוס</button></div>'+
       '</div>'+
       '<div class="tabs">'+
         '<button class="tab-btn" data-tab="day">יום אחרון</button>'+
@@ -8648,13 +8653,38 @@ function renderAll(){
   root.querySelector('#targetsProdTable').addEventListener('input', (e)=>{
     if(e.target.classList.contains('tgtp-input')) recalcProdTargetsTotal(e.target.dataset.fac);
   });
-  const unifiedInput=document.getElementById('unifiedFileInput');
-  if(unifiedInput) unifiedInput.onchange=async(e)=>{
-    if(!requireAdmin()){e.target.value='';return;}
-    const files=e.target.files;
-    if(files&&files.length) await handleUnifiedFiles(files);
-    e.target.value='';
-  };
+  let _datasetUploadBusy=false;
+  async function runDatasetUpload(input, kind){
+    if(!input || _datasetUploadBusy) return;
+    if(!requireAdmin()){ input.value=''; return; }
+    const files=Array.from(input.files||[]);
+    if(!files.length){ input.value=''; return; }
+    _datasetUploadBusy=true;
+    const buttonId=kind==='production'?'quantityFileBtn':kind==='results'?'qualityFileBtn':'usageDecisionFileBtn';
+    const btn=root.querySelector('#'+buttonId);
+    const oldText=btn?btn.textContent:'';
+    if(btn){ btn.style.pointerEvents='none'; btn.textContent='⏳ טוען...'; }
+    try{
+      let ok=false;
+      if(kind==='production') ok=await handleDataFile(files[0]);
+      else ok=await handleQualityFiles(files, kind==='summary'?'summary':'results');
+      if(ok) await markCloudDataChanged();
+    }catch(err){
+      console.error('dataset upload failed:',err);
+      showToast('הטעינה נכשלה: '+(err.message||err),true);
+    }finally{
+      input.value='';
+      _datasetUploadBusy=false;
+      setQualityLoadProgress('');
+      if(btn){ btn.style.pointerEvents=''; btn.textContent=oldText; }
+    }
+  }
+  const quantityInput=document.getElementById('quantityFileInput');
+  if(quantityInput) quantityInput.onchange=()=>runDatasetUpload(quantityInput,'production');
+  const qualityInput=document.getElementById('qualityFileInput');
+  if(qualityInput) qualityInput.onchange=()=>runDatasetUpload(qualityInput,'results');
+  const usageDecisionInput=document.getElementById('usageDecisionFileInput');
+  if(usageDecisionInput) usageDecisionInput.onchange=()=>runDatasetUpload(usageDecisionInput,'summary');
 
   const targetInput=document.getElementById('targetsFileInput');
   if(targetInput) targetInput.onchange=(e)=>{ if(!requireAdmin()){e.target.value='';return;} if(e.target.files[0])handleTargetFile(e.target.files[0]); e.target.value=''; };
@@ -8678,28 +8708,7 @@ root.querySelector('#printBtn').onclick = ()=> window.print();
   root.querySelector('#eventSave').onclick = saveEventFromModal;
   root.querySelector('#eventOverlay').onclick = e=>{ if(e.target===root.querySelector('#eventOverlay')) root.querySelector('#eventOverlay').classList.remove('open'); };
 
-  // quality file input — register immediately so early file selection is never lost
-  document.addEventListener('change', function(e){
-    if(e.target && e.target.id === 'qualityFileInput'){
-      if(!requireAdmin()){ e.target.value=''; return; }
-      const files = e.target.files;
-      if(files && files.length) handleQualityFiles(files);
-      e.target.value = '';
-    }
-  });
-
-  // Fallback for browsers that do not activate a hidden file input through label-for
-  document.addEventListener('click', function(e){
-    const lbl = e.target && e.target.closest ? e.target.closest('label[for="qualityFileInput"]') : null;
-    if(lbl){
-      if(!requireAdmin()) return;
-      const inp = document.getElementById('qualityFileInput');
-      if(inp){
-        e.preventDefault();
-        inp.click();
-      }
-    }
-  });
+  // Dataset file inputs are bound explicitly above; one handler per data type prevents duplicate uploads.
 
 
   root.addEventListener('dblclick', function(e){
@@ -8710,12 +8719,14 @@ root.querySelector('#printBtn').onclick = ()=> window.print();
   function updateLoadHealth(){
     const el=root.querySelector('#loadHealth'); if(!el)return;
     const prod=(datasetSources.production||[]);
-    const quality=[...(datasetSources.qualitySummary||[]),...(datasetSources.qualityResults||[])];
+    const quality=(datasetSources.qualityResults||[]);
+    const usageDecision=(datasetSources.qualitySummary||[]);
     const targetOk=!!targetFileMeta.fileName && targetFileRows.length>0;
     const chip=(label,ok,detail)=>'<span class="load-health-chip '+(ok?'ok':'missing')+'" title="'+escapeHtml(detail||'')+'">'+(ok?'✓ ':'')+label+(ok&&detail?' · '+escapeHtml(detail):' —')+'</span>';
     const latestItem=items=>(items||[]).slice().sort((a,b)=>String(b.at||'').localeCompare(String(a.at||'')))[0]||null;
     const prodLast=datasetLastLoads.production || latestItem(prod);
     const qualLast=datasetLastLoads.quality || latestItem(quality);
+    const usageLast=datasetLastLoads.usageDecision || latestItem(usageDecision);
     const targetLast=datasetLastLoads.targets || (targetOk?{names:[targetFileMeta.fileName],at:targetFileMeta.loadedAt}:null);
     const namesText=x=>{
       if(!x)return '';
@@ -8724,8 +8735,9 @@ root.querySelector('#printBtn').onclick = ()=> window.print();
     };
     const prodDetail=prodLast?(namesText(prodLast)+' · '+formatLoadStamp(prodLast.at)):'';
     const qualDetail=qualLast?(namesText(qualLast)+' · '+formatLoadStamp(qualLast.at)):'';
+    const usageDetail=usageLast?(namesText(usageLast)+' · '+formatLoadStamp(usageLast.at)):'';
     const targetDetail=targetLast?(namesText(targetLast)+' · '+formatLoadStamp(targetLast.at)):'';
-    el.innerHTML=chip('כמויות',entries.length>0,prodDetail)+chip('איכות',qualityEntries.length>0||qualityTestResults.length>0,qualDetail)+chip('יעדים',targetOk,targetDetail);
+    el.innerHTML=chip('כמויות',entries.length>0,prodDetail)+chip('איכות',qualityTestResults.length>0,qualDetail)+chip('החלטת שימוש',qualityEntries.length>0,usageDetail)+chip('יעדים',targetOk,targetDetail);
   }
 
   let _lastSeenProductionSyncVersion='';
