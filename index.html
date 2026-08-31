@@ -2323,7 +2323,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   }
 
 
-  // ---------- V4.8.36: פענוח XLSX גדול במסלול חסכוני בזיכרון ----------
+  // ---------- V4.8.37: פענוח XLSX גדול במסלול חסכוני בזיכרון ----------
   // SheetJS חייב לבנות Workbook שלם לפני שאפשר לסנן לפי מתקן. בקובץ SAP גדול
   // זה עלול לצרוך מעל 1GB גם בתוך Worker. המסלול הבא פותח את קובץ ה-XLSX כ-ZIP,
   // קורא את XML הגיליון שורה-שורה, וממיר ל-JS רק שורות של המתקנים שמוצגים בסרגל.
@@ -2462,10 +2462,29 @@ html, body { margin:0; padding:0; background:#0A0D12; }
             parsedInWorker = true;
           }catch(err){
             workerError = (err && err.message) || String(err);
-            console.warn('worker parse failed:', err);
-            // לקובץ גדול לא חוזרים ל-SheetJS בחלון הראשי — זה בדיוק המסלול
-            // שגורם לשגיאת זיכרון. לקובץ קטן בלבד נשמר fallback תאימות.
-            if(sizeMB<QUALITY_LOWMEM_THRESHOLD_MB){
+            console.warn('primary worker parse failed:', err);
+
+            // V4.8.37 — אם המסלול החסכוני נכשל, לא עוצרים מיד.
+            // מנסים אוטומטית את מנגנון ה-Worker הרגיל, שהוא המסלול שעבד
+            // בקבצי האיכות הגדולים לפני הוספת הפענוח החסכוני.
+            if(sizeMB>=QUALITY_LOWMEM_THRESHOLD_MB){
+              try{
+                showToast('הטעינה המהירה נכשלה — עובר אוטומטית למסלול התאימות...');
+                setQualityLoadProgress(file.name+' · ניסיון שני: פענוח ברקע במסלול התאימות');
+                const retryOut = await parseQualityFileInWorker(file, p=>{
+                  const pct = (p && typeof p.pct==='number') ? ' '+p.pct+'%' : '';
+                  setQualityLoadProgress(file.name+pct+' · ניסיון שני'+(p&&p.message?' · '+p.message:''));
+                }, forcedMode||'auto');
+                foundSummary = retryOut.summaryRows || [];
+                foundResults = retryOut.resultRows || [];
+                parsedInWorker = true;
+                workerError = '';
+              }catch(retryErr){
+                const retryMsg = (retryErr && retryErr.message) || String(retryErr);
+                workerError = 'מהיר: '+workerError+' | תאימות: '+retryMsg;
+                console.warn('compatibility worker parse failed:', retryErr);
+              }
+            }else{
               setQualityLoadProgress(file.name+' · ה-Worker לא זמין, מפענח בחלון הראשי');
               await new Promise(r=>setTimeout(r,50));
             }
@@ -2507,7 +2526,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
         if(bigFile){
           throw new Error('הקובץ גדול מדי לפענוח בדפדפן (' +
             Math.round(files.reduce((n,f)=>n+(f.size||0),0)/1048576) + 'MB). ' +
-            'הפענוח החסכוני לא הצליח. נסו שוב; אם התקלה חוזרת בדקו חיבור אינטרנט בזמן הטעינה.');
+            'נוסו שני מסלולי טעינה (מהיר + תאימות) ושניהם נכשלו. פרטי התקלה נרשמו במסוף הדפדפן.');
         }
         throw new Error(forcedMode==='summary' ? 'לא נמצאו נתוני החלטת שימוש בקובץ שנבחר' : forcedMode==='results' ? 'לא נמצאו תוצאות בדיקות איכות בקובץ שנבחר' : 'הקובץ לא זוהה כקובץ סיכום איכות או כקובץ תוצאות בדיקה');
       }
