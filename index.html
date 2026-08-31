@@ -2322,6 +2322,104 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     });
   }
 
+
+  // ---------- V4.8.35: פענוח XLSX גדול במסלול חסכוני בזיכרון ----------
+  // SheetJS חייב לבנות Workbook שלם לפני שאפשר לסנן לפי מתקן. בקובץ SAP גדול
+  // זה עלול לצרוך מעל 1GB גם בתוך Worker. המסלול הבא פותח את קובץ ה-XLSX כ-ZIP,
+  // קורא את XML הגיליון שורה-שורה, וממיר ל-JS רק שורות של המתקנים שמוצגים בסרגל.
+  // כך קובץ המקור יכול להישאר גדול, בעוד שהמידע שנכנס לזיכרון/ענן קטן משמעותית.
+  const QUALITY_LOWMEM_THRESHOLD_MB = 12;
+  const QUALITY_LOWMEM_RESULT_BATCH = 5000;
+  let _qualityLowMemWorkerUrl = null;
+
+  const QUALITY_LOWMEM_HELPERS = [
+    "function xmlDecode(s){ return String(s==null?'':s).replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'\\\"').replace(/&apos;/g,\"'\").replace(/&amp;/g,'&').replace(/&#(x?[0-9A-Fa-f]+);/g,function(_,n){try{return String.fromCodePoint(n[0].toLowerCase()==='x'?parseInt(n.slice(1),16):parseInt(n,10));}catch(e){return _;}}); }",
+    "function attrValue(attrs,name){ var m=new RegExp('(?:^|\\\\s)'+name+'=\\\"([^\\\"]*)\\\"').exec(attrs||''); return m?xmlDecode(m[1]):''; }",
+    "function colIndex(ref){ var m=/^([A-Z]+)/i.exec(ref||''); if(!m) return -1; var n=0, t=m[1].toUpperCase(); for(var i=0;i<t.length;i++) n=n*26+(t.charCodeAt(i)-64); return n-1; }",
+    "function textNodes(xml){ var out='', re=/<t(?:\\\\s[^>]*)?>([\\\\s\\\\S]*?)<\\\\/t>/g, m; while((m=re.exec(xml||''))) out+=xmlDecode(m[1]); return out; }",
+    "function parseSharedStrings(u8){ if(!u8) return []; var xml=fflate.strFromU8(u8), out=[], re=/<si(?:\\\\s[^>]*)?>([\\\\s\\\\S]*?)<\\\\/si>/g, m; while((m=re.exec(xml))) out.push(textNodes(m[1])); return out; }",
+    "function parseRow(rowXml, shared){ var row=[], re=/<c\\\\b([^>]*?)(?:\\\\/>|>([\\\\s\\\\S]*?)<\\\\/c>)/g, m; while((m=re.exec(rowXml||''))){ var attrs=m[1]||'', body=m[2]||'', ref=attrValue(attrs,'r'), c=colIndex(ref); if(c<0) continue; var t=attrValue(attrs,'t'), v=''; if(t==='inlineStr') v=textNodes(body); else { var vm=/<v>([\\\\s\\\\S]*?)<\\\\/v>/.exec(body); var raw=vm?xmlDecode(vm[1]):''; if(t==='s'){ var si=parseInt(raw,10); v=(isFinite(si)&&shared[si]!==undefined)?shared[si]:''; } else if(t==='b') v=raw==='1'; else if(t==='str') v=raw; else if(raw!=='' && /^[-+]?(?:\\\\d+\\\\.?\\\\d*|\\\\.\\\\d+)(?:[eE][-+]?\\\\d+)?$/.test(raw)) v=Number(raw); else v=raw; } row[c]=v; } return row; }",
+    "function sheetNumber(name){ var m=/sheet(\\\\d+)\\\\.xml$/i.exec(name||''); return m?parseInt(m[1],10):999999; }"
+  ].join("\\n");
+
+  const QUALITY_LOWMEM_WORKER_MAIN = [
+    "self.onmessage = function(e){",
+    "  var buf=e.data.buf, forcedMode=e.data.mode||'auto';",
+    "  try{",
+    "    self.postMessage({type:'progress',pct:0,message:'פותח קובץ גדול במסלול חסכוני'});",
+    "    importScripts('https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js');",
+    "    var zip=fflate.unzipSync(new Uint8Array(buf)); buf=null;",
+    "    var shared=parseSharedStrings(zip['xl/sharedStrings.xml']);",
+    "    if(zip['xl/sharedStrings.xml']) delete zip['xl/sharedStrings.xml'];",
+    "    var names=Object.keys(zip).filter(function(k){return /^xl\\/worksheets\\/sheet\\d+\\.xml$/i.test(k);}).sort(function(a,b){return sheetNumber(a)-sheetNumber(b);});",
+    "    var totalSheets=names.length||1, any=false;",
+    "    for(var si=0;si<names.length;si++){",
+    "      var name=names[si], xml=fflate.strFromU8(zip[name]); delete zip[name];",
+    "      var rowRe=/<row\\b[^>]*>([\\s\\S]*?)<\\/row>/g, rm, header=null, kind='', scanned=0;",
+    "      var resultBuf=[], summaryBuf=[];",
+    "      while((rm=rowRe.exec(xml))){",
+    "        var row=parseRow(rm[1],shared);",
+    "        if(!header){",
+    "          if(scanned++>=40) break;",
+    "          var mm=mapQualityHeaders(row||[]);",
+    "          var hasMeasure=(mm.measured_value!==undefined||mm.lower_limit!==undefined||mm.upper_limit!==undefined);",
+    "          var isResult=mm.batch!==undefined&&(mm.test_name!==undefined||mm.operation_text!==undefined)&&hasMeasure;",
+    "          var isSummary=mm.batch!==undefined&&mm.ud_code!==undefined&&!hasMeasure;",
+    "          if((forcedMode==='results'&&isResult)||(forcedMode==='summary'&&isSummary)||(forcedMode==='auto'&&(isResult||isSummary))){ header=row; kind=isResult?'results':'summary'; continue; }",
+    "          continue;",
+    "        }",
+    "        if(kind==='results') { var rr=mapQualityResultRows(header,[row]); if(rr.length) Array.prototype.push.apply(resultBuf,rr); }",
+    "        else { var sr=processQualityRows(header,[row]); if(sr.length) Array.prototype.push.apply(summaryBuf,sr); }",
+    "        if(resultBuf.length>=5000){ self.postMessage({type:'results',rows:resultBuf,pct:Math.min(99,Math.round((si+(rowRe.lastIndex/xml.length))/totalSheets*100))}); resultBuf=[]; any=true; }",
+    "        if(summaryBuf.length>=5000){ self.postMessage({type:'summary',rows:summaryBuf}); summaryBuf=[]; any=true; }",
+    "        if((scanned%5000)===0) self.postMessage({type:'progress',pct:Math.min(99,Math.round((si+(rowRe.lastIndex/xml.length))/totalSheets*100)),message:'מסנן רק מתקנים פעילים'});",
+    "        scanned++;",
+    "      }",
+    "      if(resultBuf.length){ self.postMessage({type:'results',rows:resultBuf,pct:Math.min(99,Math.round((si+1)/totalSheets*100))}); any=true; }",
+    "      if(summaryBuf.length){ self.postMessage({type:'summary',rows:summaryBuf}); any=true; }",
+    "      xml=null;",
+    "      if(header) break;",
+    "    }",
+    "    shared=null; zip=null;",
+    "    self.postMessage({type:'done',lowMemory:true,any:any});",
+    "  }catch(err){ self.postMessage({type:'error',message:String((err&&err.message)||err)}); }",
+    "};"
+  ].join("\\n");
+
+  function buildQualityLowMemWorkerUrl(){
+    if(_qualityLowMemWorkerUrl) return _qualityLowMemWorkerUrl;
+    const fns=[normalizeQualityHeader,mapQualityHeaders,normalizeBatch,isMissingTestValue,parseNumericResult,
+               normalizeFacilityForLoad,isDisplayedFacilityForLoad,normalizeFacilityForQuality,dateObjToISO,
+               excelSerialToISO,normalizeDateStr,mapQualityResultRows,processQualityRows];
+    const src="var QUALITY_HEADER_MAP="+JSON.stringify(QUALITY_HEADER_MAP)+";\\n"
+      +"var OLD_TO_NEW_FACILITY="+JSON.stringify(OLD_TO_NEW_FACILITY)+";\\n"
+      +"var FACILITY_OPTIONS="+JSON.stringify(FACILITY_OPTIONS)+";\\n"
+      +fns.map(f=>f.toString()).join("\\n\\n")+"\\n\\n"
+      +QUALITY_LOWMEM_HELPERS+"\\n\\n"+QUALITY_LOWMEM_WORKER_MAIN;
+    _qualityLowMemWorkerUrl=URL.createObjectURL(new Blob([src],{type:'text/javascript'}));
+    return _qualityLowMemWorkerUrl;
+  }
+
+  function parseQualityFileLowMemoryWorker(file,onProgress,forcedMode){
+    return new Promise(function(resolve,reject){
+      var worker;
+      try{ worker=new Worker(buildQualityLowMemWorkerUrl()); }
+      catch(e){ reject(Object.assign(new Error('LOWMEM_WORKER_UNAVAILABLE'),{code:'LOWMEM_WORKER_UNAVAILABLE'})); return; }
+      var summaryRows=[],resultRows=[];
+      var finish=function(fn,payload){ try{worker.terminate();}catch(e){} fn(payload); };
+      worker.onmessage=function(ev){
+        var d=ev.data||{};
+        if(d.type==='progress'){ onProgress&&onProgress(d); return; }
+        if(d.type==='summary'){ if(d.rows&&d.rows.length) appendAll(summaryRows,d.rows); return; }
+        if(d.type==='results'){ if(d.rows&&d.rows.length) appendAll(resultRows,d.rows); onProgress&&onProgress({pct:d.pct,message:'סינון מתקנים: '+resultRows.length.toLocaleString('he-IL')+' שורות רלוונטיות'}); return; }
+        if(d.type==='done') return finish(resolve,{summaryRows,resultRows,lowMemory:true});
+        if(d.type==='error') return finish(reject,new Error(d.message||'שגיאת פענוח חסכוני'));
+      };
+      worker.onerror=function(ev){ finish(reject,Object.assign(new Error(ev&&ev.message||'LOWMEM_WORKER_CRASHED'),{code:'LOWMEM_WORKER_CRASHED'})); };
+      file.arrayBuffer().then(function(buf){ worker.postMessage({buf:buf,mode:forcedMode||'auto'},[buf]); },function(err){ finish(reject,err); });
+    });
+  }
+
   function setQualityLoadProgress(text){
     const el = root && root.querySelector ? root.querySelector('#dataStatusLine') : null;
     if(!el) return;
@@ -2352,8 +2450,10 @@ html, body { margin:0; padding:0; background:#0A0D12; }
         let parsedInWorker=false, workerError='';
         if(typeof Worker!=='undefined'){
           try{
-            showToast('מפענח את '+file.name+' ברקע...');
-            const out = await parseQualityFileInWorker(file, p=>{
+            const useLowMem=sizeMB>=QUALITY_LOWMEM_THRESHOLD_MB;
+            showToast(useLowMem ? 'קובץ גדול — מסנן מתקנים בזמן הפענוח...' : 'מפענח את '+file.name+' ברקע...');
+            const parser=useLowMem ? parseQualityFileLowMemoryWorker : parseQualityFileInWorker;
+            const out = await parser(file, p=>{
               const pct = (p && typeof p.pct==='number') ? ' '+p.pct+'%' : '';
               setQualityLoadProgress(file.name+pct+(p&&p.message?' · '+p.message:''));
             }, forcedMode||'auto');
@@ -2362,16 +2462,17 @@ html, body { margin:0; padding:0; background:#0A0D12; }
             parsedInWorker = true;
           }catch(err){
             workerError = (err && err.message) || String(err);
-            console.warn('worker parse failed, falling back to main thread:', err);
-            // Worker חסום (CSP / דפדפן ישן) הוא לא אותו דבר כמו Worker שקרס
-            // מחוסר זיכרון. בשני המקרים שווה לנסות ב-thread הראשי: מאז
-            // שהוספנו dense:true הפענוח שם לוקח ~30 שניות במקום להיתקע.
-            setQualityLoadProgress(file.name+' · ה-Worker לא זמין, מפענח בחלון הראשי (עד דקה)');
-            await new Promise(r=>setTimeout(r,50));
+            console.warn('worker parse failed:', err);
+            // לקובץ גדול לא חוזרים ל-SheetJS בחלון הראשי — זה בדיוק המסלול
+            // שגורם לשגיאת זיכרון. לקובץ קטן בלבד נשמר fallback תאימות.
+            if(sizeMB<QUALITY_LOWMEM_THRESHOLD_MB){
+              setQualityLoadProgress(file.name+' · ה-Worker לא זמין, מפענח בחלון הראשי');
+              await new Promise(r=>setTimeout(r,50));
+            }
           }
         }
         setQualityLoadProgress('');
-        if(!parsedInWorker){
+        if(!parsedInWorker && sizeMB<QUALITY_LOWMEM_THRESHOLD_MB){
           const wb=XLSX.read(await file.arrayBuffer(),{type:'array',cellDates:false,dense:true});
           // Classify the file first (cheap header probe) and run ONLY the relevant parser.
           const cls=classifyQualityWorkbook(wb);
@@ -2406,7 +2507,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
         if(bigFile){
           throw new Error('הקובץ גדול מדי לפענוח בדפדפן (' +
             Math.round(files.reduce((n,f)=>n+(f.size||0),0)/1048576) + 'MB). ' +
-            'פצלו את הייצוא מ-SAP לפי חודש וטענו את החלקים יחד — ניתן לבחור כמה קבצים בבת אחת.');
+            'הפענוח החסכוני לא הצליח. נסו שוב; אם התקלה חוזרת בדקו חיבור אינטרנט בזמן הטעינה.');
         }
         throw new Error(forcedMode==='summary' ? 'לא נמצאו נתוני החלטת שימוש בקובץ שנבחר' : forcedMode==='results' ? 'לא נמצאו תוצאות בדיקות איכות בקובץ שנבחר' : 'הקובץ לא זוהה כקובץ סיכום איכות או כקובץ תוצאות בדיקה');
       }
@@ -2466,7 +2567,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
         const big = failedFiles.filter(f => f.sizeMB >= 15);
         const names = failedFiles.map(f => f.name + (f.sizeMB ? ' ('+f.sizeMB+'MB)' : '') + (f.why ? ' — ' + f.why : '')).join(', ');
         showToast(failedFiles.length + ' מתוך ' + files.length + ' הקבצים לא נטענו: ' + names +
-          (big.length ? ' — גדולים מדי לפענוח בדפדפן. פצלו לפי חודש וטענו את החלקים יחד.' : ' — הכותרות לא זוהו.'), true);
+          (big.length ? ' — הפענוח החסכוני לא הצליח בקובץ זה.' : ' — הכותרות לא זוהו.'), true);
       }
       if(summaryRows.length && resultRows.length){
         showToast('האיכות נטענה: '+summaryRows.length+' מנות · '+resultRows.length+' תוצאות בדיקה | '+sourceNames.join(' + '));
@@ -8220,7 +8321,7 @@ function renderAll(){
       '<div class="topbar">'+
         '<div class="brand">'+
           '<div class="brand-mark">IML</div>'+
-          '<div><h1>IML Production Dashboard <span class="app-version-badge">V4.8.34</span></h1><p><span id="entryCount">טוען נתונים…</span> <span id="storageStatusBadge" class="storage-status"></span></p><p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;"><span id="dataStatusLine">בודק נתונים…</span></p><div class="load-health" id="loadHealth"><span class="load-health-chip missing">כמויות —</span><span class="load-health-chip missing">איכות —</span><span class="load-health-chip missing">החלטת שימוש —</span><span class="load-health-chip missing">יעדים —</span></div><div id="fileSourcesPanel" style="display:none"></div></div>'+
+          '<div><h1>IML Production Dashboard <span class="app-version-badge">V4.8.35</span></h1><p><span id="entryCount">טוען נתונים…</span> <span id="storageStatusBadge" class="storage-status"></span></p><p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;"><span id="dataStatusLine">בודק נתונים…</span></p><div class="load-health" id="loadHealth"><span class="load-health-chip missing">כמויות —</span><span class="load-health-chip missing">איכות —</span><span class="load-health-chip missing">החלטת שימוש —</span><span class="load-health-chip missing">יעדים —</span></div><div id="fileSourcesPanel" style="display:none"></div></div>'+
         '</div>'+
         '<div class="topbar-actions"><span id="roleBadge" class="role-badge viewer">👁 צפייה בלבד</span><button class="tab-btn" id="adminLoginBtn" style="background:rgba(255,255,255,0.06);color:var(--text);font-size:12px;padding:6px 14px;">🔐 כניסת מנהל</button><button class="tab-btn" id="refreshSharedBtn" style="background:rgba(20,184,166,0.12);color:var(--teal);font-size:12px;padding:6px 14px;">🔄 רענן נתונים</button><button class="tab-btn" id="addEventTopBtn" style="background:rgba(139,183,255,0.12);color:#8BB7FF;font-size:12px;padding:6px 14px;">+ הוסף אירוע</button><button class="tab-btn" id="advancedDashboardBtn" style="background:var(--teal-soft);color:var(--green);font-size:12px;padding:6px 14px;">📊 דשבורד חדש</button><button class="tab-btn" id="excelAnalyzedExportBtn" style="background:rgba(124,217,146,0.12);color:#7CD992;font-size:12px;padding:6px 14px;">📥 ייצוא ניתוח לאקסל</button><button class="tab-btn" id="dailyFormulationExportBtn" style="background:rgba(255,183,77,0.14);color:#FFB74D;font-size:12px;padding:6px 14px;">📋 ייצוא דיווח יומי</button><button class="tab-btn" id="dailyFormulationLoadBtn" style="background:rgba(255,183,77,0.08);color:#FFD08A;font-size:12px;padding:6px 14px;">📂 דוח יומי שמור</button><button class="tab-btn" id="monthlyFormulationReportBtn" style="background:rgba(52,211,153,0.10);color:#6EE7B7;font-size:12px;padding:6px 14px;">📊 דוח חודשי מרכז</button><label for="dailyFormulationImportInput" class="tab-btn admin-only" style="background:rgba(96,165,250,0.12);color:#93C5FD;font-size:12px;padding:6px 14px;cursor:pointer;">📤 טעינת דוח יומי מעודכן</label><input id="dailyFormulationImportInput" type="file" accept=".xlsx,.xls" style="display:none"><label for="qualityFileInput" class="tab-btn admin-only" id="qualityFileBtn" style="background:rgba(239,68,68,0.12);color:var(--red);font-size:12px;padding:6px 14px;cursor:pointer;">🧪 טעינת איכות</label><label for="usageDecisionFileInput" class="tab-btn admin-only" id="usageDecisionFileBtn" style="background:rgba(251,191,36,0.12);color:var(--yellow);font-size:12px;padding:6px 14px;cursor:pointer;">✅ טעינת החלטת שימוש</label><button class="tab-btn" id="whatsappExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📲 WhatsApp טקסט</button><button class="tab-btn" id="whatsappImageExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📸 צילום דשבורד</button><label for="quantityFileInput" class="tab-btn admin-only" id="quantityFileBtn" style="background:rgba(45,212,191,0.14);color:var(--teal);font-size:12px;padding:6px 14px;cursor:pointer;">📦 טעינת כמות</label><label for="targetsFileInput" class="tab-btn admin-only" id="targetsFileBtn" style="background:rgba(167,139,250,0.13);color:var(--purple);font-size:12px;padding:6px 14px;cursor:pointer;">🎯 טעינת קובץ יעדים</label><button class="tab-btn" id="targetsTemplateBtn" style="background:rgba(167,139,250,0.08);color:var(--purple);font-size:12px;padding:6px 14px;">⬇ תבנית יעדים</button><button class="tab-btn admin-only" id="targetsProdBtn" style="background:var(--amber-soft);color:var(--amber);font-size:12px;padding:6px 14px;">⚙ יעדי ייצור</button><button class="tab-btn admin-only" id="targetsBtn" style="background:var(--teal-soft);color:var(--teal);font-size:12px;padding:6px 14px;">⚙ יעדי אריזה</button><button class="tab-btn admin-only" id="resetBtn" style="background:rgba(255,255,255,0.05);color:var(--text-muted);font-size:12px;padding:6px 14px;">איפוס</button></div>'+
       '</div>'+
