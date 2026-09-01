@@ -1,8 +1,8 @@
-const CACHE_NAME = 'iml-production-dashboard-v4.8.22';
+const CACHE_NAME = 'iml-production-dashboard-v4.8.45';
 const APP_SHELL = [
   './',
   './index.html',
-  './manifest.webmanifest?v=4.8.20',
+  './manifest.webmanifest?v=4.8.45',
   './icons/iml-icon-192-v4.png',
   './icons/iml-icon-512-v4.png',
   './icons/iml-apple-touch-icon-v4.png',
