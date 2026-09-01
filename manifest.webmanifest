@@ -1,9 +1,9 @@
 {
-  "id": "./?app=iml-production-dashboard-v4.8.45",
+  "id": "./?app=iml-production-dashboard-v4.8.46",
   "name": "IML Production Dashboard",
   "short_name": "IML Dashboard",
   "description": "Production, quality, safety and environment dashboard",
-  "start_url": "./?app=iml-production-dashboard-v4.8.45",
+  "start_url": "./?app=iml-production-dashboard-v4.8.46",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
