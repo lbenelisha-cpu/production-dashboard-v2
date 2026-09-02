@@ -9,7 +9,7 @@
 <meta name="theme-color" content="#030812">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="manifest" href="manifest.webmanifest?v=4.8.47">
+<link rel="manifest" href="manifest.webmanifest?v=4.8.48">
 <link rel="icon" type="image/png" href="icons/iml-favicon-v4.png?v=4.8.1">
 <link rel="apple-touch-icon" href="icons/iml-apple-touch-icon-v4.png?v=4.8.1">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -1294,6 +1294,10 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   const QUALITY_CHUNK_PREFIX = 'quality_ud_full_v4_chunk_';
   const QUALITY_CHUNK_SIZE = 1800;
   const QUALITY_RESULTS_MANIFEST_KEY = 'quality_test_results_v1_manifest';
+  // הנתונים הקיימים במפתח הישן נשארים ארכיון בסיס. מהעלאה זו ואילך
+  // תוצאות חדשות נשמרות בנפרד לפי חודש ואינן גורמות לכתיבת הארכיון מחדש.
+  const QUALITY_RESULTS_MONTHLY_INDEX_KEY = 'quality_test_results_monthly_v1_index';
+  const QUALITY_RESULTS_MONTHLY_PREFIX = 'quality_test_results_monthly_v1_';
 
   // ---- יומן טעינות: שם קובץ, כמות שורות ומתי נטען, לכל קובץ בנפרד ----
   const DATASET_SOURCES_KEY = 'dataset_sources_v1';
@@ -1440,6 +1444,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   const QUALITY_RESULTS_CHUNK_PREFIX = 'quality_test_results_v1_chunk_';
   const QUALITY_RESULTS_CHUNK_SIZE = 1200;
   let qualityTestResults = [];
+  let qualityMonthlyTestResults = [];
   let qualityTestResultsByBatch = {};
 
   const QUALITY_HEADER_MAP = {
@@ -1910,6 +1915,80 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     qualityTestResultsByBatch = byBatch;
   }
 
+  function qualityResultIdentity(r){
+    return [String(r.date||''),String(r.materialCode||''),String(r.operation||r.workOrder||''),
+            normalizeBatch(r.batch),String(r.inspectionLot||''),String(r.sample||''),
+            String(r.testCode||r.testName||'')].join('|');
+  }
+
+  function qualityResultMonth(r){
+    const iso=normalizeDateStr(r&&r.date);
+    return /^\d{4}-\d{2}-\d{2}$/.test(iso||'') ? iso.slice(0,7) : todayISO().slice(0,7);
+  }
+
+  async function readQualityResultManifest(manifest){
+    const rows=[];
+    const keys=manifest&&Array.isArray(manifest.keys)?manifest.keys:[];
+    const pairs=await _dashStorage.getMany(keys,{fresh:true});
+    for(const pair of pairs){
+      try{
+        const raw=pair&&pair.result&&pair.result.value;
+        const part=JSON.parse(raw||'[]');
+        if(Array.isArray(part)) appendAll(rows,part);
+      }catch(e){}
+    }
+    return rows;
+  }
+
+  async function loadMonthlyQualityTestResults(){
+    qualityMonthlyTestResults=[];
+    const res=await _dashStorage.get(QUALITY_RESULTS_MONTHLY_INDEX_KEY,{fresh:true}).catch(()=>null);
+    const index=res&&res.value?JSON.parse(res.value):null;
+    const months=index&&index.months&&typeof index.months==='object'?index.months:{};
+    for(const month of Object.keys(months).sort()){
+      const part=await readQualityResultManifest(months[month]);
+      appendAll(qualityMonthlyTestResults,part);
+    }
+    return qualityMonthlyTestResults;
+  }
+
+  async function persistMonthlyQualityTestResults(incomingRows){
+    const incoming=filterQualityRowsToDisplayedFacilities(incomingRows||[]);
+    if(!incoming.length) return true;
+    try{
+      const indexRes=await _dashStorage.get(QUALITY_RESULTS_MONTHLY_INDEX_KEY,{fresh:true}).catch(()=>null);
+      let index={version:1,months:{}};
+      try{ const parsed=indexRes&&indexRes.value?JSON.parse(indexRes.value):null; if(parsed&&parsed.months) index=parsed; }catch(e){}
+      const touched=new Set(incoming.map(qualityResultMonth));
+      for(const month of touched){
+        const existing=qualityMonthlyTestResults.filter(r=>qualityResultMonth(r)===month);
+        const additions=incoming.filter(r=>qualityResultMonth(r)===month);
+        // השורות החדשות מחליפות תוצאה קודמת של אותה בדיקה/דגימה.
+        const byIdentity=new Map();
+        existing.forEach(r=>byIdentity.set(qualityResultIdentity(r),r));
+        additions.forEach(r=>byIdentity.set(qualityResultIdentity(r),r));
+        const merged=Array.from(byIdentity.values());
+        const stamp=Date.now().toString(36), chunks=[];
+        for(let i=0;i<merged.length;i+=QUALITY_RESULTS_CHUNK_SIZE) chunks.push(merged.slice(i,i+QUALITY_RESULTS_CHUNK_SIZE));
+        const keys=chunks.map((_,i)=>QUALITY_RESULTS_MONTHLY_PREFIX+month+'_'+stamp+'_chunk_'+i);
+        await mapWithConcurrency(chunks,2,(chunk,i)=>_dashStorage.set(keys[i],JSON.stringify(chunk)));
+        const previous=index.months[month];
+        index.months[month]={month,savedAt:new Date().toISOString(),totalRows:merged.length,chunkCount:chunks.length,keys};
+        await _dashStorage.set(QUALITY_RESULTS_MONTHLY_INDEX_KEY,JSON.stringify(index));
+        if(previous&&Array.isArray(previous.keys)) await mapWithConcurrency(previous.keys,2,k=>_dashStorage.delete(k).catch(()=>null));
+        qualityMonthlyTestResults=qualityMonthlyTestResults.filter(r=>qualityResultMonth(r)!==month);
+        appendAll(qualityMonthlyTestResults,merged);
+      }
+      index.savedAt=new Date().toISOString();
+      await _dashStorage.set(QUALITY_RESULTS_MONTHLY_INDEX_KEY,JSON.stringify(index));
+      return true;
+    }catch(e){
+      console.error('persistMonthlyQualityTestResults:',e);
+      showToast('שגיאה בשמירת ארכיון האיכות החודשי: '+(e.message||e),true);
+      return false;
+    }
+  }
+
   async function persistQualityTestResults(){
     try{
       // V4.8.34: מנקים גם תוצאות ישנות של מתקנים שאינם קיימים עוד בסרגל.
@@ -1964,6 +2043,14 @@ html, body { margin:0; padding:0; background:#0A0D12; }
             await idbSet('quality_results',{sig:rsig,rows:qualityTestResults,at:new Date().toISOString()});
           }
         }
+      }
+      // הארכיון הישן נשאר בסיס קבוע; אליו מצרפים רק את החודשים החדשים.
+      const monthly=await loadMonthlyQualityTestResults();
+      if(monthly.length){
+        const byIdentity=new Map();
+        qualityTestResults.forEach(r=>byIdentity.set(qualityResultIdentity(r),r));
+        monthly.forEach(r=>byIdentity.set(qualityResultIdentity(r),r));
+        qualityTestResults=Array.from(byIdentity.values());
       }
     }catch(e){ console.error('loadQualityTestResults:',e); }
     setLoadStatus('');
@@ -2103,8 +2190,11 @@ html, body { margin:0; padding:0; background:#0A0D12; }
             status='ללא גבולות';
           }
           const rangeText=(min!==null||max!==null)?((min!==null?min:'—')+' - '+(max!==null?max:'—')):'';
+          const rawDate=get(row,'date')||get(row,'lot_date')||get(row,'ud_date');
+          const resultDate=rawDate instanceof Date?dateObjToISO(rawDate):(typeof rawDate==='number'?excelSerialToISO(rawDate):(normalizeDateStr(String(rawDate||''))||''));
           out.push({
             batch,
+            date:resultDate,
             inspectionLot:String(get(row,'inspection_lot')||'').trim(),
             sample:String(get(row,'sample')||'').trim(),
             materialCode:String(get(row,'material_code')||'').replace(/\.0$/,'').trim(),
@@ -2590,7 +2680,9 @@ html, body { margin:0; padding:0; background:#0A0D12; }
           if(seen.has(k)) return false; seen.add(k); return true;
         });
         rebuildQualityTestIndex();
-        okResults=await persistQualityTestResults();
+        // הארכיון שכבר קיים בענן אינו נכתב מחדש. רק השורות מהקובץ
+        // הנוכחי נשמרות במקטע החודשי המתאים.
+        okResults=await persistMonthlyQualityTestResults(resultRows);
       }
 
       if(!(okSummary&&okResults)) return false;
@@ -8427,7 +8519,7 @@ function renderAll(){
       '<div class="topbar">'+
         '<div class="brand">'+
           '<div class="brand-mark">IML</div>'+
-          '<div><h1>IML Production Dashboard <span class="app-version-badge">V4.8.47</span></h1><p><span id="entryCount">טוען נתונים…</span> <span id="storageStatusBadge" class="storage-status"></span></p><p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;"><span id="dataStatusLine">בודק נתונים…</span></p><div class="load-health" id="loadHealth"><span class="load-health-chip missing">כמויות —</span><span class="load-health-chip missing">איכות —</span><span class="load-health-chip missing">החלטת שימוש —</span><span class="load-health-chip missing">יעדים —</span></div><div id="fileSourcesPanel" style="display:none"></div></div>'+ 
+          '<div><h1>IML Production Dashboard <span class="app-version-badge">V4.8.48</span></h1><p><span id="entryCount">טוען נתונים…</span> <span id="storageStatusBadge" class="storage-status"></span></p><p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;"><span id="dataStatusLine">בודק נתונים…</span></p><div class="load-health" id="loadHealth"><span class="load-health-chip missing">כמויות —</span><span class="load-health-chip missing">איכות —</span><span class="load-health-chip missing">החלטת שימוש —</span><span class="load-health-chip missing">יעדים —</span></div><div id="fileSourcesPanel" style="display:none"></div></div>'+ 
         '</div>'+
         '<div class="topbar-actions"><span id="roleBadge" class="role-badge viewer">👁 צפייה בלבד</span><button class="tab-btn" id="adminLoginBtn" style="background:rgba(255,255,255,0.06);color:var(--text);font-size:12px;padding:6px 14px;">🔐 כניסת מנהל</button><button class="tab-btn" id="refreshSharedBtn" style="background:rgba(20,184,166,0.12);color:var(--teal);font-size:12px;padding:6px 14px;">🔄 רענן נתונים</button><button class="tab-btn" id="addEventTopBtn" style="background:rgba(139,183,255,0.12);color:#8BB7FF;font-size:12px;padding:6px 14px;">+ הוסף אירוע</button><button class="tab-btn" id="advancedDashboardBtn" style="background:var(--teal-soft);color:var(--green);font-size:12px;padding:6px 14px;">📊 דשבורד חדש</button><button class="tab-btn" id="excelAnalyzedExportBtn" style="background:rgba(124,217,146,0.12);color:#7CD992;font-size:12px;padding:6px 14px;">📥 ייצוא ניתוח לאקסל</button><button class="tab-btn" id="dailyFormulationExportBtn" style="background:rgba(255,183,77,0.14);color:#FFB74D;font-size:12px;padding:6px 14px;">📋 ייצוא דיווח יומי</button><button class="tab-btn" id="dailyFormulationLoadBtn" style="background:rgba(255,183,77,0.08);color:#FFD08A;font-size:12px;padding:6px 14px;">📂 דוח יומי שמור</button><button class="tab-btn" id="monthlyFormulationReportBtn" style="background:rgba(52,211,153,0.10);color:#6EE7B7;font-size:12px;padding:6px 14px;">📊 דוח חודשי מרכז</button><label for="dailyFormulationImportInput" class="tab-btn admin-only" style="background:rgba(96,165,250,0.12);color:#93C5FD;font-size:12px;padding:6px 14px;cursor:pointer;">📤 טעינת דוח יומי מעודכן</label><input id="dailyFormulationImportInput" type="file" accept=".xlsx,.xls" style="display:none"><label for="qualityFileInput" class="tab-btn admin-only" id="qualityFileBtn" style="background:rgba(239,68,68,0.12);color:var(--red);font-size:12px;padding:6px 14px;cursor:pointer;">🧪 טעינת איכות</label><label for="usageDecisionFileInput" class="tab-btn admin-only" id="usageDecisionFileBtn" style="background:rgba(251,191,36,0.12);color:var(--yellow);font-size:12px;padding:6px 14px;cursor:pointer;">✅ טעינת החלטת שימוש</label><button class="tab-btn" id="whatsappExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📲 WhatsApp טקסט</button><button class="tab-btn" id="whatsappImageExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📸 צילום דשבורד</button><label for="quantityFileInput" class="tab-btn admin-only" id="quantityFileBtn" style="background:rgba(45,212,191,0.14);color:var(--teal);font-size:12px;padding:6px 14px;cursor:pointer;">📦 טעינת כמות</label><label for="targetsFileInput" class="tab-btn admin-only" id="targetsFileBtn" style="background:rgba(167,139,250,0.13);color:var(--purple);font-size:12px;padding:6px 14px;cursor:pointer;">🎯 טעינת קובץ יעדים</label><button class="tab-btn" id="targetsTemplateBtn" style="background:rgba(167,139,250,0.08);color:var(--purple);font-size:12px;padding:6px 14px;">⬇ תבנית יעדים</button><button class="tab-btn admin-only" id="targetsProdBtn" style="background:var(--amber-soft);color:var(--amber);font-size:12px;padding:6px 14px;">⚙ יעדי ייצור</button><button class="tab-btn admin-only" id="targetsBtn" style="background:var(--teal-soft);color:var(--teal);font-size:12px;padding:6px 14px;">⚙ יעדי אריזה</button><button class="tab-btn admin-only" id="resetBtn" style="background:rgba(255,255,255,0.05);color:var(--text-muted);font-size:12px;padding:6px 14px;">איפוס</button></div>'+
       '</div>'+
@@ -9146,7 +9238,7 @@ root.querySelector('#printBtn').onclick = ()=> window.print();
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   window.addEventListener('load', async () => {
     try {
-      const reg = await navigator.serviceWorker.register('./service-worker.js?v=4.8.47', { updateViaCache: 'none' });
+      const reg = await navigator.serviceWorker.register('./service-worker.js?v=4.8.48', { updateViaCache: 'none' });
       await reg.update();
       let reloading = false;
       navigator.serviceWorker.addEventListener('controllerchange', () => {
