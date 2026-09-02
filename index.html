@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- IML DATA LOAD FIX V4.8.40 -->
 <html lang="he" dir="rtl">
 <head>
 <meta charset="UTF-8">
@@ -9,7 +10,7 @@
 <meta name="theme-color" content="#030812">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="manifest" href="manifest.webmanifest?v=4.8.48">
+<link rel="manifest" href="manifest.webmanifest?v=4.8.1">
 <link rel="icon" type="image/png" href="icons/iml-favicon-v4.png?v=4.8.1">
 <link rel="apple-touch-icon" href="icons/iml-apple-touch-icon-v4.png?v=4.8.1">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -1096,7 +1097,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   // ול-'appendEvent' לא היה ניסיון חוזר בכלל, ובלוק ה-retry שלמטה היה קוד מת
   // עבורן. 502 בודד על מקטע אחד מתוך מאות בהעלאת קובץ האיכות הפיל את כל
   // ההעלאה. Netlify Blobs מחזיר 502/503 חולפים תחת עומס — זה קורה.
-  const STORAGE_MAX_ATTEMPTS = 3;
+  const STORAGE_MAX_ATTEMPTS = 5;
   const STORAGE_TIMEOUT_MS = 25000;
 
   async function _callStorageApi(action, key, value){
@@ -1204,15 +1205,25 @@ html, body { margin:0; padding:0; background:#0A0D12; }
         });
         if(missing.length){
           const values = {};
-          // V4.8.47: כל Blob נקרא בנפרד כדי שתשובת Netlify לא תחרוג
-          // ממגבלת הגודל. רק שתי קריאות פועלות במקביל.
-          await mapWithConcurrency(missing, 2, async (key)=>{
+          const batches=[];
+          for(let i=0;i<missing.length;i+=20) batches.push(missing.slice(i,i+20));
+          // הקבוצות רצו בטור. עם 234 מקטעי איכות זה 12 סבבים סדרתיים.
+          // ריצה במקביל מקצרת את זה פי כמה בלי להעמיס על הפונקציה.
+          await mapWithConcurrency(batches, 6, async (batch)=>{
             try{
-              const data = await _callStorageApi('get', key);
-              values[key] = data && data.value != null ? data.value : null;
-            }catch(singleError){
-              console.error('Storage read failed for key', key, singleError);
-              values[key] = null;
+              const data = await _callStorageApi('getMany', '', batch);
+              Object.assign(values, data && data.values && typeof data.values==='object' ? data.values : {});
+            }catch(batchError){
+              console.warn('getMany failed; falling back to individual reads', batchError);
+              for(const key of batch){
+                try{
+                  const data = await _callStorageApi('get', key);
+                  values[key] = data && data.value != null ? data.value : null;
+                }catch(singleError){
+                  console.error('Storage read failed for key', key, singleError);
+                  values[key] = null;
+                }
+              }
             }
           });
           missing.forEach(key=>{
@@ -1294,10 +1305,6 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   const QUALITY_CHUNK_PREFIX = 'quality_ud_full_v4_chunk_';
   const QUALITY_CHUNK_SIZE = 1800;
   const QUALITY_RESULTS_MANIFEST_KEY = 'quality_test_results_v1_manifest';
-  // הנתונים הקיימים במפתח הישן נשארים ארכיון בסיס. מהעלאה זו ואילך
-  // תוצאות חדשות נשמרות בנפרד לפי חודש ואינן גורמות לכתיבת הארכיון מחדש.
-  const QUALITY_RESULTS_MONTHLY_INDEX_KEY = 'quality_test_results_monthly_v1_index';
-  const QUALITY_RESULTS_MONTHLY_PREFIX = 'quality_test_results_monthly_v1_';
 
   // ---- יומן טעינות: שם קובץ, כמות שורות ומתי נטען, לכל קובץ בנפרד ----
   const DATASET_SOURCES_KEY = 'dataset_sources_v1';
@@ -1444,7 +1451,6 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   const QUALITY_RESULTS_CHUNK_PREFIX = 'quality_test_results_v1_chunk_';
   const QUALITY_RESULTS_CHUNK_SIZE = 1200;
   let qualityTestResults = [];
-  let qualityMonthlyTestResults = [];
   let qualityTestResultsByBatch = {};
 
   const QUALITY_HEADER_MAP = {
@@ -1471,10 +1477,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     'lower specif limit':'lower_limit','lower specification limit':'lower_limit','lower spec limit':'lower_limit',
     'upper specif limit':'upper_limit','upper specification limit':'upper_limit','upper spec limit':'upper_limit',
     'characteristic remarks':'characteristic_remarks','charactristic remarks':'characteristic_remarks','unit of measurement':'unit','qualitative':'qualitative','sample #':'sample',
-    // מיקום אחסון של פקודת העבודה אינו מתקן ייצור. בקובצי SAP כגון old.xlsx
-    // הוא מכיל ערכים כמו 1225; מיפויו ל-facility גרם למחיקת כל שורות האיכות.
-    'process order storage location':'storage_location','inspection lot storage location':'inspection_storage_location',
-    'operation short text':'operation_text','ud remarks':'remarks','batch remarks':'remarks'
+    'process order storage location':'facility','operation short text':'operation_text','ud remarks':'remarks','batch remarks':'remarks'
   };
 
   function normKeyPart(v){ return String(v || '').trim().toUpperCase(); }
@@ -1915,80 +1918,6 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     qualityTestResultsByBatch = byBatch;
   }
 
-  function qualityResultIdentity(r){
-    return [String(r.date||''),String(r.materialCode||''),String(r.operation||r.workOrder||''),
-            normalizeBatch(r.batch),String(r.inspectionLot||''),String(r.sample||''),
-            String(r.testCode||r.testName||'')].join('|');
-  }
-
-  function qualityResultMonth(r){
-    const iso=normalizeDateStr(r&&r.date);
-    return /^\d{4}-\d{2}-\d{2}$/.test(iso||'') ? iso.slice(0,7) : todayISO().slice(0,7);
-  }
-
-  async function readQualityResultManifest(manifest){
-    const rows=[];
-    const keys=manifest&&Array.isArray(manifest.keys)?manifest.keys:[];
-    const pairs=await _dashStorage.getMany(keys,{fresh:true});
-    for(const pair of pairs){
-      try{
-        const raw=pair&&pair.result&&pair.result.value;
-        const part=JSON.parse(raw||'[]');
-        if(Array.isArray(part)) appendAll(rows,part);
-      }catch(e){}
-    }
-    return rows;
-  }
-
-  async function loadMonthlyQualityTestResults(){
-    qualityMonthlyTestResults=[];
-    const res=await _dashStorage.get(QUALITY_RESULTS_MONTHLY_INDEX_KEY,{fresh:true}).catch(()=>null);
-    const index=res&&res.value?JSON.parse(res.value):null;
-    const months=index&&index.months&&typeof index.months==='object'?index.months:{};
-    for(const month of Object.keys(months).sort()){
-      const part=await readQualityResultManifest(months[month]);
-      appendAll(qualityMonthlyTestResults,part);
-    }
-    return qualityMonthlyTestResults;
-  }
-
-  async function persistMonthlyQualityTestResults(incomingRows){
-    const incoming=filterQualityRowsToDisplayedFacilities(incomingRows||[]);
-    if(!incoming.length) return true;
-    try{
-      const indexRes=await _dashStorage.get(QUALITY_RESULTS_MONTHLY_INDEX_KEY,{fresh:true}).catch(()=>null);
-      let index={version:1,months:{}};
-      try{ const parsed=indexRes&&indexRes.value?JSON.parse(indexRes.value):null; if(parsed&&parsed.months) index=parsed; }catch(e){}
-      const touched=new Set(incoming.map(qualityResultMonth));
-      for(const month of touched){
-        const existing=qualityMonthlyTestResults.filter(r=>qualityResultMonth(r)===month);
-        const additions=incoming.filter(r=>qualityResultMonth(r)===month);
-        // השורות החדשות מחליפות תוצאה קודמת של אותה בדיקה/דגימה.
-        const byIdentity=new Map();
-        existing.forEach(r=>byIdentity.set(qualityResultIdentity(r),r));
-        additions.forEach(r=>byIdentity.set(qualityResultIdentity(r),r));
-        const merged=Array.from(byIdentity.values());
-        const stamp=Date.now().toString(36), chunks=[];
-        for(let i=0;i<merged.length;i+=QUALITY_RESULTS_CHUNK_SIZE) chunks.push(merged.slice(i,i+QUALITY_RESULTS_CHUNK_SIZE));
-        const keys=chunks.map((_,i)=>QUALITY_RESULTS_MONTHLY_PREFIX+month+'_'+stamp+'_chunk_'+i);
-        await mapWithConcurrency(chunks,2,(chunk,i)=>_dashStorage.set(keys[i],JSON.stringify(chunk)));
-        const previous=index.months[month];
-        index.months[month]={month,savedAt:new Date().toISOString(),totalRows:merged.length,chunkCount:chunks.length,keys};
-        await _dashStorage.set(QUALITY_RESULTS_MONTHLY_INDEX_KEY,JSON.stringify(index));
-        if(previous&&Array.isArray(previous.keys)) await mapWithConcurrency(previous.keys,2,k=>_dashStorage.delete(k).catch(()=>null));
-        qualityMonthlyTestResults=qualityMonthlyTestResults.filter(r=>qualityResultMonth(r)!==month);
-        appendAll(qualityMonthlyTestResults,merged);
-      }
-      index.savedAt=new Date().toISOString();
-      await _dashStorage.set(QUALITY_RESULTS_MONTHLY_INDEX_KEY,JSON.stringify(index));
-      return true;
-    }catch(e){
-      console.error('persistMonthlyQualityTestResults:',e);
-      showToast('שגיאה בשמירת ארכיון האיכות החודשי: '+(e.message||e),true);
-      return false;
-    }
-  }
-
   async function persistQualityTestResults(){
     try{
       // V4.8.34: מנקים גם תוצאות ישנות של מתקנים שאינם קיימים עוד בסרגל.
@@ -2043,14 +1972,6 @@ html, body { margin:0; padding:0; background:#0A0D12; }
             await idbSet('quality_results',{sig:rsig,rows:qualityTestResults,at:new Date().toISOString()});
           }
         }
-      }
-      // הארכיון הישן נשאר בסיס קבוע; אליו מצרפים רק את החודשים החדשים.
-      const monthly=await loadMonthlyQualityTestResults();
-      if(monthly.length){
-        const byIdentity=new Map();
-        qualityTestResults.forEach(r=>byIdentity.set(qualityResultIdentity(r),r));
-        monthly.forEach(r=>byIdentity.set(qualityResultIdentity(r),r));
-        qualityTestResults=Array.from(byIdentity.values());
       }
     }catch(e){ console.error('loadQualityTestResults:',e); }
     setLoadStatus('');
@@ -2137,7 +2058,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   // מיפוי שורות תוצאה משורת כותרת + מקבץ שורות נתונים.
   // חולץ מתוך processQualityResultsWorkbook כדי שגם ה-Worker יוכל לקרוא לו
   // על מקטע שורות בכל פעם, במקום לבנות טבלה של 280K שורות בזיכרון בבת אחת.
-  function mapQualityResultRows(headerRow, dataRows, allowedFacilities){
+  function mapQualityResultRows(headerRow, dataRows){
     const out=[];
     const map=mapQualityHeaders(headerRow||[]);
     if(map.batch===undefined) return out;
@@ -2151,18 +2072,9 @@ html, body { margin:0; padding:0; background:#0A0D12; }
           const row=dataRows[i]||[];
           const batch=normalizeBatch(get(row,'batch'));
           if(!batch) continue;
-          const explicitFacility=normalizeFacilityForQuality(get(row,'facility'));
-          const storageCandidate=normalizeFacilityForQuality(get(row,'storage_location'));
-          // SAP משתמש באותה עמודה למיקום אחסון. רק ערך שמופיע ברשימת
-          // המתקנים נחשב למתקן; ערך כגון 1225 נשאר מיקום אחסון בלבד.
-          const facility=isDisplayedFacilityForLoad(explicitFacility)
-            ? explicitFacility
-            : (isDisplayedFacilityForLoad(storageCandidate)?storageCandidate:'');
-          // במסלול הקובץ הגדול מסננים כאן, בזמן קריאת ה-XML, לפני שהשורה
-          // מועתקת לחלון הראשי. כך מועברות רק שורות המתקנים הפעילים בסרגל.
-          if(Array.isArray(allowedFacilities) && (!facility || allowedFacilities.indexOf(facility)<0)) continue;
-          // אין לסנן כאן: בשלב זה טרם בוצע קישור למתקן לפי נתוני הכמות.
-          // הסינון והשיוך מתבצעים פעם אחת ב-filterQualityRowsToDisplayedFacilities.
+          const facility=normalizeFacilityForQuality(get(row,'facility'));
+          // V4.8.40: לא מסננים כאן לפי מתקן. בקובצי SAP המתקן עשוי להיות חסר
+          // או בפורמט אחר. השיוך מתבצע אחרי הפענוח מול נתוני הכמות ורק אז מסננים.
           // שם הבדיקה נלקח ממאפיין הבדיקה. 'Operation short text' הוא שלב
           // התהליך ("בדיקות מעבדה") וזהה לכל השורות — הוא רק גיבוי.
           const testName=String(get(row,'test_name')||get(row,'operation_text')||'').trim();
@@ -2190,11 +2102,8 @@ html, body { margin:0; padding:0; background:#0A0D12; }
             status='ללא גבולות';
           }
           const rangeText=(min!==null||max!==null)?((min!==null?min:'—')+' - '+(max!==null?max:'—')):'';
-          const rawDate=get(row,'date')||get(row,'lot_date')||get(row,'ud_date');
-          const resultDate=rawDate instanceof Date?dateObjToISO(rawDate):(typeof rawDate==='number'?excelSerialToISO(rawDate):(normalizeDateStr(String(rawDate||''))||''));
           out.push({
             batch,
-            date:resultDate,
             inspectionLot:String(get(row,'inspection_lot')||'').trim(),
             sample:String(get(row,'sample')||'').trim(),
             materialCode:String(get(row,'material_code')||'').replace(/\.0$/,'').trim(),
@@ -2318,7 +2227,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     // של לוגיקת הפענוח שיכול להיפרד מהמקור.
     const fns = [normalizeQualityHeader, mapQualityHeaders, findQualityHeaderRow,
                  normalizeBatch, isMissingTestValue, parseNumericResult, parseTestHeader,
-                 normalizeFacilityForLoad, isDisplayedFacilityForLoad, normalizeFacilityForQuality, dateObjToISO, excelSerialToISO, normalizeDateStr,
+                 normalizeFacilityForLoad, isDisplayedFacilityForLoad, normalizeFacilityForQuality, normalizeQualityWorkOrder, dateObjToISO, excelSerialToISO, normalizeDateStr,
                  mapQualityResultRows, processQualityRows, classifyQualityWorkbook,
                  processQualitySummaryWorkbook];
     const src = "importScripts(" + JSON.stringify(resolveXlsxUrl()) + ");\n"
@@ -2437,65 +2346,43 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 
   const QUALITY_LOWMEM_WORKER_MAIN = [
     "self.onmessage = function(e){",
-    "  var buf=e.data.buf, forcedMode=e.data.mode||'auto', activeFacilities=e.data.activeFacilities||[];",
+    "  var buf=e.data.buf, forcedMode=e.data.mode||'auto';",
     "  try{",
-    "    self.postMessage({type:'progress',pct:0,message:'פותח קובץ גדול בקריאה זורמת'});",
+    "    self.postMessage({type:'progress',pct:0,message:'פותח קובץ גדול במסלול חסכוני'});",
     "    importScripts('https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js');",
-    "    var bytes=new Uint8Array(buf);",
-    "    // sharedStrings קטן יחסית. פותחים רק אותו; ה-worksheet הגדול אינו נפרש כאן.",
-    "    var sharedZip=fflate.unzipSync(bytes,{filter:function(f){return f.name==='xl/sharedStrings.xml';}});",
-    "    var shared=parseSharedStrings(sharedZip['xl/sharedStrings.xml']); sharedZip=null;",
-    "    var any=false, sheetStarted=false, sheetFinished=false, workerFailure=null;",
-    "    var header=null, kind='', scanned=0, resultBuf=[], summaryBuf=[];",
-    "    var decoder=new TextDecoder('utf-8'), xmlTail='';",
-    "    function flushRows(finalChunk){",
-    "      var start=0;",
-    "      while(true){",
-    "        var rs=xmlTail.indexOf('<row',start);",
-    "        if(rs<0){ xmlTail=finalChunk?'':xmlTail.slice(Math.max(0,xmlTail.length-256)); return; }",
-    "        var gt=xmlTail.indexOf('>',rs), re=xmlTail.indexOf('</row>',gt+1);",
-    "        if(gt<0||re<0){ xmlTail=xmlTail.slice(rs); return; }",
-    "        var row=parseRow(xmlTail.slice(gt+1,re),shared);",
-    "        start=re+6;",
+    "    var zip=fflate.unzipSync(new Uint8Array(buf)); buf=null;",
+    "    var shared=parseSharedStrings(zip['xl/sharedStrings.xml']);",
+    "    if(zip['xl/sharedStrings.xml']) delete zip['xl/sharedStrings.xml'];",
+    "    var names=Object.keys(zip).filter(function(k){return /^xl\\/worksheets\\/sheet\\d+\\.xml$/i.test(k);}).sort(function(a,b){return sheetNumber(a)-sheetNumber(b);});",
+    "    var totalSheets=names.length||1, any=false;",
+    "    for(var si=0;si<names.length;si++){",
+    "      var name=names[si], xml=fflate.strFromU8(zip[name]); delete zip[name];",
+    "      var rowRe=/<row\\b[^>]*>([\\s\\S]*?)<\\/row>/g, rm, header=null, kind='', scanned=0;",
+    "      var resultBuf=[], summaryBuf=[];",
+    "      while((rm=rowRe.exec(xml))){",
+    "        var row=parseRow(rm[1],shared);",
     "        if(!header){",
-    "          if(scanned++>=40){ xmlTail=xmlTail.slice(start); return; }",
+    "          if(scanned++>=40) break;",
     "          var mm=mapQualityHeaders(row||[]);",
     "          var hasMeasure=(mm.measured_value!==undefined||mm.lower_limit!==undefined||mm.upper_limit!==undefined);",
     "          var isResult=mm.batch!==undefined&&(mm.test_name!==undefined||mm.operation_text!==undefined)&&hasMeasure;",
     "          var isSummary=mm.batch!==undefined&&mm.ud_code!==undefined&&!hasMeasure;",
-    "          if((forcedMode==='results'&&isResult)||(forcedMode==='summary'&&isSummary)||(forcedMode==='auto'&&(isResult||isSummary))){ header=row; kind=isResult?'results':'summary'; }",
-    "          xmlTail=xmlTail.slice(start); start=0; continue;",
+    "          if((forcedMode==='results'&&isResult)||(forcedMode==='summary'&&isSummary)||(forcedMode==='auto'&&(isResult||isSummary))){ header=row; kind=isResult?'results':'summary'; continue; }",
+    "          continue;",
     "        }",
-    "        if(kind==='results') { var rr=mapQualityResultRows(header,[row],activeFacilities); if(rr.length) Array.prototype.push.apply(resultBuf,rr); }",
+    "        if(kind==='results') { var rr=mapQualityResultRows(header,[row]); if(rr.length) Array.prototype.push.apply(resultBuf,rr); }",
     "        else { var sr=processQualityRows(header,[row]); if(sr.length) Array.prototype.push.apply(summaryBuf,sr); }",
-    "        if(resultBuf.length>=5000){ self.postMessage({type:'results',rows:resultBuf}); resultBuf=[]; any=true; }",
+    "        if(resultBuf.length>=5000){ self.postMessage({type:'results',rows:resultBuf,pct:Math.min(99,Math.round((si+(rowRe.lastIndex/xml.length))/totalSheets*100))}); resultBuf=[]; any=true; }",
     "        if(summaryBuf.length>=5000){ self.postMessage({type:'summary',rows:summaryBuf}); summaryBuf=[]; any=true; }",
-    "        if((scanned%10000)===0) self.postMessage({type:'progress',message:'סורק ומסנן מתקנים פעילים · '+scanned.toLocaleString()+' שורות'});",
+    "        if((scanned%5000)===0) self.postMessage({type:'progress',pct:Math.min(99,Math.round((si+(rowRe.lastIndex/xml.length))/totalSheets*100)),message:'מסנן רק מתקנים פעילים'});",
     "        scanned++;",
-    "        if(start>1048576){ xmlTail=xmlTail.slice(start); start=0; }",
     "      }",
+    "      if(resultBuf.length){ self.postMessage({type:'results',rows:resultBuf,pct:Math.min(99,Math.round((si+1)/totalSheets*100))}); any=true; }",
+    "      if(summaryBuf.length){ self.postMessage({type:'summary',rows:summaryBuf}); any=true; }",
+    "      xml=null;",
+    "      if(header) break;",
     "    }",
-    "    var unzip=new fflate.Unzip(function(file){",
-    "      if(sheetStarted||!/^xl\\/worksheets\\/sheet\\d+\\.xml$/i.test(file.name)) return;",
-    "      sheetStarted=true;",
-    "      file.ondata=function(err,data,final){",
-    "        if(err){ workerFailure=err; return; }",
-    "        try{ xmlTail+=decoder.decode(data,{stream:!final}); flushRows(final); if(final) sheetFinished=true; }",
-    "        catch(ex){ workerFailure=ex; }",
-    "      };",
-    "      file.start();",
-    "    });",
-    "    unzip.register(fflate.UnzipInflate);",
-    "    for(var off=0;off<bytes.length;off+=524288){",
-    "      if(workerFailure) throw workerFailure;",
-    "      var end=Math.min(bytes.length,off+524288); unzip.push(bytes.subarray(off,end),end===bytes.length);",
-    "      if((off%5242880)===0) self.postMessage({type:'progress',pct:Math.min(99,Math.round(end/bytes.length*100)),message:'קורא קובץ גדול בזרם'});",
-    "    }",
-    "    if(workerFailure) throw workerFailure;",
-    "    if(!sheetStarted||!sheetFinished) throw new Error('לא נמצא גיליון נתונים תקין בקובץ');",
-    "    if(resultBuf.length){ self.postMessage({type:'results',rows:resultBuf,pct:100}); any=true; }",
-    "    if(summaryBuf.length){ self.postMessage({type:'summary',rows:summaryBuf}); any=true; }",
-    "    bytes=null; buf=null; shared=null; xmlTail='';",
+    "    shared=null; zip=null;",
     "    self.postMessage({type:'done',lowMemory:true,any:any});",
     "  }catch(err){ self.postMessage({type:'error',message:String((err&&err.message)||err)}); }",
     "};"
@@ -2504,7 +2391,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   function buildQualityLowMemWorkerUrl(){
     if(_qualityLowMemWorkerUrl) return _qualityLowMemWorkerUrl;
     const fns=[normalizeQualityHeader,mapQualityHeaders,normalizeBatch,isMissingTestValue,parseNumericResult,
-               normalizeFacilityForLoad,isDisplayedFacilityForLoad,normalizeFacilityForQuality,dateObjToISO,
+               normalizeFacilityForLoad,isDisplayedFacilityForLoad,normalizeFacilityForQuality,normalizeQualityWorkOrder,dateObjToISO,
                excelSerialToISO,normalizeDateStr,mapQualityResultRows,processQualityRows];
     const src="var QUALITY_HEADER_MAP="+JSON.stringify(QUALITY_HEADER_MAP)+";\n"
       +"var OLD_TO_NEW_FACILITY="+JSON.stringify(OLD_TO_NEW_FACILITY)+";\n"
@@ -2531,8 +2418,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
         if(d.type==='error') return finish(reject,new Error(d.message||'שגיאת פענוח חסכוני'));
       };
       worker.onerror=function(ev){ finish(reject,Object.assign(new Error(ev&&ev.message||'LOWMEM_WORKER_CRASHED'),{code:'LOWMEM_WORKER_CRASHED'})); };
-      const activeFacilities=selectedFacilities===null?FACILITY_OPTIONS.slice():Array.from(selectedFacilities||[]);
-      file.arrayBuffer().then(function(buf){ worker.postMessage({buf:buf,mode:forcedMode||'auto',activeFacilities:activeFacilities},[buf]); },function(err){ finish(reject,err); });
+      file.arrayBuffer().then(function(buf){ worker.postMessage({buf:buf,mode:forcedMode||'auto'},[buf]); },function(err){ finish(reject,err); });
     });
   }
 
@@ -2560,23 +2446,19 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       showToast(files.length===1?'קורא ומזהה את קובץ האיכות...':'קורא ומזהה את שני קובצי האיכות...');
 
       let summaryRows=[], resultRows=[], sourceNames=[], failedFiles=[];
-      let unresolvedFacilityRows=0, unresolvedFacilitySamples=[];
       for(const file of files){
         const sizeMB = (file.size||0)/1048576;
         let foundSummary=[], foundResults=[];
         let parsedInWorker=false, workerError='';
         if(typeof Worker!=='undefined'){
           try{
-            // V4.8.39 — חזרה למסלול היציב שעבד לפני שינוי מנגנון הקבצים הגדולים.
-            // הפענוח רץ ב-Worker עם dense:true, ובמהלך מיפוי השורות נשמרות
-            // רק התחנות שמופיעות בסרגל המתקנים.
+            // V4.8.40 — שלושת מקורות הנתונים משתמשים באותה חוקיות: קובץ גדול עובר
+            // למסלול חסכוני/Worker, ורק לאחר הפענוח מתבצע שיוך וסינון למתקנים הפעילים.
             showToast('מפענח את '+file.name+' ברקע...');
-            // V4.8.43: קובצי איכות חדשים מעל 45MB כוללים מעל 330K שורות.
-            // מסלול SheetJS המלא עשוי לסיים ללא שורות עקב לחץ זיכרון בדפדפן.
-            // עבורם משתמשים במפרש ה-ZIP החסכוני; לקבצים הישנים נשמר המסלול היציב.
-            const useLowMemory = sizeMB >= 45;
-            const parser = useLowMemory ? parseQualityFileLowMemoryWorker : parseQualityFileInWorker;
-            const out = await parser(file, p=>{
+            const qualityParser = sizeMB >= QUALITY_LOWMEM_THRESHOLD_MB
+              ? parseQualityFileLowMemoryWorker
+              : parseQualityFileInWorker;
+            const out = await qualityParser(file, p=>{
               const pct = (p && typeof p.pct==='number') ? ' '+p.pct+'%' : '';
               setQualityLoadProgress(file.name+pct+(p&&p.message?' · '+p.message:''));
             }, forcedMode||'auto');
@@ -2607,14 +2489,6 @@ html, body { margin:0; padding:0; background:#0A0D12; }
         // לפי נתוני הכמות הקיימים ורק לאחר מכן מסננים למתקנים שבסרגל.
         foundSummary = filterQualityRowsToDisplayedFacilities(foundSummary);
         foundResults = filterQualityRowsToDisplayedFacilities(foundResults);
-        [foundSummary,foundResults].forEach(filtered=>{
-          const stats=filtered&&filtered.facilityFilterStats;
-          if(!stats) return;
-          unresolvedFacilityRows+=stats.unresolved||0;
-          (stats.unresolvedSamples||[]).forEach(sample=>{
-            if(unresolvedFacilitySamples.length<8 && !unresolvedFacilitySamples.some(x=>x.batch===sample.batch&&x.workOrder===sample.workOrder)) unresolvedFacilitySamples.push(sample);
-          });
-        });
         appendAll(summaryRows, foundSummary);
         appendAll(resultRows, foundResults);
         // רישום לכל קובץ בנפרד, כדי שבטעינת חלקים מרובים יופיע שם כל חלק
@@ -2680,9 +2554,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
           if(seen.has(k)) return false; seen.add(k); return true;
         });
         rebuildQualityTestIndex();
-        // הארכיון שכבר קיים בענן אינו נכתב מחדש. רק השורות מהקובץ
-        // הנוכחי נשמרות במקטע החודשי המתאים.
-        okResults=await persistMonthlyQualityTestResults(resultRows);
+        okResults=await persistQualityTestResults();
       }
 
       if(!(okSummary&&okResults)) return false;
@@ -2698,16 +2570,13 @@ html, body { margin:0; padding:0; background:#0A0D12; }
         showToast(failedFiles.length + ' מתוך ' + files.length + ' הקבצים לא נטענו: ' + names +
           (big.length ? ' — הפענוח החסכוני לא הצליח בקובץ זה.' : ' — הכותרות לא זוהו.'), true);
       }
-      const unresolvedNote=unresolvedFacilityRows
-        ? ' · '+unresolvedFacilityRows+' שורות ללא שיוך מתקן (דוגמאות מנה: '+unresolvedFacilitySamples.map(x=>x.batch).join(', ')+')'
-        : '';
       if(summaryRows.length && resultRows.length){
-        showToast('האיכות נטענה: '+summaryRows.length+' מנות · '+resultRows.length+' תוצאות בדיקה | '+sourceNames.join(' + ')+unresolvedNote,!!unresolvedFacilityRows);
+        showToast('האיכות נטענה: '+summaryRows.length+' מנות · '+resultRows.length+' תוצאות בדיקה | '+sourceNames.join(' + '));
       }else if(summaryRows.length){
-        showToast('קובץ סיכום האיכות נטען: '+summaryRows.length+' מנות. כעת ניתן לטעון את קובץ תוצאות הבדיקה החדש.'+unresolvedNote,!!unresolvedFacilityRows);
+        showToast('קובץ סיכום האיכות נטען: '+summaryRows.length+' מנות. כעת ניתן לטעון את קובץ תוצאות הבדיקה החדש.');
       }else{
         const linked=Object.keys(qualityBestByKey||{}).length;
-        showToast('קובץ תוצאות הבדיקה נטען: '+resultRows.length+' תוצאות בדיקה'+(linked?' · קושר למנות סיכום האיכות':' · יש לטעון גם את קובץ סיכום האיכות')+unresolvedNote,!!unresolvedFacilityRows);
+        showToast('קובץ תוצאות הבדיקה נטען: '+resultRows.length+' תוצאות בדיקה'+(linked?' · קושר למנות סיכום האיכות':' · יש לטעון גם את קובץ סיכום האיכות'));
       }
       return true;
     }catch(e){ console.error(e); showToast('שגיאה בטעינת/שמירת האיכות: '+(e.message||e),true); return false; }
@@ -2852,8 +2721,8 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       const udCode = getStr(cols,map.ud_code,'');
       if(!udCode && !batch) return;
       const facility = normalizeFacilityForQuality(getStr(cols,map.facility,''));
-      // V4.8.34: החלטת שימוש נשמרת רק למתקנים שמוצגים בסרגל המתקנים.
-      if(facility && !isDisplayedFacilityForLoad(facility)) return;
+      // V4.8.40: גם בהחלטת שימוש השיוך למתקן מתבצע לאחר הפענוח מול נתוני הכמות.
+      // כך שורה עם מתקן חסר/שונה לא נזרקת לפני שניתן לקשר אותה למנה הנכונה.
       const q = {
         batch,
         materialCode: (getStr(cols,map.material_code,'') || getStr(cols,map.central_item,'')).replace(/\.0$/,''),
@@ -3315,6 +3184,10 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   // V4.8.39 — בקובצי איכות/החלטת שימוש עמודת המתקן אינה תמיד קיימת.
   // במקרה כזה משייכים את השורה למתקן לפי נתוני הכמות שכבר נטענו (מק"ט+מנה,
   // פקודת עבודה+מנה, ולבסוף מנה כאשר היא חד-משמעית), ורק אז מסננים לסרגל.
+  // V4.8.40: Excel/SAP עשוי להחזיר פקודת עבודה כמספר עם .0 או עם אפסים מובילים.
+  function normalizeQualityWorkOrder(value){
+    return String(value == null ? '' : value).trim().replace(/\.0+$/,'').replace(/^0+(?=\d)/,'');
+  }
   function buildQualityFacilityLookup(){
     const byMatBatch=new Map(), byWoBatch=new Map(), byBatch=new Map();
     const ambiguous=new Set();
@@ -3324,7 +3197,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       const batch=normalizeBatch(e.batch);
       if(!batch) return;
       const mat=String(e.materialCode||'').replace(/\.0$/,'').trim();
-      const wo=String(e.workOrder||'').trim();
+      const wo=normalizeQualityWorkOrder(e.workOrder);
       if(mat) byMatBatch.set(mat+'|'+batch,fac);
       if(wo) byWoBatch.set(wo+'|'+batch,fac);
       if(!byBatch.has(batch)) byBatch.set(batch,fac);
@@ -3339,43 +3212,23 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     const batch=normalizeBatch(row&&row.batch);
     if(!batch) return '';
     const mat=String((row&&row.materialCode)||'').replace(/\.0$/,'').trim();
-    const wo=String((row&&(row.workOrder||row.operation))||'').trim();
+    const wo=normalizeQualityWorkOrder(row&&(row.workOrder||row.operation));
     if(mat && lookup.byMatBatch.has(mat+'|'+batch)) return lookup.byMatBatch.get(mat+'|'+batch);
     if(wo && lookup.byWoBatch.has(wo+'|'+batch)) return lookup.byWoBatch.get(wo+'|'+batch);
     return lookup.byBatch.get(batch)||'';
   }
   function filterQualityRowsToDisplayedFacilities(rows){
     const lookup=buildQualityFacilityLookup();
-    let inferred=0, direct=0, dropped=0, unresolved=0;
-    const unresolvedSamples=[];
+    let inferred=0, direct=0, dropped=0;
     const out=[];
     (rows||[]).forEach(r=>{
       const original=normalizeFacilityForLoad(r&&r.facility);
       const fac=resolveQualityFacility(r,lookup);
-      if(!isDisplayedFacilityForLoad(fac)){
-        // אם לקובץ האיכות אין עמודת מתקן ולא נמצא קישור לנתוני הכמות,
-        // שומרים את השורה כלא-משויכת. מתקן מפורש שאינו בסרגל עדיין נפסל.
-        if(!original){
-          unresolved++;
-          r.facility='';
-          if(unresolvedSamples.length<8){
-            unresolvedSamples.push({
-              batch:normalizeBatch(r&&r.batch)||'—',
-              workOrder:String((r&&(r.workOrder||r.operation))||'').trim()||'—',
-              materialCode:String((r&&r.materialCode)||'').replace(/\.0$/,'').trim()||'—'
-            });
-          }
-          out.push(r);
-          return;
-        }
-        dropped++;
-        return;
-      }
+      if(!isDisplayedFacilityForLoad(fac)){ dropped++; return; }
       if(original===fac) direct++; else inferred++;
       r.facility=fac; out.push(r);
     });
-    out.facilityFilterStats={input:(rows||[]).length,kept:out.length,direct,inferred,dropped,unresolved,unresolvedSamples};
-    console.log('quality facility filter:',out.facilityFilterStats);
+    console.log('quality facility filter:',{input:(rows||[]).length,kept:out.length,direct,inferred,dropped});
     return out;
   }
   const PLANTS = ['XX15'];
@@ -8354,6 +8207,79 @@ function renderAll(){
     });
     return rows;
   }
+
+
+  // ---------- V4.8.40: טעינת קובץ כמויות גדול ב-Worker ובמקטעים ----------
+  // אותה חוקיות של קובצי האיכות: הפענוח הכבד לא רץ ב-thread הראשי,
+  // והמרה ל-JS נעשית במקטעים. processRows ממשיך להיות מקור האמת לכל חוקי הכמויות.
+  const PRODUCTION_WORKER_THRESHOLD_MB = 12;
+  const PRODUCTION_WORKER_ROW_STEP = 20000;
+  let _productionWorkerUrl = null;
+
+  function buildProductionWorkerUrl(){
+    if(_productionWorkerUrl) return _productionWorkerUrl;
+    const fns=[pad2,toISO,dateObjToISO,excelSerialToISO,normalizeDateStr,shiftFromHour,parseFinishTimeToHour,
+               detectPackagingTypeFromText,normalizeFacilityForLoad,isDisplayedFacilityForLoad,getPlant,processRows];
+    const src="importScripts("+JSON.stringify(resolveXlsxUrl())+");\n"
+      +"var HEADER_MAP="+JSON.stringify(HEADER_MAP)+";\n"
+      +"var OLD_TO_NEW_FACILITY="+JSON.stringify(OLD_TO_NEW_FACILITY)+";\n"
+      +"var FACILITY_OPTIONS="+JSON.stringify(FACILITY_OPTIONS)+";\n"
+      +"var PACKAGING_ONLY_FACILITIES="+JSON.stringify(PACKAGING_ONLY_FACILITIES)+";\n"
+      +"var FACILITY_TO_PLANT="+JSON.stringify(FACILITY_TO_PLANT)+";\n"
+      +"var SHIFTS="+JSON.stringify(SHIFTS)+";\n"
+      +"var genId=function(){return 'e_'+Date.now()+'_'+Math.random().toString(36).slice(2,8);};\n"
+      +fns.map(f=>f.toString()).join("\n\n")+"\n\n"
+      +[
+        "self.onmessage=function(e){",
+        "  var buf=e.data.buf;",
+        "  try{",
+        "    self.postMessage({type:'progress',pct:0,message:'קורא קובץ כמויות'});",
+        "    var wb=XLSX.read(new Uint8Array(buf),{type:'array',cellDates:false,dense:true}); buf=null;",
+        "    var ws=wb.Sheets[wb.SheetNames[0]];",
+        "    if(!ws||!ws['!ref']) throw new Error('הקובץ לא מכיל גיליון נתונים');",
+        "    var range=XLSX.utils.decode_range(ws['!ref']);",
+        "    var headerGrid=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:true,blankrows:false,range:XLSX.utils.encode_range({s:{r:range.s.r,c:range.s.c},e:{r:range.s.r,c:range.e.c}})});",
+        "    var header=headerGrid[0]||[];",
+        "    var total=Math.max(0,range.e.r-range.s.r), kept=0;",
+        "    for(var start=range.s.r+1;start<=range.e.r;start+=20000){",
+        "      var end=Math.min(range.e.r,start+19999);",
+        "      var grid=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:true,blankrows:false,range:XLSX.utils.encode_range({s:{r:start,c:range.s.c},e:{r:end,c:range.e.c}})});",
+        "      var rows=processRows(header,grid); grid=null;",
+        "      if(rows===null) throw new Error('לא נמצאה עמודת תאריך בקובץ');",
+        "      kept+=rows.length;",
+        "      self.postMessage({type:'rows',rows:rows,pct:total?Math.round((end-range.s.r)/total*100):100,kept:kept});",
+        "    }",
+        "    self.postMessage({type:'done',kept:kept});",
+        "  }catch(err){self.postMessage({type:'error',message:String((err&&err.message)||err)});}",
+        "};"
+      ].join("\n");
+    _productionWorkerUrl=URL.createObjectURL(new Blob([src],{type:'text/javascript'}));
+    return _productionWorkerUrl;
+  }
+
+  function parseProductionFileInWorker(file,onProgress){
+    return new Promise(function(resolve,reject){
+      let worker;
+      try{worker=new Worker(buildProductionWorkerUrl());}
+      catch(e){reject(Object.assign(new Error('PRODUCTION_WORKER_UNAVAILABLE'),{code:'PRODUCTION_WORKER_UNAVAILABLE'}));return;}
+      const rows=[];
+      const finish=(fn,payload)=>{try{worker.terminate();}catch(e){} fn(payload);};
+      worker.onmessage=function(ev){
+        const d=ev.data||{};
+        if(d.type==='progress'){onProgress&&onProgress(d);return;}
+        if(d.type==='rows'){
+          if(d.rows&&d.rows.length) appendAll(rows,d.rows);
+          onProgress&&onProgress({pct:d.pct,message:'מסנן מתקנים פעילים: '+rows.length.toLocaleString('he-IL')+' שורות'});
+          return;
+        }
+        if(d.type==='done') return finish(resolve,rows);
+        if(d.type==='error') return finish(reject,new Error(d.message||'שגיאה בפענוח קובץ הכמויות'));
+      };
+      worker.onerror=function(ev){finish(reject,Object.assign(new Error(ev&&ev.message||'PRODUCTION_WORKER_CRASHED'),{code:'PRODUCTION_WORKER_CRASHED'}));};
+      file.arrayBuffer().then(buf=>worker.postMessage({buf},[buf]),err=>finish(reject,err));
+    });
+  }
+
   async function classifyUnifiedFile(file){
     const name=String(file.name||'').toLowerCase();
     if(/target|יעד/.test(name)) return 'targets';
@@ -8387,7 +8313,7 @@ function renderAll(){
 
   async function markCloudDataChanged(){
     if(IS_LOCAL_FILE) return;
-    const payload=JSON.stringify({at:Date.now(),by:'upload',version:'4.8.19'});
+    const payload=JSON.stringify({at:Date.now(),by:'upload',version:'4.8.40'});
     await _dashStorage.set(CLOUD_SYNC_VERSION_KEY,payload);
     _lastSeenCloudSyncVersion=payload;
   }
@@ -8435,15 +8361,31 @@ function renderAll(){
     try {
       const name = file.name.toLowerCase();
       let headerRow, dataRows;
+      let workerRows = null;
       if(name.endsWith('.xlsx') || name.endsWith('.xls')){
         if(typeof XLSX === 'undefined'){ showToast('ספריית Excel לא נטענה — ודאו שיש חיבור אינטרנט ורעננו את הדף (Ctrl+R / Cmd+R).', true); return; }
-        const buf = await file.arrayBuffer();
-        const wb = XLSX.read(buf, {type:'array', cellDates:false});
-        const sheet = wb.Sheets[wb.SheetNames[0]];
-        const grid = XLSX.utils.sheet_to_json(sheet, {header:1, defval:'', raw:true});
-        if(grid.length<2){ showToast('הקובץ לא מכיל שורות נתונים', true); return; }
-        headerRow = grid[0];
-        dataRows = grid.slice(1);
+        const sizeMB=(file.size||0)/1048576;
+        if(sizeMB >= PRODUCTION_WORKER_THRESHOLD_MB && typeof Worker!=='undefined'){
+          try{
+            showToast('מפענח קובץ כמויות גדול ברקע...');
+            workerRows=await parseProductionFileInWorker(file,p=>{
+              const pct=(p&&typeof p.pct==='number')?' '+p.pct+'%':'';
+              setQualityLoadProgress(file.name+pct+(p&&p.message?' · '+p.message:''));
+            });
+          }catch(workerErr){
+            console.warn('production worker failed; falling back to main thread',workerErr);
+            workerRows=null;
+          }finally{ setQualityLoadProgress(''); }
+        }
+        if(workerRows===null){
+          const buf = await file.arrayBuffer();
+          const wb = XLSX.read(buf, {type:'array', cellDates:false, dense:true});
+          const sheet = wb.Sheets[wb.SheetNames[0]];
+          const grid = XLSX.utils.sheet_to_json(sheet, {header:1, defval:'', raw:true});
+          if(grid.length<2){ showToast('הקובץ לא מכיל שורות נתונים', true); return; }
+          headerRow = grid[0];
+          dataRows = grid.slice(1);
+        }
       } else {
         const text = await file.text();
         const lines = text.split(/\r?\n/).filter(l=>l.trim().length>0);
@@ -8453,7 +8395,7 @@ function renderAll(){
         headerRow = splitCSVLine(cleanFirst, delim);
         dataRows = lines.slice(1).map(l=>splitCSVLine(l, delim));
       }
-      const rows = processRows(headerRow, dataRows);
+      const rows = workerRows !== null ? workerRows : processRows(headerRow, dataRows);
       if(rows===null){ showToast('לא נמצאה עמודת תאריך בקובץ. בדקו את הכותרות.', true); return; }
       if(rows.length===0){ showToast('לא נמצאו שורות תקינות בקובץ', true); return; }
       // ייבוא SAP הוא Upsert: רשומה קיימת מוחלפת בגרסה העדכנית מהקובץ.
@@ -8519,7 +8461,7 @@ function renderAll(){
       '<div class="topbar">'+
         '<div class="brand">'+
           '<div class="brand-mark">IML</div>'+
-          '<div><h1>IML Production Dashboard <span class="app-version-badge">V4.8.48</span></h1><p><span id="entryCount">טוען נתונים…</span> <span id="storageStatusBadge" class="storage-status"></span></p><p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;"><span id="dataStatusLine">בודק נתונים…</span></p><div class="load-health" id="loadHealth"><span class="load-health-chip missing">כמויות —</span><span class="load-health-chip missing">איכות —</span><span class="load-health-chip missing">החלטת שימוש —</span><span class="load-health-chip missing">יעדים —</span></div><div id="fileSourcesPanel" style="display:none"></div></div>'+ 
+          '<div><h1>IML Production Dashboard <span class="app-version-badge">V4.8.40</span></h1><p><span id="entryCount">טוען נתונים…</span> <span id="storageStatusBadge" class="storage-status"></span></p><p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;"><span id="dataStatusLine">בודק נתונים…</span></p><div class="load-health" id="loadHealth"><span class="load-health-chip missing">כמויות —</span><span class="load-health-chip missing">איכות —</span><span class="load-health-chip missing">החלטת שימוש —</span><span class="load-health-chip missing">יעדים —</span></div><div id="fileSourcesPanel" style="display:none"></div></div>'+
         '</div>'+
         '<div class="topbar-actions"><span id="roleBadge" class="role-badge viewer">👁 צפייה בלבד</span><button class="tab-btn" id="adminLoginBtn" style="background:rgba(255,255,255,0.06);color:var(--text);font-size:12px;padding:6px 14px;">🔐 כניסת מנהל</button><button class="tab-btn" id="refreshSharedBtn" style="background:rgba(20,184,166,0.12);color:var(--teal);font-size:12px;padding:6px 14px;">🔄 רענן נתונים</button><button class="tab-btn" id="addEventTopBtn" style="background:rgba(139,183,255,0.12);color:#8BB7FF;font-size:12px;padding:6px 14px;">+ הוסף אירוע</button><button class="tab-btn" id="advancedDashboardBtn" style="background:var(--teal-soft);color:var(--green);font-size:12px;padding:6px 14px;">📊 דשבורד חדש</button><button class="tab-btn" id="excelAnalyzedExportBtn" style="background:rgba(124,217,146,0.12);color:#7CD992;font-size:12px;padding:6px 14px;">📥 ייצוא ניתוח לאקסל</button><button class="tab-btn" id="dailyFormulationExportBtn" style="background:rgba(255,183,77,0.14);color:#FFB74D;font-size:12px;padding:6px 14px;">📋 ייצוא דיווח יומי</button><button class="tab-btn" id="dailyFormulationLoadBtn" style="background:rgba(255,183,77,0.08);color:#FFD08A;font-size:12px;padding:6px 14px;">📂 דוח יומי שמור</button><button class="tab-btn" id="monthlyFormulationReportBtn" style="background:rgba(52,211,153,0.10);color:#6EE7B7;font-size:12px;padding:6px 14px;">📊 דוח חודשי מרכז</button><label for="dailyFormulationImportInput" class="tab-btn admin-only" style="background:rgba(96,165,250,0.12);color:#93C5FD;font-size:12px;padding:6px 14px;cursor:pointer;">📤 טעינת דוח יומי מעודכן</label><input id="dailyFormulationImportInput" type="file" accept=".xlsx,.xls" style="display:none"><label for="qualityFileInput" class="tab-btn admin-only" id="qualityFileBtn" style="background:rgba(239,68,68,0.12);color:var(--red);font-size:12px;padding:6px 14px;cursor:pointer;">🧪 טעינת איכות</label><label for="usageDecisionFileInput" class="tab-btn admin-only" id="usageDecisionFileBtn" style="background:rgba(251,191,36,0.12);color:var(--yellow);font-size:12px;padding:6px 14px;cursor:pointer;">✅ טעינת החלטת שימוש</label><button class="tab-btn" id="whatsappExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📲 WhatsApp טקסט</button><button class="tab-btn" id="whatsappImageExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📸 צילום דשבורד</button><label for="quantityFileInput" class="tab-btn admin-only" id="quantityFileBtn" style="background:rgba(45,212,191,0.14);color:var(--teal);font-size:12px;padding:6px 14px;cursor:pointer;">📦 טעינת כמות</label><label for="targetsFileInput" class="tab-btn admin-only" id="targetsFileBtn" style="background:rgba(167,139,250,0.13);color:var(--purple);font-size:12px;padding:6px 14px;cursor:pointer;">🎯 טעינת קובץ יעדים</label><button class="tab-btn" id="targetsTemplateBtn" style="background:rgba(167,139,250,0.08);color:var(--purple);font-size:12px;padding:6px 14px;">⬇ תבנית יעדים</button><button class="tab-btn admin-only" id="targetsProdBtn" style="background:var(--amber-soft);color:var(--amber);font-size:12px;padding:6px 14px;">⚙ יעדי ייצור</button><button class="tab-btn admin-only" id="targetsBtn" style="background:var(--teal-soft);color:var(--teal);font-size:12px;padding:6px 14px;">⚙ יעדי אריזה</button><button class="tab-btn admin-only" id="resetBtn" style="background:rgba(255,255,255,0.05);color:var(--text-muted);font-size:12px;padding:6px 14px;">איפוס</button></div>'+
       '</div>'+
@@ -9238,7 +9180,7 @@ root.querySelector('#printBtn').onclick = ()=> window.print();
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   window.addEventListener('load', async () => {
     try {
-      const reg = await navigator.serviceWorker.register('./service-worker.js?v=4.8.48', { updateViaCache: 'none' });
+      const reg = await navigator.serviceWorker.register('./service-worker.js?v=4.8.38', { updateViaCache: 'none' });
       await reg.update();
       let reloading = false;
       navigator.serviceWorker.addEventListener('controllerchange', () => {
