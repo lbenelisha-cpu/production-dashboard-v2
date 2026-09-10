@@ -4175,7 +4175,16 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     return String(v==null?'':v).replace(/\s+/g,' ').trim();
   }
   function normalizeSscc(v){
-    return String(v==null?'':v).replace(/\D/g,'').slice(0,18);
+    return String(v==null?'':v).replace(/\D/g,'').slice(0,20);
+  }
+  function canonicalInventorySscc(v){
+    const n=normalizeSscc(v);
+    // GS1 AI (00) may appear as two leading zeroes before the 18-digit SSCC.
+    return (n.length===20 && n.startsWith('00')) ? n.slice(2) : n;
+  }
+  function isValidInventorySscc(v){
+    const n=normalizeSscc(v);
+    return n.length===18 || (n.length===20 && n.startsWith('00'));
   }
   function inventoryToday(){ return todayISO(); }
 
@@ -4263,10 +4272,10 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   }
 
   async function findDuplicateInventorySscc(sscc){
-    const normalized=normalizeSscc(sscc);
+    const normalized=canonicalInventorySscc(sscc);
     if(!normalized || normalized.length!==18) return null;
     await loadInventoryCountRows();
-    return inventoryCountRows.find(r=>normalizeSscc(r.sscc)===normalized) || null;
+    return inventoryCountRows.find(r=>canonicalInventorySscc(r.sscc)===normalized) || null;
   }
 
   async function warnDuplicateInventorySscc(sscc){
@@ -4279,6 +4288,67 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     return true;
   }
 
+  async function ensureJsQR(){
+    if(window.jsQR) return window.jsQR;
+    await new Promise((resolve,reject)=>{
+      const old=document.getElementById('inventoryJsQrScript');
+      if(old){ old.addEventListener('load',resolve,{once:true}); old.addEventListener('error',reject,{once:true}); return; }
+      const sc=document.createElement('script'); sc.id='inventoryJsQrScript';
+      sc.src='https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js';
+      sc.onload=resolve; sc.onerror=reject; document.head.appendChild(sc);
+    });
+    return window.jsQR;
+  }
+
+  async function decodeInventory2DCode(file){
+    // Prefer the browser's native detector when available (fast on iPhone/modern browsers).
+    try{
+      if('BarcodeDetector' in window){
+        const formats=await BarcodeDetector.getSupportedFormats().catch(()=>[]);
+        const wanted=['qr_code','data_matrix','aztec','pdf417'].filter(f=>formats.includes(f));
+        if(wanted.length){
+          const detector=new BarcodeDetector({formats:wanted});
+          const bitmap=await createImageBitmap(file);
+          try{
+            const found=await detector.detect(bitmap);
+            const hit=(found||[]).find(x=>String(x.rawValue||'').trim());
+            if(hit) return String(hit.rawValue||'').trim();
+          }finally{ try{bitmap.close();}catch(e){} }
+        }
+      }
+    }catch(e){ console.warn('Native barcode decode failed',e); }
+
+    // QR fallback for browsers without BarcodeDetector support.
+    try{
+      const jsQR=await ensureJsQR();
+      if(!jsQR) return '';
+      const bitmap=await createImageBitmap(file);
+      try{
+        const maxSide=1800;
+        const scale=Math.min(1,maxSide/Math.max(bitmap.width,bitmap.height));
+        const w=Math.max(1,Math.round(bitmap.width*scale));
+        const h=Math.max(1,Math.round(bitmap.height*scale));
+        const canvas=document.createElement('canvas'); canvas.width=w; canvas.height=h;
+        const ctx=canvas.getContext('2d',{willReadFrequently:true});
+        ctx.drawImage(bitmap,0,0,w,h);
+        const img=ctx.getImageData(0,0,w,h);
+        const code=jsQR(img.data,w,h,{inversionAttempts:'attemptBoth'});
+        return code && code.data ? String(code.data).trim() : '';
+      }finally{ try{bitmap.close();}catch(e){} }
+    }catch(e){ console.warn('QR fallback decode failed',e); }
+    return '';
+  }
+
+  function ssccFromInventoryCode(raw){
+    const digits=String(raw||'').replace(/\D/g,'');
+    // GS1 AI 00 + 18-digit SSCC. Keep the printed 20-digit representation in the field/export.
+    if(digits.length===20 && digits.startsWith('00')) return digits;
+    if(digits.length===18) return digits;
+    const m=digits.match(/00\d{18}/);
+    if(m) return m[0];
+    return '';
+  }
+
   async function processInventoryPhoto(file){
     if(!file || inventoryOcrBusy) return;
     inventoryEntrySource = 'camera';
@@ -4286,26 +4356,51 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     const status=root.querySelector('#inventoryOcrStatus');
     if(preview){ preview.src=URL.createObjectURL(file); preview.style.display='block'; }
     inventoryOcrBusy=true;
-    if(status) status.textContent='מזהה SSCC, B.N ו-ITEM מהצילום…';
+    if(status){ status.textContent='סורק קודם את הקוד הדו־ממדי / ברקוד…'; status.style.color='var(--teal)'; }
     try{
-      const T=await ensureTesseract();
-      if(!T) throw new Error('OCR library unavailable');
-      const result=await T.recognize(file,'eng',{logger:m=>{ if(status && m.status==='recognizing text') status.textContent='מזהה נתונים מהצילום… '+Math.round((m.progress||0)*100)+'%'; }});
-      const parsed=extractInventoryFromOcr(result?.data?.text||'');
-      let duplicateSscc=false;
-      if(parsed.sscc) duplicateSscc=await warnDuplicateInventorySscc(parsed.sscc);
-      if(parsed.sscc && !duplicateSscc) root.querySelector('#inv_sscc').value=parsed.sscc;
-      if(parsed.sscc && duplicateSscc) root.querySelector('#inv_sscc').value='';
+      let codeRaw=''; let codeSscc=''; let duplicateSscc=false;
+      codeRaw=await decodeInventory2DCode(file);
+      if(codeRaw){
+        codeSscc=ssccFromInventoryCode(codeRaw);
+        if(codeSscc) duplicateSscc=await warnDuplicateInventorySscc(codeSscc);
+        if(codeSscc && !duplicateSscc) root.querySelector('#inv_sscc').value=codeSscc;
+        if(codeSscc && duplicateSscc) root.querySelector('#inv_sscc').value='';
+      }
+
+      // OCR is now secondary: it only complements ITEM / B.N (and SSCC if no code was read).
+      if(status && !duplicateSscc) status.textContent=codeSscc ? 'הקוד נקרא בהצלחה. משלים ITEM ו-B.N מהתווית…' : 'לא נמצא קוד קריא. מנסה לזהות את הנתונים מהכיתוב…';
+      let parsed={sscc:'',bn:'',item:''};
+      try{
+        const T=await ensureTesseract();
+        if(T){
+          const result=await T.recognize(file,'eng',{logger:m=>{ if(status && !duplicateSscc && m.status==='recognizing text') status.textContent=(codeSscc?'משלים ITEM ו-B.N… ':'מזהה נתונים מהצילום… ')+Math.round((m.progress||0)*100)+'%'; }});
+          parsed=extractInventoryFromOcr(result?.data?.text||'');
+        }
+      }catch(ocrErr){ console.warn('Inventory OCR complement failed',ocrErr); }
+
+      if(!codeSscc && parsed.sscc){
+        duplicateSscc=await warnDuplicateInventorySscc(parsed.sscc);
+        if(!duplicateSscc) root.querySelector('#inv_sscc').value=parsed.sscc;
+      }
       if(parsed.bn) root.querySelector('#inv_bn').value=parsed.bn;
       if(parsed.item) root.querySelector('#inv_item').value=parsed.item;
-      const found=[parsed.sscc&&!duplicateSscc&&'SSCC',parsed.bn&&'B.N',parsed.item&&'ITEM'].filter(Boolean);
+
+      const found=[(codeSscc||parsed.sscc)&&!duplicateSscc&&'SSCC',parsed.bn&&'B.N',parsed.item&&'ITEM'].filter(Boolean);
       if(status){
-        status.textContent=duplicateSscc ? '⚠️ SSCC כפול — המשטח כבר קיים בספירה ולא ניתן לשמור אותו שוב.' : (found.length ? 'זוהו: '+found.join(', ')+' — ניתן לתקן ידנית לפני שמירה.' : 'לא זוהו שדות בוודאות — ניתן להזין ידנית.');
-        status.style.color=duplicateSscc?'#ff6b6b':'var(--teal)';
+        if(duplicateSscc){
+          status.textContent='⚠️ SSCC כפול — המשטח כבר קיים בספירה ולא ניתן לשמור אותו שוב.';
+          status.style.color='#ff6b6b';
+        }else if(codeRaw && !codeSscc){
+          status.textContent='הקוד נקרא, אך לא זוהה בו SSCC תקין. '+(found.length?'זוהו גם: '+found.join(', '):'ניתן להשלים ידנית.');
+          status.style.color='#ffb74d';
+        }else{
+          status.textContent=found.length ? 'זוהו: '+found.join(', ')+' — ניתן לבדוק ולתקן לפני שמירה.' : 'לא זוהו שדות בוודאות — ניתן להזין ידנית.';
+          status.style.color='var(--teal)';
+        }
       }
     }catch(e){
-      console.error('inventory OCR:',e);
-      if(status) status.textContent='הצילום נקלט, אך הזיהוי האוטומטי לא הצליח. ניתן להזין ידנית.';
+      console.error('inventory scan:',e);
+      if(status) status.textContent='הצילום נקלט, אך הסריקה האוטומטית לא הצליחה. ניתן להזין ידנית.';
     }finally{ inventoryOcrBusy=false; }
   }
 
@@ -4315,7 +4410,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     const bn=normalizeInventoryValue(root.querySelector('#inv_bn').value).toUpperCase();
     const item=normalizeInventoryValue(root.querySelector('#inv_item').value).toUpperCase();
     if(!sscc && !bn && !item){ showToast('יש להזין לפחות אחד מהשדות SSCC NO, B.N או ITEM',true); return; }
-    if(sscc && sscc.length!==18){ showToast('SSCC NO צריך להכיל 18 ספרות',true); return; }
+    if(sscc && !isValidInventorySscc(sscc)){ showToast('SSCC NO צריך להכיל 18 ספרות, או 20 ספרות בפורמט GS1 המתחיל ב-00',true); return; }
     if(sscc && await warnDuplicateInventorySscc(sscc)){
       root.querySelector('#inv_sscc').focus();
       root.querySelector('#inv_sscc').select();
@@ -8761,9 +8856,9 @@ function renderAll(){
     '<div class="modal-overlay" id="inventoryOverlay">'+
       '<div class="modal" style="max-width:900px;">'+
         '<h3 style="display:flex;align-items:center;gap:8px;">📦 ספירת מלאי</h3>'+
-        '<p style="color:var(--text-muted);font-size:12.5px;margin:0 0 12px;">הזנת משטח ידנית או באמצעות צילום תווית. כל רשומה נשמרת באתר כטקסט עם תאריך ושעת הזנה. לאחר צילום המערכת תנסה לזהות SSCC NO, B.N ו-ITEM ותאפשר תיקון לפני שמירה.</p>'+
+        '<p style="color:var(--text-muted);font-size:12.5px;margin:0 0 12px;">הזנת משטח ידנית או באמצעות צילום תווית. כל רשומה נשמרת באתר כטקסט עם תאריך ושעת הזנה. לאחר צילום המערכת תסרוק קודם את הקוד הדו־ממדי/ברקוד לזיהוי SSCC, ולאחר מכן תשלים B.N ו-ITEM מהכיתוב ותאפשר תיקון לפני שמירה.</p>'+
         '<div class="modal-grid" style="align-items:end;">'+
-          '<div class="field"><label>SSCC NO</label><input type="text" inputmode="numeric" maxlength="18" id="inv_sscc" placeholder="18 ספרות"></div>'+
+          '<div class="field"><label>SSCC NO</label><input type="text" inputmode="numeric" maxlength="20" id="inv_sscc" placeholder="18 ספרות / GS1 עם 00"></div>'+
           '<div class="field"><label>B.N</label><input type="text" id="inv_bn" placeholder="Batch Number"></div>'+
           '<div class="field"><label>ITEM</label><input type="text" id="inv_item" placeholder="Item / Material"></div>'+
           '<div class="field"><label>צילום משטח</label><label for="inventoryCameraInput" class="btn secondary" style="display:flex;justify-content:center;align-items:center;cursor:pointer;min-height:38px;">📷 מצלמה / תמונה</label><input type="file" id="inventoryCameraInput" accept="image/*" capture="environment" style="display:none"></div>'+
