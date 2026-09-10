@@ -4271,15 +4271,28 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     ];
     for(const re of bnPatterns){ const m=joined.match(re); if(m){ const d=digitsOnly(m[1]); if(d.length>=8 && d.length<=12){ bn=d; break; } } }
 
-    // ITEM: on these labels the material/item is numeric, starts with 2, and is normally 10 digits
-    // (allow 10-11 digits for OCR spacing/printing variants). This explicitly prevents a B.N value
-    // such as 0009529940 from being copied into ITEM.
+    // ITEM: the item number can begin with ANY digit. Prefer the value that follows the fixed ITEM field.
+    // Typical item values on these labels are 8-12 digits; never infer ITEM from its first digit.
     let item='';
     const itemPatterns=[
-      /\bITEM(?:\s*NO\.?)?\s*[:#-]?\s*([2][0-9Oo\s-]{8,13})/i,
-      /\bMATERIAL(?:\s*NO\.?)?\s*[:#-]?\s*([2][0-9Oo\s-]{8,13})/i
+      /\bITEM(?:\s*NO\.?)?\s*[:#-]?\s*([0-9Oo][0-9Oo\s-]{7,15})/i,
+      /\bMATERIAL(?:\s*NO\.?)?\s*[:#-]?\s*([0-9Oo][0-9Oo\s-]{7,15})/i
     ];
-    for(const re of itemPatterns){ const m=joined.match(re); if(m){ const d=digitsOnly(m[1]); if(/^2\d{9,10}$/.test(d)){ item=d; break; } } }
+    for(const re of itemPatterns){
+      const m=joined.match(re);
+      if(m){ const d=digitsOnly(m[1]); if(/^\d{8,12}$/.test(d)){ item=d; break; } }
+    }
+
+    // If OCR separated the ITEM caption from its value, use the next numeric line after the ITEM/MATERIAL caption.
+    if(!item){
+      const itemLabelIndex=lines.findIndex(line=>/\b(?:ITEM|MATERIAL)(?:\s*NO\.?)?\b/i.test(line));
+      if(itemLabelIndex>=0){
+        for(let i=itemLabelIndex+1;i<Math.min(lines.length,itemLabelIndex+5);i++){
+          const d=digitsOnly(lines[i]);
+          if(/^\d{8,12}$/.test(d)){ item=d; break; }
+        }
+      }
+    }
 
     const valueLines=lines.map((line,index)=>{
       const digits=digitsOnly(line);
@@ -4291,17 +4304,19 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       if(first) sscc=first.digits;
     }
 
-    // Positional/content fallback for the fixed pallet label:
-    // - ITEM is the product number beginning with 2 (10-11 digits), never the batch.
-    // - B.N is the last standalone 8-12 digit numeric value on the label.
-    const itemCandidates=valueLines.filter(v=>/^2\d{9,10}$/.test(v.digits) && v.digits!==sscc);
-    if(!item && itemCandidates.length) item=itemCandidates[0].digits;
+    // Positional fallback for the fixed pallet label:
+    // ITEM is always the fixed ITEM field (third field in the label structure), and B.N is the last field.
+    // Do not constrain ITEM by its first digit.
+    const numericCandidates=valueLines.filter(v=>/^\d{8,12}$/.test(v.digits) && v.digits!==sscc);
+    if(!bn && numericCandidates.length) bn=numericCandidates[numericCandidates.length-1].digits;
+    if(!item){
+      // Prefer the first 8-12 digit value that is not SSCC or the final B.N value.
+      const candidate=numericCandidates.find(v=>v.digits!==bn);
+      if(candidate) item=candidate.digits;
+    }
 
-    const batchCandidates=valueLines.filter(v=>/^\d{8,12}$/.test(v.digits) && v.digits!==sscc && v.digits!==item);
-    if(!bn && batchCandidates.length) bn=batchCandidates[batchCandidates.length-1].digits;
-
-    // Final safety: ITEM can never equal B.N and must start with 2.
-    if(item && (!/^2\d{9,10}$/.test(item) || item===bn)) item='';
+    // Final safety: ITEM and B.N must be different values; either may start with any digit.
+    if(item && (!/^\d{8,12}$/.test(item) || item===bn)) item='';
     return {sscc,bn,item};
   }
 
@@ -4453,11 +4468,54 @@ html, body { margin:0; padding:0; background:#0A0D12; }
             if(inventoryLiveActive) setTimeout(loop,220);
           };
           setTimeout(loop,120);
-          return;
+          // Do not return here: Safari may advertise BarcodeDetector support but fail to decode
+          // this label in live video. Run the independent jsQR frame decoder in parallel.
         }
       }
 
-      // iPhone/Safari fallback: ZXing + repeated still-frame decoding.
+      // Independent QR decoder for iPhone/Safari: sample real camera frames and decode with jsQR.
+      // This path does not rely on Safari's BarcodeDetector implementation.
+      try{
+        const jsQR=await ensureJsQR();
+        if(jsQR){
+          const qrCanvas=document.createElement('canvas');
+          const qrCtx=qrCanvas.getContext('2d',{willReadFrequently:true});
+          let qrBusy=false;
+          const qrSample=async()=>{
+            if(!inventoryLiveActive) return;
+            if(qrBusy || !video.videoWidth || !video.videoHeight){ if(inventoryLiveActive) setTimeout(qrSample,140); return; }
+            qrBusy=true;
+            try{
+              const vw=video.videoWidth, vh=video.videoHeight;
+              // Try several crops because the QR may be near an edge of the label, not exactly centered.
+              const crops=[
+                [0,0,vw,vh],
+                [vw*0.08,vh*0.08,vw*0.84,vh*0.84],
+                [vw*0.20,vh*0.05,vw*0.60,vh*0.90],
+                [vw*0.05,vh*0.20,vw*0.90,vh*0.60]
+              ];
+              for(const c of crops){
+                if(!inventoryLiveActive) break;
+                const [sx,sy,sw,sh]=c;
+                const scale=Math.min(1,1200/Math.max(sw,sh));
+                const w=Math.max(1,Math.round(sw*scale)), h=Math.max(1,Math.round(sh*scale));
+                qrCanvas.width=w; qrCanvas.height=h;
+                qrCtx.drawImage(video,sx,sy,sw,sh,0,0,w,h);
+                const imgData=qrCtx.getImageData(0,0,w,h);
+                const code=jsQR(imgData.data,w,h,{inversionAttempts:'attemptBoth'});
+                if(code && code.data && ssccFromInventoryCode(code.data).length===20){
+                  await acceptInventoryLiveCode(code.data);
+                  return;
+                }
+              }
+            }catch(e){}finally{ qrBusy=false; }
+            if(inventoryLiveActive) setTimeout(qrSample,180);
+          };
+          setTimeout(qrSample,160);
+        }
+      }catch(e){ console.warn('live jsQR unavailable',e); }
+
+      // Additional fallback: ZXing + repeated still-frame decoding.
       // decodeFromVideoDevice is unreliable on some iOS versions although the video opens,
       // so we explicitly sample frames from the already-playing rear-camera video.
       const ZX=await ensureInventoryZXing();
