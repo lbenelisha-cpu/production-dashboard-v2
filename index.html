@@ -3422,6 +3422,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   const STORAGE_KEY_TARGET_FILE = 'monthly_target_file_v1';
   let inventoryCountRows = [];
   let inventoryOcrBusy = false;
+  let inventoryEntrySource = 'manual';
   let targetFileRows = [];
   let targetFileMeta = {fileName:'', loadedAt:''};
 
@@ -4183,14 +4184,16 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     const rows=[...inventoryCountRows].sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')));
     if(count) count.textContent=rows.length+' משטחים בספירה';
     if(!rows.length){
-      body.innerHTML='<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:20px;">עדיין לא הוזנו משטחים</td></tr>';
+      body.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:20px;">עדיין לא הוזנו משטחים</td></tr>';
       return;
     }
     body.innerHTML=rows.slice(0,150).map((r,i)=>'<tr>'+ 
       '<td class="mono">'+escapeHtml(r.sscc||'—')+'</td>'+ 
       '<td>'+escapeHtml(r.bn||'—')+'</td>'+ 
       '<td>'+escapeHtml(r.item||'—')+'</td>'+ 
-      '<td class="mono">'+escapeHtml((r.createdAt||'').replace('T',' ').slice(0,16))+'</td>'+ 
+      '<td class="mono">'+escapeHtml(inventoryLocalParts(r).date||'—')+'</td>'+ 
+      '<td class="mono">'+escapeHtml(inventoryLocalParts(r).time||'—')+'</td>'+ 
+      '<td>'+escapeHtml(r.source==='camera'?'מצלמה':'ידני')+'</td>'+ 
       '<td><button class="row-del admin-only inventory-row-del" data-id="'+escapeHtml(r.id||'')+'" title="מחיקה">✕</button></td>'+ 
       '</tr>').join('');
     body.querySelectorAll('.inventory-row-del').forEach(btn=>{
@@ -4205,6 +4208,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   }
 
   function clearInventoryForm(){
+    inventoryEntrySource = 'manual';
     ['inv_sscc','inv_bn','inv_item'].forEach(id=>{ const el=root.querySelector('#'+id); if(el) el.value=''; });
     const preview=root.querySelector('#inventoryPhotoPreview'); if(preview){ preview.src=''; preview.style.display='none'; }
     const status=root.querySelector('#inventoryOcrStatus'); if(status) status.textContent='';
@@ -4254,6 +4258,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 
   async function processInventoryPhoto(file){
     if(!file || inventoryOcrBusy) return;
+    inventoryEntrySource = 'camera';
     const preview=root.querySelector('#inventoryPhotoPreview');
     const status=root.querySelector('#inventoryOcrStatus');
     if(preview){ preview.src=URL.createObjectURL(file); preview.style.display='block'; }
@@ -4285,12 +4290,62 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     if(sscc && inventoryCountRows.some(r=>normalizeSscc(r.sscc)===sscc)){
       showToast('שים לב: SSCC זה כבר קיים בספירת המלאי',true); return;
     }
-    inventoryCountRows.push({id:'inv_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),sscc,bn,item,date:inventoryToday(),createdAt:new Date().toISOString()});
+    inventoryCountRows.push({id:'inv_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),sscc:String(sscc||''),bn:String(bn||''),item:String(item||''),date:inventoryToday(),createdAt:new Date().toISOString(),source:inventoryEntrySource==='camera'?'camera':'manual'});
     if(await persistInventoryCountRows()){
       showToast('המשטח נשמר בספירת המלאי');
       clearInventoryForm(); renderInventoryRows();
       root.querySelector('#inv_sscc')?.focus();
     }
+  }
+
+
+  function inventoryLocalParts(row){
+    const d=row && row.createdAt ? new Date(row.createdAt) : null;
+    if(!d || Number.isNaN(d.getTime())) return {date:String(row?.date||''),time:''};
+    const pad=n=>String(n).padStart(2,'0');
+    return {
+      date:d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()),
+      time:pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds())
+    };
+  }
+
+  function exportInventoryCountExcel(){
+    if(typeof XLSX==='undefined'){ showToast('רכיב Excel אינו זמין כרגע',true); return; }
+    if(!inventoryCountRows.length){ showToast('אין נתוני ספירת מלאי לייצוא',true); return; }
+    const rows=[...inventoryCountRows].sort((a,b)=>String(a.createdAt||'').localeCompare(String(b.createdAt||'')));
+    const data=[['תאריך הזנה','שעת הזנה','SSCC NO','B.N','ITEM','אופן הזנה']];
+    rows.forEach(r=>{
+      const dt=inventoryLocalParts(r);
+      data.push([
+        String(dt.date||''),
+        String(dt.time||''),
+        String(r.sscc||''),
+        String(r.bn||''),
+        String(r.item||''),
+        r.source==='camera'?'מצלמה':'ידני'
+      ]);
+    });
+    const ws=XLSX.utils.aoa_to_sheet(data);
+    // Force every exported value to Text so Excel cannot alter SSCC / batch / item values.
+    const range=XLSX.utils.decode_range(ws['!ref']||'A1:F1');
+    for(let R=range.s.r;R<=range.e.r;R++){
+      for(let C=range.s.c;C<=range.e.c;C++){
+        const addr=XLSX.utils.encode_cell({r:R,c:C});
+        const cell=ws[addr];
+        if(!cell) continue;
+        cell.t='s';
+        cell.v=String(cell.v==null?'':cell.v);
+        cell.z='@';
+      }
+    }
+    ws['!cols']=[{wch:14},{wch:12},{wch:24},{wch:18},{wch:24},{wch:14}];
+    ws['!autofilter']={ref:'A1:F'+data.length};
+    ws['!views']=[{RTL:true}];
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,ws,'ספירת מלאי');
+    const now=new Date();
+    const pad=n=>String(n).padStart(2,'0');
+    XLSX.writeFile(wb,'ספירת_מלאי_'+now.getFullYear()+'-'+pad(now.getMonth()+1)+'-'+pad(now.getDate())+'.xlsx');
   }
 
   async function persist(){
@@ -8673,7 +8728,7 @@ function renderAll(){
     '<div class="modal-overlay" id="inventoryOverlay">'+
       '<div class="modal" style="max-width:900px;">'+
         '<h3 style="display:flex;align-items:center;gap:8px;">📦 ספירת מלאי</h3>'+
-        '<p style="color:var(--text-muted);font-size:12.5px;margin:0 0 12px;">הזנת משטח ידנית או באמצעות צילום תווית. לאחר צילום המערכת תנסה לזהות SSCC NO, B.N ו-ITEM ותאפשר תיקון לפני שמירה.</p>'+
+        '<p style="color:var(--text-muted);font-size:12.5px;margin:0 0 12px;">הזנת משטח ידנית או באמצעות צילום תווית. כל רשומה נשמרת באתר כטקסט עם תאריך ושעת הזנה. לאחר צילום המערכת תנסה לזהות SSCC NO, B.N ו-ITEM ותאפשר תיקון לפני שמירה.</p>'+
         '<div class="modal-grid" style="align-items:end;">'+
           '<div class="field"><label>SSCC NO</label><input type="text" inputmode="numeric" maxlength="18" id="inv_sscc" placeholder="18 ספרות"></div>'+
           '<div class="field"><label>B.N</label><input type="text" id="inv_bn" placeholder="Batch Number"></div>'+
@@ -8684,11 +8739,12 @@ function renderAll(){
         '<div class="modal-foot" style="justify-content:flex-start;">'+
           '<button class="btn primary" id="inventorySaveBtn">+ שמור משטח</button>'+
           '<button class="btn secondary" id="inventoryClearBtn">נקה שדות</button>'+
+          '<button class="btn secondary" id="inventoryExcelBtn">📥 ייצוא Excel</button>'+
           '<button class="btn secondary" id="inventoryCloseBtn" style="margin-right:auto;">סגור</button>'+
         '</div>'+
         '<div class="panel" style="margin-top:14px;padding:0;overflow:hidden;">'+
           '<div class="panel-head" style="padding:12px 14px;"><div><div class="panel-title">משטחים שנספרו</div><div class="kpi-sub" id="inventoryRowsCount">0 משטחים בספירה</div></div></div>'+
-          '<div class="table-scroll" style="max-height:300px;"><table style="min-width:720px;"><thead><tr><th>SSCC NO</th><th>B.N</th><th>ITEM</th><th>זמן הזנה</th><th></th></tr></thead><tbody id="inventoryRowsBody"></tbody></table></div>'+
+          '<div class="table-scroll" style="max-height:300px;"><table style="min-width:900px;"><thead><tr><th>SSCC NO</th><th>B.N</th><th>ITEM</th><th>תאריך הזנה</th><th>שעת הזנה</th><th>אופן הזנה</th><th></th></tr></thead><tbody id="inventoryRowsBody"></tbody></table></div>'+
         '</div>'+
       '</div>'+
     '</div>'+
@@ -9229,6 +9285,7 @@ root.querySelector('#printBtn').onclick = ()=> window.print();
   root.querySelector('#inventoryCloseBtn').onclick = closeInventoryModal;
   root.querySelector('#inventoryClearBtn').onclick = clearInventoryForm;
   root.querySelector('#inventorySaveBtn').onclick = saveInventoryRow;
+  root.querySelector('#inventoryExcelBtn').onclick = exportInventoryCountExcel;
   root.querySelector('#inventoryCameraInput').onchange = e=>processInventoryPhoto(e.target.files && e.target.files[0]);
   root.querySelector('#inventoryOverlay').addEventListener('click',e=>{ if(e.target===root.querySelector('#inventoryOverlay')) closeInventoryModal(); });
   root.querySelector('#inv_sscc').addEventListener('keydown',e=>{ if(e.key==='Enter') root.querySelector('#inv_bn').focus(); });
