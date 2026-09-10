@@ -4855,8 +4855,13 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       XLSX.utils.book_append_sheet(wb,ws,safeSheetName(performer));
     });
     const now=new Date(), pad=n=>String(n).padStart(2,'0');
-    XLSX.writeFile(wb,'ספירת_מלאי_'+now.getFullYear()+'-'+pad(now.getMonth()+1)+'-'+pad(now.getDate())+'.xlsx');
-    showToast('קובץ Excel נוצר עם גיליון נפרד לכל מבצע ספירה');
+    const exportPerformer=normalizeInventoryValue(inventoryPerformerName)||'כל_המבצעים';
+    const safePerformerFile=String(exportPerformer)
+      .replace(/[\\/:*?"<>|]+/g,'_')
+      .replace(/\s+/g,'_')
+      .replace(/^_+|_+$/g,'') || 'מבצע';
+    XLSX.writeFile(wb,'ספירת_מלאי_'+safePerformerFile+'_'+now.getFullYear()+'-'+pad(now.getMonth()+1)+'-'+pad(now.getDate())+'.xlsx');
+    showToast('קובץ Excel נוצר עם שם המבצע וגיליון נפרד לכל מבצע ספירה');
   }
 
   async function persist(){
