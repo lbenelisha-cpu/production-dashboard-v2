@@ -4175,16 +4175,16 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     return String(v==null?'':v).replace(/\s+/g,' ').trim();
   }
   function normalizeSscc(v){
+    // Inventory SSCC is stored and compared as the complete 20-digit value.
+    // Never trim leading 00 and never compare only part of the code.
     return String(v==null?'':v).replace(/\D/g,'').slice(0,20);
   }
   function canonicalInventorySscc(v){
-    const n=normalizeSscc(v);
-    // GS1 AI (00) may appear as two leading zeroes before the 18-digit SSCC.
-    return (n.length===20 && n.startsWith('00')) ? n.slice(2) : n;
+    return normalizeSscc(v);
   }
   function isValidInventorySscc(v){
     const n=normalizeSscc(v);
-    return n.length===18 || (n.length===20 && n.startsWith('00'));
+    return n.length===20;
   }
   function inventoryToday(){ return todayISO(); }
 
@@ -4246,8 +4246,8 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     let sscc='';
     const ssccLabel=joined.match(/SSCC\s*(?:NO\.?|NUMBER|#)?\s*[:\-]?\s*([0-9][0-9\s-]{15,24})/i);
     if(ssccLabel) sscc=normalizeSscc(ssccLabel[1]);
-    if(sscc.length!==18){
-      const candidates=(joined.match(/(?:\d[\s-]*){18}/g)||[]).map(normalizeSscc).filter(x=>x.length===18);
+    if(sscc.length!==20){
+      const candidates=(joined.match(/(?:\d[\s-]*){20}/g)||[]).map(normalizeSscc).filter(x=>x.length===20);
       if(candidates.length) sscc=candidates[0];
     }
     const pickAfter=(patterns)=>{
@@ -4273,8 +4273,9 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 
   async function findDuplicateInventorySscc(sscc){
     const normalized=canonicalInventorySscc(sscc);
-    if(!normalized || normalized.length!==18) return null;
+    if(!normalized || normalized.length!==20) return null;
     await loadInventoryCountRows();
+    // Duplicate only when ALL 20 digits are exactly identical.
     return inventoryCountRows.find(r=>canonicalInventorySscc(r.sscc)===normalized) || null;
   }
 
@@ -4341,10 +4342,9 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 
   function ssccFromInventoryCode(raw){
     const digits=String(raw||'').replace(/\D/g,'');
-    // GS1 AI 00 + 18-digit SSCC. Keep the printed 20-digit representation in the field/export.
-    if(digits.length===20 && digits.startsWith('00')) return digits;
-    if(digits.length===18) return digits;
-    const m=digits.match(/00\d{18}/);
+    // Keep and use the complete 20-digit value exactly as scanned.
+    if(digits.length===20) return digits;
+    const m=digits.match(/\d{20}/);
     if(m) return m[0];
     return '';
   }
@@ -4410,7 +4410,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     const bn=normalizeInventoryValue(root.querySelector('#inv_bn').value).toUpperCase();
     const item=normalizeInventoryValue(root.querySelector('#inv_item').value).toUpperCase();
     if(!sscc && !bn && !item){ showToast('יש להזין לפחות אחד מהשדות SSCC NO, B.N או ITEM',true); return; }
-    if(sscc && !isValidInventorySscc(sscc)){ showToast('SSCC NO צריך להכיל 18 ספרות, או 20 ספרות בפורמט GS1 המתחיל ב-00',true); return; }
+    if(sscc && !isValidInventorySscc(sscc)){ showToast('SSCC NO חייב להכיל בדיוק 20 ספרות',true); return; }
     if(sscc && await warnDuplicateInventorySscc(sscc)){
       root.querySelector('#inv_sscc').focus();
       root.querySelector('#inv_sscc').select();
