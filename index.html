@@ -3425,6 +3425,10 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   let inventoryCountRows = [];
   let inventoryOcrBusy = false;
   let inventoryEntrySource = 'manual';
+  let inventoryLiveReader = null;
+  let inventoryLiveControls = null;
+  let inventoryLiveActive = false;
+  let inventoryLiveHandling = false;
   let targetFileRows = [];
   let targetFileMeta = {fileName:'', loadedAt:''};
 
@@ -4223,6 +4227,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   }
 
   function clearInventoryForm(){
+    stopInventoryLiveScan();
     inventoryEntrySource = 'manual';
     ['inv_sscc','inv_bn','inv_item'].forEach(id=>{ const el=root.querySelector('#'+id); if(el) el.value=''; });
     const preview=root.querySelector('#inventoryPhotoPreview'); if(preview){ preview.src=''; preview.style.display='none'; }
@@ -4235,9 +4240,10 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     clearInventoryForm();
     await loadInventoryCountRows();
     renderInventoryRows();
-    setTimeout(()=>root.querySelector('#inv_sscc')?.focus(),50);
+    const status=root.querySelector('#inventoryOcrStatus');
+    if(status) status.textContent='לסריקה מהירה: לחץ פעם אחת על „הפעל סריקה אוטומטית” וכוון את המצלמה ל-Data Matrix. אין צורך ללחוץ על צילום.';
   }
-  function closeInventoryModal(){ root.querySelector('#inventoryOverlay').classList.remove('open'); }
+  function closeInventoryModal(){ stopInventoryLiveScan(); root.querySelector('#inventoryOverlay').classList.remove('open'); }
 
   function extractInventoryFromOcr(text){
     const raw=String(text||'').replace(/\r/g,'');
@@ -4299,6 +4305,106 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       sc.onload=resolve; sc.onerror=reject; document.head.appendChild(sc);
     });
     return window.jsQR;
+  }
+
+  async function ensureInventoryZXing(){
+    if(window.ZXing && window.ZXing.BrowserMultiFormatReader) return window.ZXing;
+    await new Promise((resolve,reject)=>{
+      const old=document.getElementById('inventoryZXingScript');
+      if(old){ old.addEventListener('load',resolve,{once:true}); old.addEventListener('error',reject,{once:true}); return; }
+      const sc=document.createElement('script'); sc.id='inventoryZXingScript';
+      sc.src='https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js';
+      sc.onload=resolve; sc.onerror=reject; document.head.appendChild(sc);
+    });
+    return window.ZXing;
+  }
+
+  function stopInventoryLiveScan(){
+    inventoryLiveActive=false;
+    inventoryLiveHandling=false;
+    try{ if(inventoryLiveControls && typeof inventoryLiveControls.stop==='function') inventoryLiveControls.stop(); }catch(e){}
+    inventoryLiveControls=null;
+    try{ if(inventoryLiveReader && typeof inventoryLiveReader.reset==='function') inventoryLiveReader.reset(); }catch(e){}
+    inventoryLiveReader=null;
+    const video=root.querySelector('#inventoryLiveVideo');
+    if(video){
+      try{ if(video.srcObject) video.srcObject.getTracks().forEach(t=>t.stop()); }catch(e){}
+      video.srcObject=null; video.style.display='none';
+    }
+    const btn=root.querySelector('#inventoryLiveScanBtn');
+    if(btn) btn.textContent='📡 הפעל סריקה אוטומטית';
+  }
+
+  async function acceptInventoryLiveCode(raw){
+    if(inventoryLiveHandling) return;
+    const sscc=ssccFromInventoryCode(raw);
+    if(!sscc || sscc.length!==20) return;
+    inventoryLiveHandling=true;
+    const status=root.querySelector('#inventoryOcrStatus');
+    try{
+      // Stop immediately after one valid pallet code so the same label cannot be read repeatedly.
+      stopInventoryLiveScan();
+      inventoryEntrySource='camera';
+      if(await warnDuplicateInventorySscc(sscc)){
+        const f=root.querySelector('#inv_sscc'); if(f) f.value='';
+        if(status){ status.textContent='⚠️ SSCC כפול — זוהו אותן 20 ספרות בדיוק. המשטח כבר קיים בספירה.'; status.style.color='#ff6b6b'; }
+        return;
+      }
+      const f=root.querySelector('#inv_sscc'); if(f) f.value=sscc;
+      if(status){ status.textContent='✓ Data Matrix זוהה אוטומטית: '+sscc+' — אין צורך לצלם. ניתן להשלים B.N / ITEM ידנית או לשמור.'; status.style.color='var(--teal)'; }
+      showToast('SSCC זוהה אוטומטית');
+    }finally{ inventoryLiveHandling=false; }
+  }
+
+  async function startInventoryLiveScan(){
+    if(inventoryLiveActive){ stopInventoryLiveScan(); return; }
+    const status=root.querySelector('#inventoryOcrStatus');
+    const video=root.querySelector('#inventoryLiveVideo');
+    const btn=root.querySelector('#inventoryLiveScanBtn');
+    if(!video) return;
+    if(status){ status.textContent='פותח מצלמה ומחפש Data Matrix…'; status.style.color='var(--teal)'; }
+    if(btn) btn.textContent='⏹ עצור סריקה';
+    video.style.display='block';
+    inventoryLiveActive=true;
+    try{
+      // Native BarcodeDetector is the fastest option when the browser exposes Data Matrix.
+      if('BarcodeDetector' in window){
+        const formats=await BarcodeDetector.getSupportedFormats().catch(()=>[]);
+        if(formats.includes('data_matrix')){
+          const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}},audio:false});
+          video.srcObject=stream; await video.play();
+          const detector=new BarcodeDetector({formats:['data_matrix']});
+          const loop=async()=>{
+            if(!inventoryLiveActive) return;
+            try{
+              const hits=await detector.detect(video);
+              const hit=(hits||[]).find(h=>String(h.rawValue||'').trim());
+              if(hit){ await acceptInventoryLiveCode(String(hit.rawValue||'').trim()); return; }
+            }catch(e){}
+            if(inventoryLiveActive) requestAnimationFrame(loop);
+          };
+          if(status) status.textContent='סריקה אוטומטית פעילה — כוון את ה-Data Matrix למצלמה.';
+          requestAnimationFrame(loop);
+          return;
+        }
+      }
+      // iPhone/Safari fallback: ZXing reads Data Matrix continuously from the live camera.
+      const ZX=await ensureInventoryZXing();
+      if(!ZX || !ZX.BrowserMultiFormatReader) throw new Error('ZXing unavailable');
+      const hints=new Map();
+      try{ hints.set(ZX.DecodeHintType.POSSIBLE_FORMATS,[ZX.BarcodeFormat.DATA_MATRIX]); }catch(e){}
+      inventoryLiveReader=new ZX.BrowserMultiFormatReader(hints,300);
+      if(status) status.textContent='סריקה אוטומטית פעילה — כוון את ה-Data Matrix למצלמה.';
+      inventoryLiveControls=await inventoryLiveReader.decodeFromVideoDevice(undefined,video,(result,err)=>{
+        if(!inventoryLiveActive || !result) return;
+        const text=typeof result.getText==='function' ? result.getText() : String(result.text||'');
+        if(text) acceptInventoryLiveCode(text);
+      });
+    }catch(e){
+      console.error('inventory live scan:',e);
+      stopInventoryLiveScan();
+      if(status){ status.textContent='לא ניתן להפעיל סריקה חיה במכשיר זה. השתמש ב„צילום + OCR” כגיבוי.'; status.style.color='#ffb74d'; }
+    }
   }
 
   async function decodeInventory2DCode(file){
@@ -8856,13 +8962,14 @@ function renderAll(){
     '<div class="modal-overlay" id="inventoryOverlay">'+
       '<div class="modal" style="max-width:900px;">'+
         '<h3 style="display:flex;align-items:center;gap:8px;">📦 ספירת מלאי</h3>'+
-        '<p style="color:var(--text-muted);font-size:12.5px;margin:0 0 12px;">הזנת משטח ידנית או באמצעות צילום תווית. כל רשומה נשמרת באתר כטקסט עם תאריך ושעת הזנה. לאחר צילום המערכת תסרוק קודם את הקוד הדו־ממדי/ברקוד לזיהוי SSCC, ולאחר מכן תשלים B.N ו-ITEM מהכיתוב ותאפשר תיקון לפני שמירה.</p>'+
+        '<p style="color:var(--text-muted);font-size:12.5px;margin:0 0 12px;">הזנת משטח ידנית או באמצעות צילום תווית. כל רשומה נשמרת באתר כטקסט עם תאריך ושעת הזנה. לסריקה מהירה הפעל מצלמה פעם אחת: ברגע ש-Data Matrix עם SSCC בן 20 ספרות מזוהה הוא נקלט אוטומטית, ללא לחיצה על צילום. רק אם הקוד לא מזוהה השתמש ב„צילום + OCR” כדי לבצע בדיקה נוספת של SSCC, B.N ו-ITEM.</p>'+
         '<div class="modal-grid" style="align-items:end;">'+
-          '<div class="field"><label>SSCC NO</label><input type="text" inputmode="numeric" maxlength="20" id="inv_sscc" placeholder="18 ספרות / GS1 עם 00"></div>'+
+          '<div class="field"><label>SSCC NO</label><input type="text" inputmode="numeric" maxlength="20" id="inv_sscc" placeholder="20 ספרות בדיוק"></div>'+
           '<div class="field"><label>B.N</label><input type="text" id="inv_bn" placeholder="Batch Number"></div>'+
           '<div class="field"><label>ITEM</label><input type="text" id="inv_item" placeholder="Item / Material"></div>'+
-          '<div class="field"><label>צילום משטח</label><label for="inventoryCameraInput" class="btn secondary" style="display:flex;justify-content:center;align-items:center;cursor:pointer;min-height:38px;">📷 מצלמה / תמונה</label><input type="file" id="inventoryCameraInput" accept="image/*" capture="environment" style="display:none"></div>'+
-          '<div class="field full"><div id="inventoryOcrStatus" style="font-size:12px;color:var(--teal);min-height:18px;"></div><img id="inventoryPhotoPreview" alt="תצוגת צילום" style="display:none;max-width:100%;max-height:220px;border-radius:10px;border:1px solid var(--border);margin-top:6px;object-fit:contain;background:#05080f;"></div>'+
+          '<div class="field"><label>סריקת Data Matrix</label><button type="button" class="btn primary" id="inventoryLiveScanBtn" style="width:100%;min-height:38px;">📡 הפעל סריקה אוטומטית</button></div>'+
+          '<div class="field"><label>גיבוי אם הקוד לא זוהה</label><label for="inventoryCameraInput" class="btn secondary" style="display:flex;justify-content:center;align-items:center;cursor:pointer;min-height:38px;">📷 צילום + OCR</label><input type="file" id="inventoryCameraInput" accept="image/*" capture="environment" style="display:none"></div>'+
+          '<div class="field full"><div id="inventoryOcrStatus" style="font-size:12px;color:var(--teal);min-height:18px;"></div><video id="inventoryLiveVideo" playsinline muted autoplay style="display:none;width:100%;max-height:320px;border-radius:10px;border:1px solid var(--border);margin-top:8px;object-fit:cover;background:#05080f;"></video><img id="inventoryPhotoPreview" alt="תצוגת צילום" style="display:none;max-width:100%;max-height:220px;border-radius:10px;border:1px solid var(--border);margin-top:6px;object-fit:contain;background:#05080f;"></div>'+
         '</div>'+
         '<div class="modal-foot" style="justify-content:flex-start;">'+
           '<button class="btn primary" id="inventorySaveBtn">+ שמור משטח</button>'+
@@ -9414,6 +9521,7 @@ root.querySelector('#printBtn').onclick = ()=> window.print();
   root.querySelector('#inventoryClearBtn').onclick = clearInventoryForm;
   root.querySelector('#inventorySaveBtn').onclick = saveInventoryRow;
   root.querySelector('#inventoryExcelBtn').onclick = exportInventoryCountExcel;
+  root.querySelector('#inventoryLiveScanBtn').onclick = startInventoryLiveScan;
   root.querySelector('#inventoryCameraInput').onchange = e=>processInventoryPhoto(e.target.files && e.target.files[0]);
   root.querySelector('#inventoryOverlay').addEventListener('click',e=>{ if(e.target===root.querySelector('#inventoryOverlay')) closeInventoryModal(); });
   root.querySelector('#inv_sscc').addEventListener('keydown',e=>{ if(e.key==='Enter') root.querySelector('#inv_bn').focus(); });
