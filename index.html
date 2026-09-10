@@ -768,7 +768,9 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 #prod-dash-root.iphone-mode #fileSourcesPanel .ds-card { padding:10px 12px; }
 #prod-dash-root.iphone-mode #fileSourcesPanel .file-source-groups { display:none !important; }
 #prod-dash-root.iphone-mode .topbar-actions > * { display:none !important; }
-#prod-dash-root.iphone-mode .topbar-actions #dailyFormulationExportBtn { display:inline-flex !important; width:100%; justify-content:center; min-height:44px; font-size:14px !important; }
+#prod-dash-root.iphone-mode .topbar-actions #dailyFormulationExportBtn,
+#prod-dash-root.iphone-mode .topbar-actions #inventoryCountBtn { display:inline-flex !important; width:100%; justify-content:center; min-height:44px; font-size:14px !important; }
+#prod-dash-root.iphone-mode .topbar-actions #inventoryCountBtn { background:rgba(20,184,166,0.18) !important; color:#5EEAD4 !important; }
 #prod-dash-root.iphone-mode .topbar-actions { display:flex !important; width:100%; overflow:visible; padding:0; }
 #prod-dash-root.iphone-mode .tabs { width:100%; overflow-x:auto; flex-wrap:nowrap; margin-bottom:10px; }
 #prod-dash-root.iphone-mode .tabs .tab-btn[data-tab="quality"] { display:none !important; }
@@ -4188,18 +4190,22 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       return;
     }
     body.innerHTML=rows.slice(0,150).map((r,i)=>'<tr>'+ 
+      '<td><button class="row-del admin-only inventory-row-del" data-id="'+escapeHtml(r.id||'')+'" title="מחיקת משטח" style="white-space:nowrap;min-width:68px;">🗑 מחיקה</button></td>'+ 
       '<td class="mono">'+escapeHtml(r.sscc||'—')+'</td>'+ 
       '<td>'+escapeHtml(r.bn||'—')+'</td>'+ 
       '<td>'+escapeHtml(r.item||'—')+'</td>'+ 
       '<td class="mono">'+escapeHtml(inventoryLocalParts(r).date||'—')+'</td>'+ 
       '<td class="mono">'+escapeHtml(inventoryLocalParts(r).time||'—')+'</td>'+ 
       '<td>'+escapeHtml(r.source==='camera'?'מצלמה':'ידני')+'</td>'+ 
-      '<td><button class="row-del admin-only inventory-row-del" data-id="'+escapeHtml(r.id||'')+'" title="מחיקה">✕</button></td>'+ 
       '</tr>').join('');
     body.querySelectorAll('.inventory-row-del').forEach(btn=>{
       btn.onclick=async()=>{
         if(!requireAdmin()) return;
         const id=btn.dataset.id;
+        const row=inventoryCountRows.find(x=>x.id===id);
+        const label=row?.sscc ? 'SSCC '+row.sscc : 'השורה הנבחרת';
+        if(!window.confirm('למחוק את '+label+' מספירת המלאי?')) return;
+        await loadInventoryCountRows();
         inventoryCountRows=inventoryCountRows.filter(x=>x.id!==id);
         if(await persistInventoryCountRows()){ renderInventoryRows(); showToast('המשטח נמחק מספירת המלאי'); }
       };
@@ -4211,14 +4217,14 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     inventoryEntrySource = 'manual';
     ['inv_sscc','inv_bn','inv_item'].forEach(id=>{ const el=root.querySelector('#'+id); if(el) el.value=''; });
     const preview=root.querySelector('#inventoryPhotoPreview'); if(preview){ preview.src=''; preview.style.display='none'; }
-    const status=root.querySelector('#inventoryOcrStatus'); if(status) status.textContent='';
+    const status=root.querySelector('#inventoryOcrStatus'); if(status){ status.textContent=''; status.style.color='var(--teal)'; }
     const file=root.querySelector('#inventoryCameraInput'); if(file) file.value='';
   }
 
   async function openInventoryModal(){
     root.querySelector('#inventoryOverlay').classList.add('open');
     clearInventoryForm();
-    if(!inventoryCountRows.length) await loadInventoryCountRows();
+    await loadInventoryCountRows();
     renderInventoryRows();
     setTimeout(()=>root.querySelector('#inv_sscc')?.focus(),50);
   }
@@ -4256,6 +4262,23 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     return window.Tesseract;
   }
 
+  async function findDuplicateInventorySscc(sscc){
+    const normalized=normalizeSscc(sscc);
+    if(!normalized || normalized.length!==18) return null;
+    await loadInventoryCountRows();
+    return inventoryCountRows.find(r=>normalizeSscc(r.sscc)===normalized) || null;
+  }
+
+  async function warnDuplicateInventorySscc(sscc){
+    const duplicate=await findDuplicateInventorySscc(sscc);
+    if(!duplicate) return false;
+    const dt=inventoryLocalParts(duplicate);
+    const extra=(dt.date||dt.time) ? '\nנרשם בתאריך '+(dt.date||'')+(dt.time?' בשעה '+dt.time:'') : '';
+    window.alert('⚠️ SSCC כפול\n\nה-SSCC '+sscc+' כבר קיים בספירת המלאי.'+extra+'\n\nSSCC הוא מספר ייחודי למשטח ולא ניתן לסרוק או לשמור אותו פעמיים.');
+    showToast('SSCC כפול — המשטח כבר קיים בספירה',true);
+    return true;
+  }
+
   async function processInventoryPhoto(file){
     if(!file || inventoryOcrBusy) return;
     inventoryEntrySource = 'camera';
@@ -4269,11 +4292,17 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       if(!T) throw new Error('OCR library unavailable');
       const result=await T.recognize(file,'eng',{logger:m=>{ if(status && m.status==='recognizing text') status.textContent='מזהה נתונים מהצילום… '+Math.round((m.progress||0)*100)+'%'; }});
       const parsed=extractInventoryFromOcr(result?.data?.text||'');
-      if(parsed.sscc) root.querySelector('#inv_sscc').value=parsed.sscc;
+      let duplicateSscc=false;
+      if(parsed.sscc) duplicateSscc=await warnDuplicateInventorySscc(parsed.sscc);
+      if(parsed.sscc && !duplicateSscc) root.querySelector('#inv_sscc').value=parsed.sscc;
+      if(parsed.sscc && duplicateSscc) root.querySelector('#inv_sscc').value='';
       if(parsed.bn) root.querySelector('#inv_bn').value=parsed.bn;
       if(parsed.item) root.querySelector('#inv_item').value=parsed.item;
-      const found=[parsed.sscc&&'SSCC',parsed.bn&&'B.N',parsed.item&&'ITEM'].filter(Boolean);
-      if(status) status.textContent=found.length ? 'זוהו: '+found.join(', ')+' — ניתן לתקן ידנית לפני שמירה.' : 'לא זוהו שדות בוודאות — ניתן להזין ידנית.';
+      const found=[parsed.sscc&&!duplicateSscc&&'SSCC',parsed.bn&&'B.N',parsed.item&&'ITEM'].filter(Boolean);
+      if(status){
+        status.textContent=duplicateSscc ? '⚠️ SSCC כפול — המשטח כבר קיים בספירה ולא ניתן לשמור אותו שוב.' : (found.length ? 'זוהו: '+found.join(', ')+' — ניתן לתקן ידנית לפני שמירה.' : 'לא זוהו שדות בוודאות — ניתן להזין ידנית.');
+        status.style.color=duplicateSscc?'#ff6b6b':'var(--teal)';
+      }
     }catch(e){
       console.error('inventory OCR:',e);
       if(status) status.textContent='הצילום נקלט, אך הזיהוי האוטומטי לא הצליח. ניתן להזין ידנית.';
@@ -4287,9 +4316,13 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     const item=normalizeInventoryValue(root.querySelector('#inv_item').value).toUpperCase();
     if(!sscc && !bn && !item){ showToast('יש להזין לפחות אחד מהשדות SSCC NO, B.N או ITEM',true); return; }
     if(sscc && sscc.length!==18){ showToast('SSCC NO צריך להכיל 18 ספרות',true); return; }
-    if(sscc && inventoryCountRows.some(r=>normalizeSscc(r.sscc)===sscc)){
-      showToast('שים לב: SSCC זה כבר קיים בספירת המלאי',true); return;
+    if(sscc && await warnDuplicateInventorySscc(sscc)){
+      root.querySelector('#inv_sscc').focus();
+      root.querySelector('#inv_sscc').select();
+      return;
     }
+    // Refresh the shared list immediately before write so another device's recent scan is included.
+    if(!sscc) await loadInventoryCountRows();
     inventoryCountRows.push({id:'inv_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),sscc:String(sscc||''),bn:String(bn||''),item:String(item||''),date:inventoryToday(),createdAt:new Date().toISOString(),source:inventoryEntrySource==='camera'?'camera':'manual'});
     if(await persistInventoryCountRows()){
       showToast('המשטח נשמר בספירת המלאי');
@@ -8744,7 +8777,7 @@ function renderAll(){
         '</div>'+
         '<div class="panel" style="margin-top:14px;padding:0;overflow:hidden;">'+
           '<div class="panel-head" style="padding:12px 14px;"><div><div class="panel-title">משטחים שנספרו</div><div class="kpi-sub" id="inventoryRowsCount">0 משטחים בספירה</div></div></div>'+
-          '<div class="table-scroll" style="max-height:300px;"><table style="min-width:900px;"><thead><tr><th>SSCC NO</th><th>B.N</th><th>ITEM</th><th>תאריך הזנה</th><th>שעת הזנה</th><th>אופן הזנה</th><th></th></tr></thead><tbody id="inventoryRowsBody"></tbody></table></div>'+
+          '<div class="table-scroll" style="max-height:300px;"><table style="min-width:900px;"><thead><tr><th>מחיקה</th><th>SSCC NO</th><th>B.N</th><th>ITEM</th><th>תאריך הזנה</th><th>שעת הזנה</th><th>אופן הזנה</th></tr></thead><tbody id="inventoryRowsBody"></tbody></table></div>'+
         '</div>'+
       '</div>'+
     '</div>'+
