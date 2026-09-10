@@ -1251,6 +1251,25 @@ html, body { margin:0; padding:0; background:#0A0D12; }
         _cacheDelete(key);
         return { ok: true };
       },
+      async appendInventory(rowData){
+        if(IS_LOCAL_FILE){
+          const current = await _local.get(STORAGE_KEY_INVENTORY);
+          let rows = [];
+          try { rows = current && current.value ? JSON.parse(current.value) : []; } catch(e) { rows = []; }
+          if(!Array.isArray(rows)) rows = [];
+          const sscc = canonicalInventorySscc(rowData && rowData.sscc);
+          if(sscc && rows.some(r=>canonicalInventorySscc(r && r.sscc)===sscc)){
+            const err=new Error('DUPLICATE_SSCC'); err.code='DUPLICATE_SSCC'; throw err;
+          }
+          rows.push(rowData);
+          await _local.set(STORAGE_KEY_INVENTORY, JSON.stringify(rows));
+          _cacheWrite(STORAGE_KEY_INVENTORY, JSON.stringify(rows));
+          return { ok:true, row:rowData, count:rows.length };
+        }
+        const data = await _callStorageApi('appendInventory', STORAGE_KEY_INVENTORY, rowData);
+        _cacheDelete(STORAGE_KEY_INVENTORY);
+        return data;
+      },
       async appendEvent(key, eventData){
         if(IS_LOCAL_FILE){
           const current = await _local.get(key);
@@ -4765,11 +4784,22 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     }
     // Refresh the shared list immediately before write so another device's recent scan is included.
     if(!sscc) await loadInventoryCountRows();
-    inventoryCountRows.push({id:'inv_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),sscc:String(sscc||''),bn:String(bn||''),item:String(item||''),performer:String(inventoryPerformerName||''),date:inventoryToday(),createdAt:new Date().toISOString(),source:inventoryEntrySource==='camera'?'camera':'manual'});
-    if(await persistInventoryCountRows()){
+    const newRow={id:'inv_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),sscc:String(sscc||''),bn:String(bn||''),item:String(item||''),performer:String(inventoryPerformerName||''),date:inventoryToday(),createdAt:new Date().toISOString(),source:inventoryEntrySource==='camera'?'camera':'manual'};
+    try{
+      await _dashStorage.appendInventory(newRow);
+      await loadInventoryCountRows();
       showToast('המשטח נשמר בספירת המלאי');
       clearInventoryForm(); renderInventoryRows();
       root.querySelector('#inv_sscc')?.focus();
+    }catch(e){
+      if(e && (e.code==='DUPLICATE_SSCC' || String(e.message||'').includes('DUPLICATE_SSCC'))){
+        showToast('SSCC כפול — המשטח כבר קיים בספירת המלאי',true);
+        root.querySelector('#inv_sscc')?.focus();
+        root.querySelector('#inv_sscc')?.select();
+        return;
+      }
+      console.error('inventory save failed',e);
+      showToast('שמירת ספירת המלאי נכשלה. נסה שוב.',true);
     }
   }
 

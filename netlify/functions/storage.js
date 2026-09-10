@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 
-const FUNCTION_VERSION = '4.8.22';
+const FUNCTION_VERSION = '4.8.42';
 const TOKEN_TTL_MS = 8 * 60 * 60 * 1000;
 const STORE_NAME = 'production-dashboard';
 const MAX_GET_MANY_KEYS = 30;
@@ -103,7 +103,7 @@ exports.handler = async (event) => {
   }
 
   const { action, key, value, token } = body;
-  if (!['get', 'getMany', 'set', 'delete', 'status', 'appendEvent'].includes(action)) {
+  if (!['get', 'getMany', 'set', 'delete', 'status', 'appendEvent', 'appendInventory'].includes(action)) {
     return response(400, { error: 'UNKNOWN_ACTION', version: FUNCTION_VERSION });
   }
   if (!['status', 'getMany'].includes(action) && (!key || typeof key !== 'string')) {
@@ -146,6 +146,38 @@ exports.handler = async (event) => {
         throw new Error('WRITE_VERIFICATION_FAILED');
       }
       return response(200, { ok: true, verified: true, bytes: verification.length, backend: 'netlify-blobs-sdk', version: FUNCTION_VERSION });
+    }
+
+    if (action === 'appendInventory') {
+      const INVENTORY_KEY = 'inventory_count_pallets_v1';
+      if (key !== INVENTORY_KEY) return response(403, { error: 'PUBLIC_WRITE_NOT_ALLOWED', version: FUNCTION_VERSION });
+      const input = value && typeof value === 'object' ? value : {};
+      const cleanText = (v, max) => String(v == null ? '' : v).trim().slice(0, max);
+      const sscc = cleanText(input.sscc, 20).replace(/\D/g, '');
+      const bn = cleanText(input.bn, 100).toUpperCase();
+      const item = cleanText(input.item, 100).toUpperCase();
+      const performer = cleanText(input.performer, 120);
+      const date = cleanText(input.date, 10);
+      const source = cleanText(input.source, 20) === 'camera' ? 'camera' : 'manual';
+      if (!performer || (!sscc && !bn && !item) || (sscc && !/^\d{20}$/.test(sscc)) || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        return response(400, { error: 'INVALID_INVENTORY_DATA', version: FUNCTION_VERSION });
+      }
+      const existingText = await store.get(key, { type: 'text', consistency: 'strong' });
+      let rows = [];
+      try { rows = existingText ? JSON.parse(existingText) : []; } catch { rows = []; }
+      if (!Array.isArray(rows)) rows = [];
+      if (sscc && rows.some(row => String(row && row.sscc || '').replace(/\D/g, '') === sscc)) {
+        return response(409, { error: 'DUPLICATE_SSCC', version: FUNCTION_VERSION });
+      }
+      const savedRow = {
+        id: cleanText(input.id, 100) || `inv_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
+        sscc, bn, item, performer, date,
+        createdAt: cleanText(input.createdAt, 40) || new Date().toISOString(),
+        source
+      };
+      rows.push(savedRow);
+      await store.set(key, JSON.stringify(rows));
+      return response(200, { ok: true, row: savedRow, count: rows.length, backend: 'netlify-blobs-sdk', version: FUNCTION_VERSION });
     }
 
     if (action === 'appendEvent') {
