@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- IML DATA LOAD FIX V4.8.40 -->
+<!-- IML INVENTORY COUNT V4.8.41 -->
 <html lang="he" dir="rtl">
 <head>
 <meta charset="UTF-8">
@@ -3417,8 +3417,11 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   const STORAGE_KEY_PROD_TARGETS = 'production_targets';
   const STORAGE_KEY_PERIOD_TARGETS = 'period_packaging_targets_v1';
   const STORAGE_KEY_EVENTS = 'production_events_quality_environment_v1';
+  const STORAGE_KEY_INVENTORY = 'inventory_count_pallets_v1';
   const STORAGE_KEY_QUALITY = 'quality_ud_data_v1';
   const STORAGE_KEY_TARGET_FILE = 'monthly_target_file_v1';
+  let inventoryCountRows = [];
+  let inventoryOcrBusy = false;
   let targetFileRows = [];
   let targetFileMeta = {fileName:'', loadedAt:''};
 
@@ -4144,6 +4147,149 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     } catch(e){
       showToast('שגיאה בשמירת אירוע', true);
       return false;
+    }
+  }
+
+  async function loadInventoryCountRows(){
+    try {
+      const res = await _dashStorage.get(STORAGE_KEY_INVENTORY);
+      inventoryCountRows = res && res.value ? JSON.parse(res.value) : [];
+      if(!Array.isArray(inventoryCountRows)) inventoryCountRows = [];
+    } catch(e){ inventoryCountRows = []; }
+  }
+
+  async function persistInventoryCountRows(){
+    try {
+      await _dashStorage.set(STORAGE_KEY_INVENTORY, JSON.stringify(inventoryCountRows));
+      return true;
+    } catch(e){
+      showToast('שגיאה בשמירת ספירת המלאי: '+(e.message||e), true);
+      return false;
+    }
+  }
+
+  function normalizeInventoryValue(v){
+    return String(v==null?'':v).replace(/\s+/g,' ').trim();
+  }
+  function normalizeSscc(v){
+    return String(v==null?'':v).replace(/\D/g,'').slice(0,18);
+  }
+  function inventoryToday(){ return todayISO(); }
+
+  function renderInventoryRows(){
+    const body=root.querySelector('#inventoryRowsBody');
+    const count=root.querySelector('#inventoryRowsCount');
+    if(!body) return;
+    const rows=[...inventoryCountRows].sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')));
+    if(count) count.textContent=rows.length+' משטחים בספירה';
+    if(!rows.length){
+      body.innerHTML='<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:20px;">עדיין לא הוזנו משטחים</td></tr>';
+      return;
+    }
+    body.innerHTML=rows.slice(0,150).map((r,i)=>'<tr>'+ 
+      '<td class="mono">'+escapeHtml(r.sscc||'—')+'</td>'+ 
+      '<td>'+escapeHtml(r.bn||'—')+'</td>'+ 
+      '<td>'+escapeHtml(r.item||'—')+'</td>'+ 
+      '<td class="mono">'+escapeHtml((r.createdAt||'').replace('T',' ').slice(0,16))+'</td>'+ 
+      '<td><button class="row-del admin-only inventory-row-del" data-id="'+escapeHtml(r.id||'')+'" title="מחיקה">✕</button></td>'+ 
+      '</tr>').join('');
+    body.querySelectorAll('.inventory-row-del').forEach(btn=>{
+      btn.onclick=async()=>{
+        if(!requireAdmin()) return;
+        const id=btn.dataset.id;
+        inventoryCountRows=inventoryCountRows.filter(x=>x.id!==id);
+        if(await persistInventoryCountRows()){ renderInventoryRows(); showToast('המשטח נמחק מספירת המלאי'); }
+      };
+    });
+    applyRoleUI();
+  }
+
+  function clearInventoryForm(){
+    ['inv_sscc','inv_bn','inv_item'].forEach(id=>{ const el=root.querySelector('#'+id); if(el) el.value=''; });
+    const preview=root.querySelector('#inventoryPhotoPreview'); if(preview){ preview.src=''; preview.style.display='none'; }
+    const status=root.querySelector('#inventoryOcrStatus'); if(status) status.textContent='';
+    const file=root.querySelector('#inventoryCameraInput'); if(file) file.value='';
+  }
+
+  async function openInventoryModal(){
+    root.querySelector('#inventoryOverlay').classList.add('open');
+    clearInventoryForm();
+    if(!inventoryCountRows.length) await loadInventoryCountRows();
+    renderInventoryRows();
+    setTimeout(()=>root.querySelector('#inv_sscc')?.focus(),50);
+  }
+  function closeInventoryModal(){ root.querySelector('#inventoryOverlay').classList.remove('open'); }
+
+  function extractInventoryFromOcr(text){
+    const raw=String(text||'').replace(/\r/g,'');
+    const lines=raw.split('\n').map(x=>x.trim()).filter(Boolean);
+    const joined=lines.join(' ');
+    let sscc='';
+    const ssccLabel=joined.match(/SSCC\s*(?:NO\.?|NUMBER|#)?\s*[:\-]?\s*([0-9][0-9\s-]{15,24})/i);
+    if(ssccLabel) sscc=normalizeSscc(ssccLabel[1]);
+    if(sscc.length!==18){
+      const candidates=(joined.match(/(?:\d[\s-]*){18}/g)||[]).map(normalizeSscc).filter(x=>x.length===18);
+      if(candidates.length) sscc=candidates[0];
+    }
+    const pickAfter=(patterns)=>{
+      for(const re of patterns){ const m=joined.match(re); if(m&&m[1]) return normalizeInventoryValue(m[1]); }
+      return '';
+    };
+    const bn=pickAfter([/\bB\.?\s*N\.?\s*[:#-]?\s*([A-Z0-9._\/-]{2,30})/i,/\bBATCH(?:\s*NO\.?)?\s*[:#-]?\s*([A-Z0-9._\/-]{2,30})/i]);
+    const item=pickAfter([/\bITEM(?:\s*NO\.?)?\s*[:#-]?\s*([A-Z0-9._\/-]{2,30})/i,/\bMATERIAL(?:\s*NO\.?)?\s*[:#-]?\s*([A-Z0-9._\/-]{2,30})/i]);
+    return {sscc,bn,item};
+  }
+
+  async function ensureTesseract(){
+    if(window.Tesseract) return window.Tesseract;
+    await new Promise((resolve,reject)=>{
+      const old=document.getElementById('inventoryTesseractScript');
+      if(old){ old.addEventListener('load',resolve,{once:true}); old.addEventListener('error',reject,{once:true}); return; }
+      const sc=document.createElement('script'); sc.id='inventoryTesseractScript';
+      sc.src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+      sc.onload=resolve; sc.onerror=reject; document.head.appendChild(sc);
+    });
+    return window.Tesseract;
+  }
+
+  async function processInventoryPhoto(file){
+    if(!file || inventoryOcrBusy) return;
+    const preview=root.querySelector('#inventoryPhotoPreview');
+    const status=root.querySelector('#inventoryOcrStatus');
+    if(preview){ preview.src=URL.createObjectURL(file); preview.style.display='block'; }
+    inventoryOcrBusy=true;
+    if(status) status.textContent='מזהה SSCC, B.N ו-ITEM מהצילום…';
+    try{
+      const T=await ensureTesseract();
+      if(!T) throw new Error('OCR library unavailable');
+      const result=await T.recognize(file,'eng',{logger:m=>{ if(status && m.status==='recognizing text') status.textContent='מזהה נתונים מהצילום… '+Math.round((m.progress||0)*100)+'%'; }});
+      const parsed=extractInventoryFromOcr(result?.data?.text||'');
+      if(parsed.sscc) root.querySelector('#inv_sscc').value=parsed.sscc;
+      if(parsed.bn) root.querySelector('#inv_bn').value=parsed.bn;
+      if(parsed.item) root.querySelector('#inv_item').value=parsed.item;
+      const found=[parsed.sscc&&'SSCC',parsed.bn&&'B.N',parsed.item&&'ITEM'].filter(Boolean);
+      if(status) status.textContent=found.length ? 'זוהו: '+found.join(', ')+' — ניתן לתקן ידנית לפני שמירה.' : 'לא זוהו שדות בוודאות — ניתן להזין ידנית.';
+    }catch(e){
+      console.error('inventory OCR:',e);
+      if(status) status.textContent='הצילום נקלט, אך הזיהוי האוטומטי לא הצליח. ניתן להזין ידנית.';
+    }finally{ inventoryOcrBusy=false; }
+  }
+
+  async function saveInventoryRow(){
+    if(!requireAdmin()) return;
+    const sscc=normalizeSscc(root.querySelector('#inv_sscc').value);
+    const bn=normalizeInventoryValue(root.querySelector('#inv_bn').value).toUpperCase();
+    const item=normalizeInventoryValue(root.querySelector('#inv_item').value).toUpperCase();
+    if(!sscc && !bn && !item){ showToast('יש להזין לפחות אחד מהשדות SSCC NO, B.N או ITEM',true); return; }
+    if(sscc && sscc.length!==18){ showToast('SSCC NO צריך להכיל 18 ספרות',true); return; }
+    if(sscc && inventoryCountRows.some(r=>normalizeSscc(r.sscc)===sscc)){
+      showToast('שים לב: SSCC זה כבר קיים בספירת המלאי',true); return;
+    }
+    inventoryCountRows.push({id:'inv_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),sscc,bn,item,date:inventoryToday(),createdAt:new Date().toISOString()});
+    if(await persistInventoryCountRows()){
+      showToast('המשטח נשמר בספירת המלאי');
+      clearInventoryForm(); renderInventoryRows();
+      root.querySelector('#inv_sscc')?.focus();
     }
   }
 
@@ -8463,7 +8609,7 @@ function renderAll(){
           '<div class="brand-mark">IML</div>'+
           '<div><h1>IML Production Dashboard <span class="app-version-badge">V4.8.40</span></h1><p><span id="entryCount">טוען נתונים…</span> <span id="storageStatusBadge" class="storage-status"></span></p><p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;"><span id="dataStatusLine">בודק נתונים…</span></p><div class="load-health" id="loadHealth"><span class="load-health-chip missing">כמויות —</span><span class="load-health-chip missing">איכות —</span><span class="load-health-chip missing">החלטת שימוש —</span><span class="load-health-chip missing">יעדים —</span></div><div id="fileSourcesPanel" style="display:none"></div></div>'+
         '</div>'+
-        '<div class="topbar-actions"><span id="roleBadge" class="role-badge viewer">👁 צפייה בלבד</span><button class="tab-btn" id="adminLoginBtn" style="background:rgba(255,255,255,0.06);color:var(--text);font-size:12px;padding:6px 14px;">🔐 כניסת מנהל</button><button class="tab-btn" id="refreshSharedBtn" style="background:rgba(20,184,166,0.12);color:var(--teal);font-size:12px;padding:6px 14px;">🔄 רענן נתונים</button><button class="tab-btn" id="addEventTopBtn" style="background:rgba(139,183,255,0.12);color:#8BB7FF;font-size:12px;padding:6px 14px;">+ הוסף אירוע</button><button class="tab-btn" id="advancedDashboardBtn" style="background:var(--teal-soft);color:var(--green);font-size:12px;padding:6px 14px;">📊 דשבורד חדש</button><button class="tab-btn" id="excelAnalyzedExportBtn" style="background:rgba(124,217,146,0.12);color:#7CD992;font-size:12px;padding:6px 14px;">📥 ייצוא ניתוח לאקסל</button><button class="tab-btn" id="dailyFormulationExportBtn" style="background:rgba(255,183,77,0.14);color:#FFB74D;font-size:12px;padding:6px 14px;">📋 ייצוא דיווח יומי</button><button class="tab-btn" id="dailyFormulationLoadBtn" style="background:rgba(255,183,77,0.08);color:#FFD08A;font-size:12px;padding:6px 14px;">📂 דוח יומי שמור</button><button class="tab-btn" id="monthlyFormulationReportBtn" style="background:rgba(52,211,153,0.10);color:#6EE7B7;font-size:12px;padding:6px 14px;">📊 דוח חודשי מרכז</button><label for="dailyFormulationImportInput" class="tab-btn admin-only" style="background:rgba(96,165,250,0.12);color:#93C5FD;font-size:12px;padding:6px 14px;cursor:pointer;">📤 טעינת דוח יומי מעודכן</label><input id="dailyFormulationImportInput" type="file" accept=".xlsx,.xls" style="display:none"><label for="qualityFileInput" class="tab-btn admin-only" id="qualityFileBtn" style="background:rgba(239,68,68,0.12);color:var(--red);font-size:12px;padding:6px 14px;cursor:pointer;">🧪 טעינת איכות</label><label for="usageDecisionFileInput" class="tab-btn admin-only" id="usageDecisionFileBtn" style="background:rgba(251,191,36,0.12);color:var(--yellow);font-size:12px;padding:6px 14px;cursor:pointer;">✅ טעינת החלטת שימוש</label><button class="tab-btn" id="whatsappExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📲 WhatsApp טקסט</button><button class="tab-btn" id="whatsappImageExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📸 צילום דשבורד</button><label for="quantityFileInput" class="tab-btn admin-only" id="quantityFileBtn" style="background:rgba(45,212,191,0.14);color:var(--teal);font-size:12px;padding:6px 14px;cursor:pointer;">📦 טעינת כמות</label><label for="targetsFileInput" class="tab-btn admin-only" id="targetsFileBtn" style="background:rgba(167,139,250,0.13);color:var(--purple);font-size:12px;padding:6px 14px;cursor:pointer;">🎯 טעינת קובץ יעדים</label><button class="tab-btn" id="targetsTemplateBtn" style="background:rgba(167,139,250,0.08);color:var(--purple);font-size:12px;padding:6px 14px;">⬇ תבנית יעדים</button><button class="tab-btn admin-only" id="targetsProdBtn" style="background:var(--amber-soft);color:var(--amber);font-size:12px;padding:6px 14px;">⚙ יעדי ייצור</button><button class="tab-btn admin-only" id="targetsBtn" style="background:var(--teal-soft);color:var(--teal);font-size:12px;padding:6px 14px;">⚙ יעדי אריזה</button><button class="tab-btn admin-only" id="resetBtn" style="background:rgba(255,255,255,0.05);color:var(--text-muted);font-size:12px;padding:6px 14px;">איפוס</button></div>'+
+        '<div class="topbar-actions"><span id="roleBadge" class="role-badge viewer">👁 צפייה בלבד</span><button class="tab-btn" id="adminLoginBtn" style="background:rgba(255,255,255,0.06);color:var(--text);font-size:12px;padding:6px 14px;">🔐 כניסת מנהל</button><button class="tab-btn" id="refreshSharedBtn" style="background:rgba(20,184,166,0.12);color:var(--teal);font-size:12px;padding:6px 14px;">🔄 רענן נתונים</button><button class="tab-btn" id="addEventTopBtn" style="background:rgba(139,183,255,0.12);color:#8BB7FF;font-size:12px;padding:6px 14px;">+ הוסף אירוע</button><button class="tab-btn" id="inventoryCountBtn" style="background:rgba(20,184,166,0.16);color:#5EEAD4;font-size:12px;padding:6px 14px;">📦 ספירת מלאי</button><button class="tab-btn" id="advancedDashboardBtn" style="background:var(--teal-soft);color:var(--green);font-size:12px;padding:6px 14px;">📊 דשבורד חדש</button><button class="tab-btn" id="excelAnalyzedExportBtn" style="background:rgba(124,217,146,0.12);color:#7CD992;font-size:12px;padding:6px 14px;">📥 ייצוא ניתוח לאקסל</button><button class="tab-btn" id="dailyFormulationExportBtn" style="background:rgba(255,183,77,0.14);color:#FFB74D;font-size:12px;padding:6px 14px;">📋 ייצוא דיווח יומי</button><button class="tab-btn" id="dailyFormulationLoadBtn" style="background:rgba(255,183,77,0.08);color:#FFD08A;font-size:12px;padding:6px 14px;">📂 דוח יומי שמור</button><button class="tab-btn" id="monthlyFormulationReportBtn" style="background:rgba(52,211,153,0.10);color:#6EE7B7;font-size:12px;padding:6px 14px;">📊 דוח חודשי מרכז</button><label for="dailyFormulationImportInput" class="tab-btn admin-only" style="background:rgba(96,165,250,0.12);color:#93C5FD;font-size:12px;padding:6px 14px;cursor:pointer;">📤 טעינת דוח יומי מעודכן</label><input id="dailyFormulationImportInput" type="file" accept=".xlsx,.xls" style="display:none"><label for="qualityFileInput" class="tab-btn admin-only" id="qualityFileBtn" style="background:rgba(239,68,68,0.12);color:var(--red);font-size:12px;padding:6px 14px;cursor:pointer;">🧪 טעינת איכות</label><label for="usageDecisionFileInput" class="tab-btn admin-only" id="usageDecisionFileBtn" style="background:rgba(251,191,36,0.12);color:var(--yellow);font-size:12px;padding:6px 14px;cursor:pointer;">✅ טעינת החלטת שימוש</label><button class="tab-btn" id="whatsappExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📲 WhatsApp טקסט</button><button class="tab-btn" id="whatsappImageExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📸 צילום דשבורד</button><label for="quantityFileInput" class="tab-btn admin-only" id="quantityFileBtn" style="background:rgba(45,212,191,0.14);color:var(--teal);font-size:12px;padding:6px 14px;cursor:pointer;">📦 טעינת כמות</label><label for="targetsFileInput" class="tab-btn admin-only" id="targetsFileBtn" style="background:rgba(167,139,250,0.13);color:var(--purple);font-size:12px;padding:6px 14px;cursor:pointer;">🎯 טעינת קובץ יעדים</label><button class="tab-btn" id="targetsTemplateBtn" style="background:rgba(167,139,250,0.08);color:var(--purple);font-size:12px;padding:6px 14px;">⬇ תבנית יעדים</button><button class="tab-btn admin-only" id="targetsProdBtn" style="background:var(--amber-soft);color:var(--amber);font-size:12px;padding:6px 14px;">⚙ יעדי ייצור</button><button class="tab-btn admin-only" id="targetsBtn" style="background:var(--teal-soft);color:var(--teal);font-size:12px;padding:6px 14px;">⚙ יעדי אריזה</button><button class="tab-btn admin-only" id="resetBtn" style="background:rgba(255,255,255,0.05);color:var(--text-muted);font-size:12px;padding:6px 14px;">איפוס</button></div>'+
       '</div>'+
       '<div class="tabs">'+
         '<button class="tab-btn" data-tab="day">יום אחרון</button>'+
@@ -8521,6 +8667,28 @@ function renderAll(){
         '<div class="modal-foot">'+
           '<button class="btn secondary" id="modalCancel">ביטול</button>'+
           '<button class="btn primary" id="modalSave">שמירה</button>'+
+        '</div>'+
+      '</div>'+
+    '</div>'+
+    '<div class="modal-overlay" id="inventoryOverlay">'+
+      '<div class="modal" style="max-width:900px;">'+
+        '<h3 style="display:flex;align-items:center;gap:8px;">📦 ספירת מלאי</h3>'+
+        '<p style="color:var(--text-muted);font-size:12.5px;margin:0 0 12px;">הזנת משטח ידנית או באמצעות צילום תווית. לאחר צילום המערכת תנסה לזהות SSCC NO, B.N ו-ITEM ותאפשר תיקון לפני שמירה.</p>'+
+        '<div class="modal-grid" style="align-items:end;">'+
+          '<div class="field"><label>SSCC NO</label><input type="text" inputmode="numeric" maxlength="18" id="inv_sscc" placeholder="18 ספרות"></div>'+
+          '<div class="field"><label>B.N</label><input type="text" id="inv_bn" placeholder="Batch Number"></div>'+
+          '<div class="field"><label>ITEM</label><input type="text" id="inv_item" placeholder="Item / Material"></div>'+
+          '<div class="field"><label>צילום משטח</label><label for="inventoryCameraInput" class="btn secondary" style="display:flex;justify-content:center;align-items:center;cursor:pointer;min-height:38px;">📷 מצלמה / תמונה</label><input type="file" id="inventoryCameraInput" accept="image/*" capture="environment" style="display:none"></div>'+
+          '<div class="field full"><div id="inventoryOcrStatus" style="font-size:12px;color:var(--teal);min-height:18px;"></div><img id="inventoryPhotoPreview" alt="תצוגת צילום" style="display:none;max-width:100%;max-height:220px;border-radius:10px;border:1px solid var(--border);margin-top:6px;object-fit:contain;background:#05080f;"></div>'+
+        '</div>'+
+        '<div class="modal-foot" style="justify-content:flex-start;">'+
+          '<button class="btn primary" id="inventorySaveBtn">+ שמור משטח</button>'+
+          '<button class="btn secondary" id="inventoryClearBtn">נקה שדות</button>'+
+          '<button class="btn secondary" id="inventoryCloseBtn" style="margin-right:auto;">סגור</button>'+
+        '</div>'+
+        '<div class="panel" style="margin-top:14px;padding:0;overflow:hidden;">'+
+          '<div class="panel-head" style="padding:12px 14px;"><div><div class="panel-title">משטחים שנספרו</div><div class="kpi-sub" id="inventoryRowsCount">0 משטחים בספירה</div></div></div>'+
+          '<div class="table-scroll" style="max-height:300px;"><table style="min-width:720px;"><thead><tr><th>SSCC NO</th><th>B.N</th><th>ITEM</th><th>זמן הזנה</th><th></th></tr></thead><tbody id="inventoryRowsBody"></tbody></table></div>'+
         '</div>'+
       '</div>'+
     '</div>'+
@@ -8931,7 +9099,8 @@ function renderAll(){
         loadTargetFile().catch(()=>{}),
         loadProductionTargets().catch(()=>{}),
         loadPeriodPackagingTargets().catch(()=>{}),
-        loadEventsEntries().catch(()=>{})
+        loadEventsEntries().catch(()=>{}),
+        loadInventoryCountRows().catch(()=>{})
       ]);
       renderAll();
       applyRoleUI();
@@ -9056,6 +9225,15 @@ root.querySelector('#printBtn').onclick = ()=> window.print();
 
 
   root.querySelector('#addEventTopBtn').onclick = openEventModal;
+  root.querySelector('#inventoryCountBtn').onclick = openInventoryModal;
+  root.querySelector('#inventoryCloseBtn').onclick = closeInventoryModal;
+  root.querySelector('#inventoryClearBtn').onclick = clearInventoryForm;
+  root.querySelector('#inventorySaveBtn').onclick = saveInventoryRow;
+  root.querySelector('#inventoryCameraInput').onchange = e=>processInventoryPhoto(e.target.files && e.target.files[0]);
+  root.querySelector('#inventoryOverlay').addEventListener('click',e=>{ if(e.target===root.querySelector('#inventoryOverlay')) closeInventoryModal(); });
+  root.querySelector('#inv_sscc').addEventListener('keydown',e=>{ if(e.key==='Enter') root.querySelector('#inv_bn').focus(); });
+  root.querySelector('#inv_bn').addEventListener('keydown',e=>{ if(e.key==='Enter') root.querySelector('#inv_item').focus(); });
+  root.querySelector('#inv_item').addEventListener('keydown',e=>{ if(e.key==='Enter') saveInventoryRow(); });
   root.querySelector('#eventCancel').onclick = ()=> root.querySelector('#eventOverlay').classList.remove('open');
   root.querySelector('#eventSave').onclick = saveEventFromModal;
   root.querySelector('#eventOverlay').onclick = e=>{ if(e.target===root.querySelector('#eventOverlay')) root.querySelector('#eventOverlay').classList.remove('open'); };
