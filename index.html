@@ -4390,6 +4390,47 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     if(btn) btn.textContent='📡 הפעל סריקה אוטומטית';
   }
 
+  function captureInventoryLiveFrame(){
+    const video=root.querySelector('#inventoryLiveVideo');
+    if(!video || !video.videoWidth || !video.videoHeight) return null;
+    try{
+      const canvas=document.createElement('canvas');
+      canvas.width=video.videoWidth;
+      canvas.height=video.videoHeight;
+      const ctx=canvas.getContext('2d',{willReadFrequently:true});
+      ctx.drawImage(video,0,0,canvas.width,canvas.height);
+      return canvas;
+    }catch(e){ console.warn('Inventory live frame capture failed',e); return null; }
+  }
+
+  async function inventoryCanvasToBlob(canvas){
+    if(!canvas) return null;
+    return await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',0.94));
+  }
+
+  async function completeInventoryFieldsFromLiveFrame(canvas, sscc){
+    const status=root.querySelector('#inventoryOcrStatus');
+    if(!canvas) return {bn:'',item:''};
+    try{
+      const blob=await inventoryCanvasToBlob(canvas);
+      if(!blob) return {bn:'',item:''};
+      const preview=root.querySelector('#inventoryPhotoPreview');
+      if(preview){
+        try{ preview.src=URL.createObjectURL(blob); preview.style.display='block'; }catch(e){}
+      }
+      const T=await ensureTesseract();
+      if(!T) return {bn:'',item:''};
+      if(status){ status.textContent='✓ SSCC נקלט. קורא עכשיו ITEM ו-B.N אוטומטית…'; status.style.color='var(--teal)'; }
+      const result=await T.recognize(blob,'eng',{logger:m=>{
+        if(status && m.status==='recognizing text') status.textContent='✓ SSCC נקלט. קורא ITEM ו-B.N… '+Math.round((m.progress||0)*100)+'%';
+      }});
+      const parsed=extractInventoryFromOcr(result?.data?.text||'');
+      if(parsed.item) root.querySelector('#inv_item').value=parsed.item;
+      if(parsed.bn) root.querySelector('#inv_bn').value=parsed.bn;
+      return {item:parsed.item||'',bn:parsed.bn||''};
+    }catch(e){ console.warn('Inventory live OCR complement failed',e); return {bn:'',item:''}; }
+  }
+
   async function acceptInventoryLiveCode(raw){
     if(inventoryLiveHandling) return;
     const sscc=ssccFromInventoryCode(raw);
@@ -4397,7 +4438,9 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     inventoryLiveHandling=true;
     const status=root.querySelector('#inventoryOcrStatus');
     try{
-      // Stop immediately after one valid pallet code so the same label cannot be read repeatedly.
+      // Capture the exact camera frame that contained the valid code BEFORE stopping the stream.
+      // We then reuse that frame for OCR so ITEM and B.N are filled automatically as well.
+      const liveFrame=captureInventoryLiveFrame();
       stopInventoryLiveScan();
       inventoryEntrySource='camera';
       if(await warnDuplicateInventorySscc(sscc)){
@@ -4406,8 +4449,18 @@ html, body { margin:0; padding:0; background:#0A0D12; }
         return;
       }
       const f=root.querySelector('#inv_sscc'); if(f) f.value=sscc;
-      if(status){ status.textContent='✓ קוד דו־ממדי זוהה אוטומטית: '+sscc+' — אין צורך לצלם. ניתן להשלים B.N / ITEM ידנית או לשמור.'; status.style.color='var(--teal)'; }
       showToast('SSCC זוהה אוטומטית');
+
+      const completed=await completeInventoryFieldsFromLiveFrame(liveFrame,sscc);
+      const got=[];
+      if(completed.item) got.push('ITEM');
+      if(completed.bn) got.push('B.N');
+      if(status){
+        status.style.color=got.length===2?'var(--teal)':'#ffb74d';
+        status.textContent=got.length===2
+          ? '✓ נקלטו אוטומטית SSCC, ITEM ו-B.N — ניתן לבדוק ולשמור.'
+          : '✓ SSCC נקלט אוטומטית'+(got.length?' וגם '+got.join(' ו-'):'')+'. ניתן להשלים את השדות החסרים ידנית או באמצעות צילום + OCR.';
+      }
     }finally{ inventoryLiveHandling=false; }
   }
 
@@ -9144,7 +9197,7 @@ function renderAll(){
     '<div class="modal-overlay" id="inventoryOverlay">'+
       '<div class="modal" style="max-width:900px;">'+
         '<h3 style="display:flex;align-items:center;gap:8px;">📦 ספירת מלאי</h3>'+
-        '<p style="color:var(--text-muted);font-size:12.5px;margin:0 0 12px;">הזנת משטח ידנית או באמצעות צילום תווית. כל רשומה נשמרת באתר כטקסט עם תאריך ושעת הזנה. לסריקה מהירה הפעל מצלמה פעם אחת: ברגע ש-QR או Data Matrix עם SSCC בן 20 ספרות מזוהה הוא נקלט אוטומטית, ללא לחיצה על צילום. רק אם הקוד לא מזוהה השתמש ב„צילום + OCR”. אם כותרות התווית אינן נקראות היטב, המערכת משתמשת גם במיקום הקבוע: שדה ראשון SSCC, שדה שלישי ITEM ושדה אחרון B.N.</p>'+
+        '<p style="color:var(--text-muted);font-size:12.5px;margin:0 0 12px;">הזנת משטח ידנית או באמצעות צילום תווית. כל רשומה נשמרת באתר כטקסט עם תאריך ושעת הזנה. לסריקה מהירה הפעל מצלמה פעם אחת: ברגע ש-QR או Data Matrix עם SSCC בן 20 ספרות מזוהה הוא נקלט אוטומטית, והמערכת מצלמת את אותו פריים ומנסה להשלים ממנו גם ITEM ו-B.N ללא לחיצה נוספת. רק אם אחד השדות לא מזוהה השתמש ב„צילום + OCR”. אם כותרות התווית אינן נקראות היטב, המערכת משתמשת גם במיקום הקבוע: שדה ראשון SSCC, שדה שלישי ITEM ושדה אחרון B.N.</p>'+
         '<div class="modal-grid" style="align-items:end;">'+
           '<div class="field"><label>SSCC NO</label><input type="text" inputmode="numeric" maxlength="20" id="inv_sscc" placeholder="20 ספרות בדיוק"></div>'+
           '<div class="field"><label>B.N</label><input type="text" id="inv_bn" placeholder="Batch Number"></div>'+
