@@ -802,6 +802,23 @@ html, body { margin:0; padding:0; background:#0A0D12; }
 #prod-dash-root.iphone-mode .table-scroll { overflow-x:auto; -webkit-overflow-scrolling:touch; }
 #prod-dash-root.iphone-mode .quality-detail-table { min-width:980px; }
 
+/* V4.8.44 — iPhone viewport overflow fix */
+@media (max-width: 640px) {
+  html, body { width:100%; max-width:100%; overflow-x:hidden !important; }
+  #prod-dash-root, #prod-dash-root.iphone-mode { width:100%; max-width:100vw; overflow-x:hidden !important; }
+  #prod-dash-root .wrap, #prod-dash-root.iphone-mode .wrap { width:100%; max-width:100%; min-width:0; box-sizing:border-box; overflow-x:hidden; }
+  #prod-dash-root .topbar, #prod-dash-root .brand, #prod-dash-root .topbar-actions,
+  #prod-dash-root .filter-bar, #prod-dash-root .kpi-grid, #prod-dash-root .insight-stats,
+  #prod-dash-root .summary-grid, #prod-dash-root .panel, #prod-dash-root .ds-cards,
+  #prod-dash-root #fileSourcesPanel { width:100%; max-width:100%; min-width:0; box-sizing:border-box; }
+  #prod-dash-root.iphone-mode .topbar-actions { flex-direction:column; gap:8px; }
+  #prod-dash-root.iphone-mode .topbar-actions #dailyFormulationExportBtn,
+  #prod-dash-root.iphone-mode .topbar-actions #inventoryCountBtn { width:100% !important; max-width:100%; flex:0 0 auto; box-sizing:border-box; }
+  #prod-dash-root .target-compare-card, #prod-dash-root .kpi-card, #prod-dash-root .summary-card { min-width:0 !important; max-width:100%; }
+  #prod-dash-root .table-scroll { max-width:100%; overflow-x:auto !important; }
+  #prod-dash-root .table-scroll table { width:max-content; max-width:none; }
+}
+
 /* Desktop resolution adaptation */
 @media (min-width: 769px) {
   #prod-dash-root:not(.iphone-mode) .topbar-actions { justify-content:flex-start; }
@@ -2094,7 +2111,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
           const batch=normalizeBatch(get(row,'batch'));
           if(!batch) continue;
           const facility=normalizeFacilityForQuality(get(row,'facility'));
-          // V4.8.40: לא מסננים כאן לפי מתקן. בקובצי SAP המתקן עשוי להיות חסר
+          // V4.8.44: לא מסננים כאן לפי מתקן. בקובצי SAP המתקן עשוי להיות חסר
           // או בפורמט אחר. השיוך מתבצע אחרי הפענוח מול נתוני הכמות ורק אז מסננים.
           // שם הבדיקה נלקח ממאפיין הבדיקה. 'Operation short text' הוא שלב
           // התהליך ("בדיקות מעבדה") וזהה לכל השורות — הוא רק גיבוי.
@@ -2473,7 +2490,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
         let parsedInWorker=false, workerError='';
         if(typeof Worker!=='undefined'){
           try{
-            // V4.8.40 — שלושת מקורות הנתונים משתמשים באותה חוקיות: קובץ גדול עובר
+            // V4.8.44 — שלושת מקורות הנתונים משתמשים באותה חוקיות: קובץ גדול עובר
             // למסלול חסכוני/Worker, ורק לאחר הפענוח מתבצע שיוך וסינון למתקנים הפעילים.
             showToast('מפענח את '+file.name+' ברקע...');
             const qualityParser = sizeMB >= QUALITY_LOWMEM_THRESHOLD_MB
@@ -2742,7 +2759,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       const udCode = getStr(cols,map.ud_code,'');
       if(!udCode && !batch) return;
       const facility = normalizeFacilityForQuality(getStr(cols,map.facility,''));
-      // V4.8.40: גם בהחלטת שימוש השיוך למתקן מתבצע לאחר הפענוח מול נתוני הכמות.
+      // V4.8.44: גם בהחלטת שימוש השיוך למתקן מתבצע לאחר הפענוח מול נתוני הכמות.
       // כך שורה עם מתקן חסר/שונה לא נזרקת לפני שניתן לקשר אותה למנה הנכונה.
       const q = {
         batch,
@@ -3205,7 +3222,7 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   // V4.8.39 — בקובצי איכות/החלטת שימוש עמודת המתקן אינה תמיד קיימת.
   // במקרה כזה משייכים את השורה למתקן לפי נתוני הכמות שכבר נטענו (מק"ט+מנה,
   // פקודת עבודה+מנה, ולבסוף מנה כאשר היא חד-משמעית), ורק אז מסננים לסרגל.
-  // V4.8.40: Excel/SAP עשוי להחזיר פקודת עבודה כמספר עם .0 או עם אפסים מובילים.
+  // V4.8.44: Excel/SAP עשוי להחזיר פקודת עבודה כמספר עם .0 או עם אפסים מובילים.
   function normalizeQualityWorkOrder(value){
     return String(value == null ? '' : value).trim().replace(/\.0+$/,'').replace(/^0+(?=\d)/,'');
   }
@@ -8926,7 +8943,7 @@ function renderAll(){
   }
 
 
-  // ---------- V4.8.40: טעינת קובץ כמויות גדול ב-Worker ובמקטעים ----------
+  // ---------- V4.8.44: טעינת קובץ כמויות גדול ב-Worker ובמקטעים ----------
   // אותה חוקיות של קובצי האיכות: הפענוח הכבד לא רץ ב-thread הראשי,
   // והמרה ל-JS נעשית במקטעים. processRows ממשיך להיות מקור האמת לכל חוקי הכמויות.
   const PRODUCTION_WORKER_THRESHOLD_MB = 12;
@@ -9178,7 +9195,7 @@ function renderAll(){
       '<div class="topbar">'+
         '<div class="brand">'+
           '<div class="brand-mark">IML</div>'+
-          '<div><h1>IML Production Dashboard <span class="app-version-badge">V4.8.40</span></h1><p><span id="entryCount">טוען נתונים…</span> <span id="storageStatusBadge" class="storage-status"></span></p><p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;"><span id="dataStatusLine">בודק נתונים…</span></p><div class="load-health" id="loadHealth"><span class="load-health-chip missing">כמויות —</span><span class="load-health-chip missing">איכות —</span><span class="load-health-chip missing">החלטת שימוש —</span><span class="load-health-chip missing">יעדים —</span></div><div id="fileSourcesPanel" style="display:none"></div></div>'+
+          '<div><h1>IML Production Dashboard <span class="app-version-badge">V4.8.44</span></h1><p><span id="entryCount">טוען נתונים…</span> <span id="storageStatusBadge" class="storage-status"></span></p><p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;"><span id="dataStatusLine">בודק נתונים…</span></p><div class="load-health" id="loadHealth"><span class="load-health-chip missing">כמויות —</span><span class="load-health-chip missing">איכות —</span><span class="load-health-chip missing">החלטת שימוש —</span><span class="load-health-chip missing">יעדים —</span></div><div id="fileSourcesPanel" style="display:none"></div></div>'+
         '</div>'+
         '<div class="topbar-actions"><span id="roleBadge" class="role-badge viewer">👁 צפייה בלבד</span><button class="tab-btn" id="adminLoginBtn" style="background:rgba(255,255,255,0.06);color:var(--text);font-size:12px;padding:6px 14px;">🔐 כניסת מנהל</button><button class="tab-btn" id="refreshSharedBtn" style="background:rgba(20,184,166,0.12);color:var(--teal);font-size:12px;padding:6px 14px;">🔄 רענן נתונים</button><button class="tab-btn" id="addEventTopBtn" style="background:rgba(139,183,255,0.12);color:#8BB7FF;font-size:12px;padding:6px 14px;">+ הוסף אירוע</button><button class="tab-btn" id="inventoryCountBtn" style="background:rgba(20,184,166,0.16);color:#5EEAD4;font-size:12px;padding:6px 14px;">📦 ספירת מלאי</button><button class="tab-btn" id="advancedDashboardBtn" style="background:var(--teal-soft);color:var(--green);font-size:12px;padding:6px 14px;">📊 דשבורד חדש</button><button class="tab-btn" id="excelAnalyzedExportBtn" style="background:rgba(124,217,146,0.12);color:#7CD992;font-size:12px;padding:6px 14px;">📥 ייצוא ניתוח לאקסל</button><button class="tab-btn" id="dailyFormulationExportBtn" style="background:rgba(255,183,77,0.14);color:#FFB74D;font-size:12px;padding:6px 14px;">📋 ייצוא דיווח יומי</button><button class="tab-btn" id="dailyFormulationLoadBtn" style="background:rgba(255,183,77,0.08);color:#FFD08A;font-size:12px;padding:6px 14px;">📂 דוח יומי שמור</button><button class="tab-btn" id="monthlyFormulationReportBtn" style="background:rgba(52,211,153,0.10);color:#6EE7B7;font-size:12px;padding:6px 14px;">📊 דוח חודשי מרכז</button><label for="dailyFormulationImportInput" class="tab-btn admin-only" style="background:rgba(96,165,250,0.12);color:#93C5FD;font-size:12px;padding:6px 14px;cursor:pointer;">📤 טעינת דוח יומי מעודכן</label><input id="dailyFormulationImportInput" type="file" accept=".xlsx,.xls" style="display:none"><label for="qualityFileInput" class="tab-btn admin-only" id="qualityFileBtn" style="background:rgba(239,68,68,0.12);color:var(--red);font-size:12px;padding:6px 14px;cursor:pointer;">🧪 טעינת איכות</label><label for="usageDecisionFileInput" class="tab-btn admin-only" id="usageDecisionFileBtn" style="background:rgba(251,191,36,0.12);color:var(--yellow);font-size:12px;padding:6px 14px;cursor:pointer;">✅ טעינת החלטת שימוש</label><button class="tab-btn" id="whatsappExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📲 WhatsApp טקסט</button><button class="tab-btn" id="whatsappImageExportBtn" style="background:rgba(37,211,102,0.12);color:#25D366;font-size:12px;padding:6px 14px;">📸 צילום דשבורד</button><label for="quantityFileInput" class="tab-btn admin-only" id="quantityFileBtn" style="background:rgba(45,212,191,0.14);color:var(--teal);font-size:12px;padding:6px 14px;cursor:pointer;">📦 טעינת כמות</label><label for="targetsFileInput" class="tab-btn admin-only" id="targetsFileBtn" style="background:rgba(167,139,250,0.13);color:var(--purple);font-size:12px;padding:6px 14px;cursor:pointer;">🎯 טעינת קובץ יעדים</label><button class="tab-btn" id="targetsTemplateBtn" style="background:rgba(167,139,250,0.08);color:var(--purple);font-size:12px;padding:6px 14px;">⬇ תבנית יעדים</button><button class="tab-btn admin-only" id="targetsProdBtn" style="background:var(--amber-soft);color:var(--amber);font-size:12px;padding:6px 14px;">⚙ יעדי ייצור</button><button class="tab-btn admin-only" id="targetsBtn" style="background:var(--teal-soft);color:var(--teal);font-size:12px;padding:6px 14px;">⚙ יעדי אריזה</button><button class="tab-btn admin-only" id="resetBtn" style="background:rgba(255,255,255,0.05);color:var(--text-muted);font-size:12px;padding:6px 14px;">איפוס</button></div>'+
       '</div>'+
