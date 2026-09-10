@@ -4400,44 +4400,127 @@ html, body { margin:0; padding:0; background:#0A0D12; }
     if(btn) btn.textContent='⏹ עצור סריקה';
     video.style.display='block';
     inventoryLiveActive=true;
+
     try{
-      // Native BarcodeDetector is the fastest option when the browser exposes Data Matrix.
+      // Open the rear camera ourselves on every device. This is more reliable on iPhone
+      // than letting the ZXing helper create/manage the video stream.
+      const stream=await navigator.mediaDevices.getUserMedia({
+        video:{
+          facingMode:{ideal:'environment'},
+          width:{ideal:1920},
+          height:{ideal:1080}
+        },
+        audio:false
+      });
+      if(!inventoryLiveActive){ stream.getTracks().forEach(t=>t.stop()); return; }
+      video.srcObject=stream;
+      video.setAttribute('playsinline','true');
+      video.setAttribute('muted','true');
+      await video.play();
+
+      // Ask the camera for continuous focus where iOS/device supports it.
+      try{
+        const track=stream.getVideoTracks()[0];
+        const caps=track && track.getCapabilities ? track.getCapabilities() : {};
+        const advanced=[];
+        if(caps && Array.isArray(caps.focusMode) && caps.focusMode.includes('continuous')) advanced.push({focusMode:'continuous'});
+        if(advanced.length) await track.applyConstraints({advanced});
+      }catch(e){}
+
+      if(status) status.textContent='סריקה אוטומטית פעילה — החזק את ה-Data Matrix יציב ובמרכז המסגרת.';
+
+      // Native BarcodeDetector first when Data Matrix is exposed by the browser.
       if('BarcodeDetector' in window){
         const formats=await BarcodeDetector.getSupportedFormats().catch(()=>[]);
         if(formats.includes('data_matrix')){
-          const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}},audio:false});
-          video.srcObject=stream; await video.play();
           const detector=new BarcodeDetector({formats:['data_matrix']});
           const loop=async()=>{
-            if(!inventoryLiveActive) return;
+            if(!inventoryLiveActive || inventoryLiveHandling) return;
             try{
               const hits=await detector.detect(video);
-              const hit=(hits||[]).find(h=>String(h.rawValue||'').trim());
-              if(hit){ await acceptInventoryLiveCode(String(hit.rawValue||'').trim()); return; }
+              for(const hit of (hits||[])){
+                const raw=String(hit.rawValue||'').trim();
+                if(ssccFromInventoryCode(raw).length===20){ await acceptInventoryLiveCode(raw); return; }
+              }
             }catch(e){}
-            if(inventoryLiveActive) requestAnimationFrame(loop);
+            if(inventoryLiveActive) setTimeout(loop,220);
           };
-          if(status) status.textContent='סריקה אוטומטית פעילה — כוון את ה-Data Matrix למצלמה.';
-          requestAnimationFrame(loop);
+          setTimeout(loop,120);
           return;
         }
       }
-      // iPhone/Safari fallback: ZXing reads Data Matrix continuously from the live camera.
+
+      // iPhone/Safari fallback: ZXing + repeated still-frame decoding.
+      // decodeFromVideoDevice is unreliable on some iOS versions although the video opens,
+      // so we explicitly sample frames from the already-playing rear-camera video.
       const ZX=await ensureInventoryZXing();
       if(!ZX || !ZX.BrowserMultiFormatReader) throw new Error('ZXing unavailable');
       const hints=new Map();
-      try{ hints.set(ZX.DecodeHintType.POSSIBLE_FORMATS,[ZX.BarcodeFormat.DATA_MATRIX]); }catch(e){}
-      inventoryLiveReader=new ZX.BrowserMultiFormatReader(hints,300);
-      if(status) status.textContent='סריקה אוטומטית פעילה — כוון את ה-Data Matrix למצלמה.';
-      inventoryLiveControls=await inventoryLiveReader.decodeFromVideoDevice(undefined,video,(result,err)=>{
-        if(!inventoryLiveActive || !result) return;
-        const text=typeof result.getText==='function' ? result.getText() : String(result.text||'');
-        if(text) acceptInventoryLiveCode(text);
-      });
+      try{
+        hints.set(ZX.DecodeHintType.POSSIBLE_FORMATS,[ZX.BarcodeFormat.DATA_MATRIX]);
+        hints.set(ZX.DecodeHintType.TRY_HARDER,true);
+      }catch(e){}
+      inventoryLiveReader=new ZX.BrowserMultiFormatReader(hints,250);
+
+      const canvas=document.createElement('canvas');
+      const ctx=canvas.getContext('2d',{willReadFrequently:true});
+      const img=new Image();
+      img.style.display='none';
+      document.body.appendChild(img);
+
+      const cleanupImg=()=>{ try{ img.remove(); }catch(e){} };
+      const oldStop=stopInventoryLiveScan;
+      let decoding=false;
+
+      const sample=async()=>{
+        if(!inventoryLiveActive){ cleanupImg(); return; }
+        if(decoding){ setTimeout(sample,180); return; }
+        if(!video.videoWidth || !video.videoHeight){ setTimeout(sample,180); return; }
+        decoding=true;
+        try{
+          // Use a high-resolution center crop. The label can be portrait or landscape,
+          // but the Data Matrix is normally the highest-contrast object in the central area.
+          const vw=video.videoWidth, vh=video.videoHeight;
+          const side=Math.floor(Math.min(vw,vh)*0.92);
+          const sx=Math.floor((vw-side)/2), sy=Math.floor((vh-side)/2);
+          const out=Math.min(1400,side);
+          canvas.width=out; canvas.height=out;
+          ctx.drawImage(video,sx,sy,side,side,0,0,out,out);
+
+          // Try the full center crop first, then a contrast-enhanced version.
+          const attempts=[];
+          attempts.push(canvas.toDataURL('image/jpeg',0.92));
+          try{
+            const id=ctx.getImageData(0,0,out,out), d=id.data;
+            for(let i=0;i<d.length;i+=4){
+              const g=(d[i]*0.299+d[i+1]*0.587+d[i+2]*0.114);
+              const v=g>155?255:(g<85?0:g);
+              d[i]=d[i+1]=d[i+2]=v;
+            }
+            ctx.putImageData(id,0,0);
+            attempts.push(canvas.toDataURL('image/jpeg',0.96));
+          }catch(e){}
+
+          for(const url of attempts){
+            if(!inventoryLiveActive) break;
+            try{
+              await new Promise((res,rej)=>{ img.onload=res; img.onerror=rej; img.src=url; });
+              const result=await inventoryLiveReader.decodeFromImageElement(img);
+              const text=result && typeof result.getText==='function' ? result.getText() : String((result&&result.text)||'');
+              if(text && ssccFromInventoryCode(text).length===20){ cleanupImg(); await acceptInventoryLiveCode(text); return; }
+            }catch(e){}
+          }
+        }finally{
+          decoding=false;
+        }
+        if(inventoryLiveActive) setTimeout(sample,320);
+        else cleanupImg();
+      };
+      setTimeout(sample,250);
     }catch(e){
       console.error('inventory live scan:',e);
       stopInventoryLiveScan();
-      if(status){ status.textContent='לא ניתן להפעיל סריקה חיה במכשיר זה. השתמש ב„צילום + OCR” כגיבוי.'; status.style.color='#ffb74d'; }
+      if(status){ status.textContent='לא ניתן לזהות Data Matrix בסריקה החיה. ניתן להשתמש ב„צילום + OCR” כגיבוי.'; status.style.color='#ffb74d'; }
     }
   }
 
