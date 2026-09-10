@@ -4260,8 +4260,42 @@ html, body { margin:0; padding:0; background:#0A0D12; }
       for(const re of patterns){ const m=joined.match(re); if(m&&m[1]) return normalizeInventoryValue(m[1]); }
       return '';
     };
-    const bn=pickAfter([/\bB\.?\s*N\.?\s*[:#-]?\s*([A-Z0-9._\/-]{2,30})/i,/\bBATCH(?:\s*NO\.?)?\s*[:#-]?\s*([A-Z0-9._\/-]{2,30})/i]);
-    const item=pickAfter([/\bITEM(?:\s*NO\.?)?\s*[:#-]?\s*([A-Z0-9._\/-]{2,30})/i,/\bMATERIAL(?:\s*NO\.?)?\s*[:#-]?\s*([A-Z0-9._\/-]{2,30})/i]);
+    let bn=pickAfter([/\bB\.?\s*N\.?\s*[:#-]?\s*([A-Z0-9._\/-]{2,30})/i,/\bBATCH(?:\s*NO\.?)?\s*[:#-]?\s*([A-Z0-9._\/-]{2,30})/i]);
+    let item=pickAfter([/\bITEM(?:\s*NO\.?)?\s*[:#-]?\s*([A-Z0-9._\/-]{2,30})/i,/\bMATERIAL(?:\s*NO\.?)?\s*[:#-]?\s*([A-Z0-9._\/-]{2,30})/i]);
+
+    // Positional fallback for the fixed ADAMA pallet label layout.
+    // When printed captions are too weak for OCR, the label still has a stable order:
+    // field 1 = SSCC, field 3 = ITEM, final field = B.N.
+    // Use this only to fill values that were not already read by their captions.
+    const valueLines=lines.map((line,index)=>{
+      const compact=String(line||'').replace(/\s+/g,'').replace(/[Oo]/g,'0');
+      const digits=compact.replace(/\D/g,'');
+      return {line,index,compact,digits};
+    });
+
+    if(!sscc){
+      const first=valueLines.find(v=>v.digits.length===20);
+      if(first) sscc=first.digits;
+    }
+
+    // ITEM and B.N are normally printed as 10-digit values on this template.
+    // The ITEM is the first 10-digit product value after the SSCC and before date/quantity fields;
+    // the B.N is the final 10-digit field on the label.
+    const ssccIndex=valueLines.find(v=>v.digits===sscc)?.index ?? -1;
+    const tenDigit=valueLines.filter(v=>/^\d{10}$/.test(v.digits));
+    if(!item){
+      const afterSscc=tenDigit.filter(v=>v.index>ssccIndex);
+      if(afterSscc.length) item=afterSscc[0].digits;
+    }
+    if(!bn && tenDigit.length){
+      bn=tenDigit[tenDigit.length-1].digits;
+    }
+
+    // Never let the same positional candidate populate both ITEM and B.N.
+    if(item && bn && item===bn && tenDigit.length>1){
+      item=tenDigit[0].digits;
+      bn=tenDigit[tenDigit.length-1].digits;
+    }
     return {sscc,bn,item};
   }
 
@@ -8962,7 +8996,7 @@ function renderAll(){
     '<div class="modal-overlay" id="inventoryOverlay">'+
       '<div class="modal" style="max-width:900px;">'+
         '<h3 style="display:flex;align-items:center;gap:8px;">📦 ספירת מלאי</h3>'+
-        '<p style="color:var(--text-muted);font-size:12.5px;margin:0 0 12px;">הזנת משטח ידנית או באמצעות צילום תווית. כל רשומה נשמרת באתר כטקסט עם תאריך ושעת הזנה. לסריקה מהירה הפעל מצלמה פעם אחת: ברגע ש-Data Matrix עם SSCC בן 20 ספרות מזוהה הוא נקלט אוטומטית, ללא לחיצה על צילום. רק אם הקוד לא מזוהה השתמש ב„צילום + OCR” כדי לבצע בדיקה נוספת של SSCC, B.N ו-ITEM.</p>'+
+        '<p style="color:var(--text-muted);font-size:12.5px;margin:0 0 12px;">הזנת משטח ידנית או באמצעות צילום תווית. כל רשומה נשמרת באתר כטקסט עם תאריך ושעת הזנה. לסריקה מהירה הפעל מצלמה פעם אחת: ברגע ש-Data Matrix עם SSCC בן 20 ספרות מזוהה הוא נקלט אוטומטית, ללא לחיצה על צילום. רק אם הקוד לא מזוהה השתמש ב„צילום + OCR”. אם כותרות התווית אינן נקראות היטב, המערכת משתמשת גם במיקום הקבוע: שדה ראשון SSCC, שדה שלישי ITEM ושדה אחרון B.N.</p>'+
         '<div class="modal-grid" style="align-items:end;">'+
           '<div class="field"><label>SSCC NO</label><input type="text" inputmode="numeric" maxlength="20" id="inv_sscc" placeholder="20 ספרות בדיוק"></div>'+
           '<div class="field"><label>B.N</label><input type="text" id="inv_bn" placeholder="Batch Number"></div>'+
