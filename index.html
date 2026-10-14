@@ -819,6 +819,38 @@ html, body { margin:0; padding:0; background:#0A0D12; }
   #prod-dash-root .table-scroll table { width:max-content; max-width:none; }
 }
 
+
+/* Mobile layout fix 2026-10-14: expose daily report and prevent label shrink. */
+#prod-dash-root.iphone-mode .topbar-actions #dailyReportBtn {
+  display:inline-flex !important; justify-content:center; min-height:44px;
+  font-size:14px !important; box-sizing:border-box; max-width:100%;
+}
+#prod-dash-root.iphone-mode .topbar-actions {
+  display:grid !important; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px;
+}
+#prod-dash-root.iphone-mode .topbar-actions #inventoryCountBtn,
+#prod-dash-root.iphone-mode .topbar-actions #dailyReportBtn,
+#prod-dash-root.iphone-mode .topbar-actions #dailyFormulationExportBtn {
+  width:100% !important; min-width:0; margin:0; padding:8px !important;
+  white-space:normal; overflow-wrap:normal; line-height:1.4;
+}
+#prod-dash-root.iphone-mode .topbar-actions #inventoryCountBtn { order:0; }
+#prod-dash-root.iphone-mode .topbar-actions #dailyReportBtn { order:1; }
+#prod-dash-root.iphone-mode .topbar-actions #dailyFormulationExportBtn { order:2; grid-column:1 / -1; }
+#prod-dash-root .facility-label { flex-shrink:0; white-space:nowrap; }
+@media(max-width:768px) {
+  #prod-dash-root .tabs, #prod-dash-root.iphone-mode .tabs {
+    flex-wrap:wrap; overflow-x:visible; gap:6px;
+  }
+  #prod-dash-root .tabs .tab-btn { flex:1 1 auto; min-width:0; padding:8px 10px; }
+  #prod-dash-root .facility-bar, #prod-dash-root.iphone-mode .facility-bar {
+    flex-wrap:wrap; overflow-x:visible; gap:6px;
+  }
+  #prod-dash-root .facility-bar .facility-label { flex-basis:100%; margin:0 0 3px; }
+  #prod-dash-root .facility-chip { padding:7px 10px; min-height:36px; }
+  #prod-dash-root .filter-bar .field { min-width:0; max-width:100%; }
+}
+
 /* Desktop resolution adaptation */
 @media (min-width: 769px) {
   #prod-dash-root:not(.iphone-mode) .topbar-actions { justify-content:flex-start; }
